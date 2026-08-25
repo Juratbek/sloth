@@ -113,7 +113,7 @@ function agentDetail(id: string, agentId: string): AgentDetail | undefined {
   return { ...agent, messages: toMessages(readRecords(path.join(agentsDirOf(file), `agent-${agentId}.jsonl`))) };
 }
 
-/** The one write endpoint: run MONITOR_TICK_COMMAND, i.e. ask the watcher to run now. */
+/** The one write endpoint: run SLOTH_TICK_COMMAND, i.e. ask the watcher to run now. */
 function tick(): boolean {
   if (!TICK_COMMAND?.length) return false;
   const [cmd, ...args] = TICK_COMMAND;
@@ -166,7 +166,7 @@ export function monitorApi(): Plugin {
     });
   };
   return {
-    name: 'claude-bot-monitor-api',
+    name: 'sloth-api',
     transformIndexHtml: (html) => html.replace(/<title>[^<]*<\/title>/, `<title>${TITLE}</title>`),
     configureServer: mount,
     configurePreviewServer: mount,

@@ -39,26 +39,26 @@ function json<T>(key: string, fallback: T): T {
   }
 }
 
-export const REPO = envValue('MONITOR_REPO') ?? '';
-export const RUNNER_ROOT = pathOf('MONITOR_RUNNER_ROOT', process.cwd());
+export const REPO = envValue('SLOTH_REPO') ?? '';
+export const RUNNER_ROOT = pathOf('SLOTH_RUNNER_ROOT', process.cwd());
 // Claude Code stores transcripts under ~/.claude/projects/<cwd with every non-alphanumeric char replaced by '-'>
 export const TRANSCRIPTS_DIR = pathOf(
-  'MONITOR_TRANSCRIPTS_DIR',
+  'SLOTH_TRANSCRIPTS_DIR',
   path.join(home, '.claude/projects', RUNNER_ROOT.replace(/[^a-zA-Z0-9]/g, '-')),
 );
-export const SESSIONS_DIR = pathOf('MONITOR_SESSIONS_DIR', path.join(home, 'bot-sessions'));
-export const STATE_DIR = pathOf('MONITOR_STATE_DIR', path.join(home, '.bot-state'));
-export const WATCHER_LOG = pathOf('MONITOR_WATCHER_LOG', path.join(home, 'bot-watcher.log'));
-export const PLIST = envValue('MONITOR_PLIST') ? expand(envValue('MONITOR_PLIST')!) : undefined;
+export const SESSIONS_DIR = pathOf('SLOTH_SESSIONS_DIR', path.join(home, 'bot-sessions'));
+export const STATE_DIR = pathOf('SLOTH_STATE_DIR', path.join(home, '.bot-state'));
+export const WATCHER_LOG = pathOf('SLOTH_WATCHER_LOG', path.join(home, 'bot-watcher.log'));
+export const PLIST = envValue('SLOTH_PLIST') ? expand(envValue('SLOTH_PLIST')!) : undefined;
 
 /** Slash command → GitHub path segment for its target's link. Also drives session-kind detection. */
-export const COMMANDS = json<Record<string, string>>('MONITOR_COMMANDS', {
+export const COMMANDS = json<Record<string, string>>('SLOTH_COMMANDS', {
   implement: 'issues',
   review: 'pull',
   'issue-status': 'issues',
 });
 /** argv for the "run the watcher now" button; no shell. Unset ⇒ the button and /api/tick are gone. */
-export const TICK_COMMAND = json<string[] | undefined>('MONITOR_TICK_COMMAND', undefined);
-export const TICK_SECONDS = Number(envValue('MONITOR_TICK_SECONDS') ?? 300);
-export const TITLE = envValue('MONITOR_TITLE') ?? 'Claude bot monitor';
-export const PORT = Number(envValue('MONITOR_PORT') ?? 4400);
+export const TICK_COMMAND = json<string[] | undefined>('SLOTH_TICK_COMMAND', undefined);
+export const TICK_SECONDS = Number(envValue('SLOTH_TICK_SECONDS') ?? 300);
+export const TITLE = envValue('SLOTH_TITLE') ?? 'Sloth';
+export const PORT = Number(envValue('SLOTH_PORT') ?? 4400);

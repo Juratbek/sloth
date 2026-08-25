@@ -56,7 +56,7 @@ export interface WatcherSession {
   updatedAt?: string;
 }
 
-/** A configured slash command name (see MONITOR_COMMANDS), or 'other' when the prompt matches none. */
+/** A configured slash command name (see SLOTH_COMMANDS), or 'other' when the prompt matches none. */
 export type SessionKind = string;
 export type SessionStatus = 'running' | 'waiting' | 'parked' | 'done';
 export interface SessionSummary extends Stats {
