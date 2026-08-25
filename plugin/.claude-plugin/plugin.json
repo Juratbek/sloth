@@ -1,0 +1,10 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "sloth",
+  "version": "0.1.0",
+  "description": "Headless board worker: pick a GitHub issue off a project board, implement it in an isolated worktree, review it, and hand back a PR — asking on the issue when blocked.",
+  "author": {
+    "name": "Juratbek",
+    "url": "https://github.com/Juratbek"
+  }
+}
