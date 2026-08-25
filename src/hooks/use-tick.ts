@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-/** The monitor's only write: asks the watcher to run its next tick now. */
+/** Asks the watcher to run its next tick now — reap and deliveries even while paused. */
 export default function useTick() {
   const queryClient = useQueryClient();
   return useMutation({

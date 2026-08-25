@@ -3,6 +3,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { cfg } from './config';
 import { loopStatus } from './runner/loop';
+import { isPaused } from './runner/pause';
 import type { Overview, RateBucket, WatcherSession, WatcherState } from './types';
 
 const read = (f: string) => {
@@ -89,6 +90,7 @@ export function watcherInfo(): Overview['watcher'] {
   return {
     logTail: lines,
     lastTick: mtime(cfg().watcherLog)?.toISOString(),
+    paused: isPaused(),
     pausedUntil: num(path.join(cfg().stateDir, 'paused_until')) || undefined,
     seen: count('seen'),
     reviewed: count('reviewed'),

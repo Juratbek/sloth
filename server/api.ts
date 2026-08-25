@@ -1,8 +1,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { cfg } from './config';
-import { sse, watchAll } from './events';
+import { broadcast, sse, watchAll } from './events';
 import { startLoop, stopLoop, tick } from './runner/loop';
+import { isPaused, setPaused } from './runner/pause';
 import { agentDetail, overview, sessionDetail } from './sessions';
 import { handleSetup } from './setup';
 import { usageSeries } from './usage';
@@ -61,6 +62,11 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       const dryRun = url.searchParams.get('dry') === '1';
       await tick({ board: true, comments: true, dryRun });
       body = { ok: true, dryRun };
+    } else if ((p === '/api/pause' || p === '/api/resume') && req.method === 'POST') {
+      // Pause / resume the launching triggers; running sessions and replies are untouched.
+      setPaused(p === '/api/pause');
+      broadcast();
+      body = { ok: true, paused: isPaused() };
     } else if (p === '/api/overview') body = await overview();
     else if (p === '/api/usage') body = usageSeries(Math.min(31, Number(url.searchParams.get('days')) || 7));
     else if (session) body = sessionDetail(session[1]);

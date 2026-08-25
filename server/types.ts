@@ -127,6 +127,8 @@ export interface Overview {
   watcher: {
     logTail: string[];
     lastTick?: string;
+    /** The user's pause — set from the header, kept in ~/.sloth/state/paused. */
+    paused: boolean;
     pausedUntil?: number;
     seen: number;
     reviewed: number;

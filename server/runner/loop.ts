@@ -3,6 +3,7 @@ import { broadcast } from '../events';
 import { fetchBoard } from './board';
 import { comments } from './comments';
 import { isDry, log, nowSec, setDry } from './log';
+import { isPaused } from './pause';
 import { pausedUntil, pickup, reap, retryStranded, reviews } from './triggers';
 import type { LoopStatus } from '../types';
 
@@ -34,11 +35,14 @@ async function runTick({ board = false, comments: wantComments = false, dryRun =
       log(`paused until ${new Date(paused * 1000).toISOString()} (usage limit)`);
       return;
     }
+    // A user pause stops the launching triggers only: replies and deliveries are not new work.
+    const userPaused = isPaused();
+    if (userPaused) log('paused — no new work (reap, inbox delivery and status replies still run)');
     if (wantComments) {
       state.lastComment = Date.now();
       await comments();
     }
-    if (!board) return;
+    if (!board || userPaused) return;
     state.lastBoard = Date.now();
     const items = await fetchBoard();
     if (!items) return;

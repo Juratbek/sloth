@@ -3,6 +3,7 @@ import path from 'node:path';
 import { cfg } from '../config';
 import { gh } from './gh';
 import { isDry, log, write } from './log';
+import { isPaused } from './pause';
 import { issueAlive, issueDir } from './session-dirs';
 import { launch, statusReply } from './spawn';
 
@@ -73,6 +74,11 @@ export async function comments(): Promise<void> {
       if (fs.existsSync(seen)) continue;
       if (issueAlive(issue)) deliver(issue, comment);
       else if (isOrder(comment)) {
+        // Left unseen on purpose: an order held back by the pause is picked up when Sloth resumes.
+        if (isPaused()) {
+          log(`paused: skipped order on #${issue}`);
+          continue;
+        }
         const order = `Order from ${comment.login} (issue comment ${comment.id}): ${comment.body}`;
         if (!(await launch(issue, order))) continue;
       } else statusReply(issue, String(comment.id));

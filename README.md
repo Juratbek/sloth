@@ -50,6 +50,17 @@ in the config file.
 The board is read every 5 minutes, comments every 2. **Tick now** in the header runs both
 immediately. Ticks never overlap.
 
+### Pause
+
+**Pause** in the header stops Sloth from starting anything new: no pickups, no relaunches, no
+reviews, and no session from an `@sloth` order — an order that arrives while paused is logged as
+`paused: skipped order on #N` and left unseen, so it is acted on when you resume. Sessions that are
+already running are untouched, and every tick still reaps hung sessions, delivers `@sloth` comments
+to live inboxes and answers status questions, because those are replies rather than work. The pause
+is the file `~/.sloth/state/paused`, so it survives a restart; the button reads **Resume** and the
+header shows an amber `paused` pill until you press it. **Tick now** keeps working while paused —
+it runs the reap and the deliveries and skips the launching triggers.
+
 An **assignee on a card means a human owns it** — Sloth never picks it up, in any column. Sloth
 never assigns anyone and never requests a reviewer.
 
@@ -97,6 +108,7 @@ for 30 minutes and never costs the card its place.
 └── state/
     ├── seen/<comment-id>           comments already acted on
     ├── reviewed/<pr>-<sha>         PR heads already reviewed
+    ├── paused                      exists while the user paused Sloth from the header
     └── paused_until                epoch seconds; set by a usage-limit exit
 ```
 
@@ -155,7 +167,7 @@ does not ask about default as below.
 | `runnersDir` | `~/.sloth/runners` | Where "Clone it" puts checkouts |
 | `worktreesDir` | `~/.sloth/worktrees/<repo>` | One worktree per issue lives here |
 | `sessionsDir` | `~/.sloth/sessions/<repo>` | Session directories |
-| `stateDir` | `~/.sloth/state` | `seen/`, `reviewed/`, `paused_until` |
+| `stateDir` | `~/.sloth/state` | `seen/`, `reviewed/`, `paused`, `paused_until` |
 | `watcherLog` | `~/.sloth/watcher.log` | The log the UI tails |
 | `orderLogin` | the login found in the wizard | The only login whose `@sloth` comments are orders |
 | `mention` | `@sloth` | The keyword that wakes Sloth, case-insensitive |
@@ -178,7 +190,7 @@ Only two environment variables are read: `SLOTH_CONFIG` (config path) and `SLOTH
 - **Subagents** — every `Agent` / `Task` call, its prompt, model, spend, and its own transcript.
 - **Watcher** — the session's directory: step, branch, PR, retries, kills, inbox, `run.log` tail.
 - **Home panel** — hourly token spend across all transcripts, the queue implied by the log, and the log itself.
-- **Top bar** — working/waiting counts against the caps, the watched column, the next board and comment ticks, GitHub rate-limit warnings.
+- **Top bar** — working/waiting counts against the caps, the watched column, the next board and comment ticks, Pause/Resume, GitHub rate-limit warnings.
 
 Everything refreshes on a 15s poll plus an SSE stream that fires whenever a watched file changes.
 Transcripts are read where Claude Code puts them: `~/.claude/projects/<runner root with every
@@ -189,7 +201,8 @@ non-alphanumeric character replaced by '-'>`.
 Read-only: `GET /api/overview`, `GET /api/sessions/:id`, `GET /api/sessions/:id/agents/:agentId`,
 `GET /api/usage?days=N`, and the `GET /api/events` SSE stream.
 
-Writes: `POST /api/tick` (`?dry=1` for a dry run), `POST /api/setup/config`, `POST /api/setup/clone`.
+Writes: `POST /api/tick` (`?dry=1` for a dry run), `POST /api/pause`, `POST /api/resume`,
+`POST /api/setup/config`, `POST /api/setup/clone`.
 
 Setup, used by the wizard: `GET /api/setup/env`, `GET /api/setup/projects`,
 `GET /api/setup/projects/:id/fields`, `GET /api/setup/config`.
