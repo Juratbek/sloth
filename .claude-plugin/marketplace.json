@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "sloth",
+  "owner": {
+    "name": "Juratbek",
+    "url": "https://github.com/Juratbek"
+  },
+  "description": "Sloth \u2014 a GitHub project board worker for Claude Code.",
+  "plugins": [
+    {
+      "name": "sloth",
+      "source": "./plugin",
+      "description": "Headless board worker: pick a GitHub issue off a project board, implement it in an isolated worktree, review it, and hand back a PR \u2014 asking on the issue when blocked."
+    }
+  ]
+}

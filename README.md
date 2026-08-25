@@ -1,70 +1,134 @@
 # Sloth
 
-Sloth watches your GitHub project board and lets Claude Code do the work while you rest — this is the monitor UI.
+Sloth watches your GitHub project board and lets Claude Code do the work while you rest.
 
-A read-only dashboard for headless Claude Code sessions (`claude -p …`) launched by a watcher script.
-Vite + React 19 + Tailwind 4 + TanStack Query; the API is a Vite plugin, so `pnpm dev` serves both.
+Move a card into the watched column and, a few minutes later, a headless Claude Code session is
+working on that issue in its own git worktree: it implements the change, exercises it, opens a PR,
+reviews other people's PRs, and asks on the issue when it is stuck. Sloth is the process that
+notices the card, starts the session, keeps it inside its time budget, and shows you what it is
+doing.
 
-## What it shows
-
-- **Sessions** grouped as live / needs help / finished, with status, elapsed time, context size and token spend.
-- **Chat** — the full transcript of a session: text, thinking, tool calls and (clipped) tool results.
-- **Subagents** — every `Agent` / `Task` call, its prompt, model, spend, and its own transcript.
-- **Watcher** — the session's working directory: step, branch, PR, retries, kills, inbox, `run.log` tail.
-- **Home panel** — hourly token spend across all transcripts, the queue implied by the watcher log, and the log itself.
-- **Top bar** — working/waiting counts against the caps, pickup column, last/next tick, GitHub rate-limit warnings.
-
-Everything refreshes on a 15s poll plus an SSE stream that fires whenever a watched file changes.
-
-## The data it reads
-
-| Source | Used for |
-|---|---|
-| `<transcripts>/<session-id>.jsonl` | one session: messages, usage per request, tool counts |
-| `<transcripts>/<session-id>/subagents/agent-<id>.jsonl` | one subagent's transcript |
-| `<sessions>/{issue,review}-<n>/` | the watcher's per-run directory (see below) |
-| `<watcher log>` | log tail, last tick time, queued targets |
-| `<state>/seen`, `<state>/reviewed`, `<state>/paused_until` | watcher counters and pause window |
-| `~/.sloth/config.json` | board, columns, repo, runner root, caps, model |
-| launchd plist (optional) | legacy `PICKUP_COLUMN`, `MAX_ACTIVE`, `MAX_ALIVE`, `MODEL` |
-| `gh api` | issue/PR titles and rate-limit buckets |
-
-Transcripts live where Claude Code puts them: `~/.claude/projects/<runner root with every non-alphanumeric
-character replaced by '-'>`. That path is derived from the configured runner root unless you set it directly.
-
-Inside a session directory the monitor understands: `pid` (liveness), `session_id` (links the directory to a
-transcript), `state.json` (`state`, `step`, `note`, `branch`, `pr`, `servers`), `run.log` (tail), `inbox/*.md`
-(pending answers), `retries`, `kills`, and a `blocked` marker file. A session directory with no matching
-transcript is listed as an orphan.
-
-A session's *kind* comes from its prompt: `/<command> <number>` where `<command>` is a key of the command
-map. The matching value is the GitHub path segment used for the link (`issues` or `pull`).
-
-## Get started
+One Sloth instance watches one board. Everything it owns lives under `~/.sloth/`.
 
 ```bash
 git clone https://github.com/Juratbek/sloth.git && cd sloth
 pnpm install
-pnpm dev            # http://localhost:4400
+pnpm dev            # http://localhost:4400 — UI and watcher in one process
 ```
+
+`pnpm start` (after `pnpm build`) runs the same thing against the built UI. Watching stops when the
+process stops — there is no daemon, no cron entry, no launchd agent.
+
+## Get started
 
 The first time you open the UI there is no configuration, so Sloth shows a **Get started** wizard
 instead of the monitor:
 
 1. **Environment** — checks `claude --version`, `gh --version` and `gh auth status`. All three must pass.
 2. **Project board** — pick one of your open GitHub Projects (v2) boards.
-3. **Columns** — pick the column Sloth watches, plus the ones it moves cards to (In Progress,
-   Needs help, Code Review). They are pre-filled by name where possible.
-4. **Repository & runner** — pick the repository (from the board's linked repos or by typing
-   `owner/repo`), the local checkout the sessions run from (with a "Clone it" button), and the
-   session caps.
-5. **Done** — writes the config file and opens the monitor.
+3. **Columns** — pick the column Sloth watches, plus the ones it moves cards to. A role with no
+   matching column on the board says *will be created*, and Sloth adds that option to the Status
+   field when you save.
+4. **Repository & runner** — pick the repository, the checkout the sessions run from ("Clone it"
+   clones into `~/.sloth/runners/<repo>`), who may give orders, and the session caps.
+5. **Done** — writes `~/.sloth/config.json` and starts watching.
 
-The gear in the header re-opens the wizard, pre-filled, to change any of it later.
+The gear in the header re-opens the wizard for the board and the columns; everything else is edited
+in the config file.
+
+## How it works
+
+### Triggers
+
+| # | When | What Sloth does |
+|---|---|---|
+| 1 | An unassigned issue sits in the watched column | Moves it to In Progress and starts `/sloth:implement <n>` |
+| 2 | An unassigned issue sits in In Progress with no live session | Relaunches it — a reboot or a usage-limit retry — at most `maxRetries` times in a row |
+| 3 | A comment mentions `@sloth` | Delivers it to the live session's inbox; with no session, an order starts one and anything else gets a status reply |
+| 4 | An unassigned issue in Code Review has an open, non-draft, unapproved wired PR | Runs `/sloth:review <pr>`, once per PR head |
+
+The board is read every 5 minutes, comments every 2. **Tick now** in the header runs both
+immediately. Ticks never overlap.
+
+An **assignee on a card means a human owns it** — Sloth never picks it up, in any column. Sloth
+never assigns anyone and never requests a reviewer.
+
+Only `orderLogin` can give orders; a comment from that login ending in `?` is a status question, not
+an order. Status questions are answered for anyone. Every comment Sloth writes starts with
+`**Sloth:**`, which is also how it knows not to answer itself.
+
+### Columns
+
+Four roles, all mapped to options of the board's Status field:
+
+- **pickup** — the column you drop work into. Sloth only reads it.
+- **In Progress** — where a card sits while a session works on it.
+- **needs help** — where a session parks a card it cannot finish, after commenting its open questions.
+- **Code Review** — where a finished PR's card waits, and where trigger 4 looks.
+
+Missing columns are created after the pickup column, in that order. Creating one rewrites the whole
+option list, so Sloth passes every existing option back with its id — no option is ever dropped.
+
+### Sessions
+
+A session is `claude -p "/sloth:implement 42" --plugin-dir <sloth>/plugin …`, detached, running in
+the runner root. It survives a Sloth restart; on startup Sloth re-adopts live sessions from their
+pid files. Sessions always run Sloth's own plugin commands, never the project's.
+
+Caps: `maxActive` sessions in the working state, `maxAlive` including the ones waiting for an
+answer. A trigger that finds no free slot logs `queued (slots full)` and is retried next tick.
+
+Each session has a budget (`budgetMinutes`, default 60) it enforces itself. Sloth kills one that is
+still working `budgetMinutes + 5` later, cleans up after it (servers, database, worktree), and parks
+the issue on the second kill. A session that stops on a Claude usage limit pauses the whole watcher
+for 30 minutes and never costs the card its place.
+
+### Files
+
+```
+~/.sloth/
+├── config.json                     the whole configuration
+├── watcher.log                     one [ISO] line per event — the log the UI tails
+├── runners/<repo>/                 the checkout the sessions run from
+├── worktrees/<repo>/issue-42/      one worktree per issue
+├── sessions/<repo>/
+│   ├── issue-42/                   pid, session_id, run.log, state.json, inbox/, retries, kills, blocked
+│   └── review-91/
+└── state/
+    ├── seen/<comment-id>           comments already acted on
+    ├── reviewed/<pr>-<sha>         PR heads already reviewed
+    └── paused_until                epoch seconds; set by a usage-limit exit
+```
+
+A session directory is the protocol between Sloth and the plugin. Sloth writes `pid` and
+`session_id` and reads `state.json` (`state` = `working` / `waiting` / `done`, `since`, `step`,
+`note`, `branch`, `pr`, `servers`), `retries`, `kills`, `blocked`, and `run.log`. It delivers
+comments as `inbox/<comment-id>.md` with `author:` / `comment:` header lines; the session deletes
+them once read.
+
+## The plugin
+
+`plugin/` is a Claude Code plugin with three commands, run by the sessions:
+
+| Command | Does |
+|---|---|
+| `/sloth:implement <issue>` | Implements the issue in its own worktree and opens the PR |
+| `/sloth:review <pr>` | Reviews one PR version against its issue |
+| `/sloth:status <issue> <comment-id>` | Answers a status question on the issue |
+
+The runner passes `--plugin-dir <sloth>/plugin`, so nothing needs installing. To use the commands
+yourself: `claude plugin marketplace add Juratbek/sloth` then `claude plugin install sloth@sloth`.
+
+Sessions read their whole world from the environment: `SLOTH_SESSION_DIR`, `SLOTH_ISSUE` /
+`SLOTH_PR`, `SLOTH_REPO`, `SLOTH_PROJECT_*`, `SLOTH_STATUS_FIELD_ID`, `SLOTH_COL_*_ID` / `_NAME`,
+`SLOTH_RUNNER_ROOT`, `SLOTH_WORKTREES_DIR`, `SLOTH_ORDER_LOGIN`, `SLOTH_MODEL`, `SLOTH_START`,
+`SLOTH_DEADLINE`, `SLOTH_BUDGET_MIN`, `SLOTH_WAIT_HOURS`, `SLOTH_REVIEW_ROUNDS`,
+`SLOTH_BOT_PREFIX`, `SLOTH_MENTION`.
 
 ## Configuration
 
-Configuration lives in `~/.sloth/config.json` (override the location with `SLOTH_CONFIG`):
+`~/.sloth/config.json` (override the path with `SLOTH_CONFIG`). The wizard writes it; the values it
+does not ask about default as below.
 
 ```json
 {
@@ -76,78 +140,70 @@ Configuration lives in `~/.sloth/config.json` (override the location with `SLOTH
     "columns": {
       "pickup":     { "id": "…", "name": "Todo" },
       "inProgress": { "id": "…", "name": "In Progress" },
-      "needsHelp":  { "id": "…", "name": "Needs help" },
+      "needsHelp":  { "id": "…", "name": "Sloth needs help" },
       "codeReview": { "id": "…", "name": "Code Review" }
     }
   },
-  "runnerRoot": "/abs/path/to/checkout",
-  "sessionsDir": "~/.sloth/sessions",
-  "stateDir": "~/.sloth/state",
-  "watcherLog": "~/.sloth/watcher.log",
-  "maxActive": 3,
-  "maxAlive": 5,
-  "tickSeconds": 300,
-  "tickCommand": null,
-  "model": "opus"
+  "runnerRoot": "~/.sloth/runners/repo",
+  "orderLogin": "your-github-login"
 }
 ```
 
-`needsHelp` may be `null`; the other three columns are required. `tickCommand` is the argv array
-(no shell) run by the "Tick now" button — unset ⇒ the button is hidden and `/api/tick` 404s.
+| Key | Default | Means |
+|---|---|---|
+| `runnerRoot` | `~/.sloth/runners/<repo>` | The checkout sessions run in |
+| `runnersDir` | `~/.sloth/runners` | Where "Clone it" puts checkouts |
+| `worktreesDir` | `~/.sloth/worktrees/<repo>` | One worktree per issue lives here |
+| `sessionsDir` | `~/.sloth/sessions/<repo>` | Session directories |
+| `stateDir` | `~/.sloth/state` | `seen/`, `reviewed/`, `paused_until` |
+| `watcherLog` | `~/.sloth/watcher.log` | The log the UI tails |
+| `orderLogin` | the login found in the wizard | The only login whose `@sloth` comments are orders |
+| `mention` | `@sloth` | The keyword that wakes Sloth, case-insensitive |
+| `botPrefix` | `**Sloth:**` | Every comment Sloth writes starts with this |
+| `maxActive` / `maxAlive` | `3` / `5` | Session caps |
+| `budgetMinutes` | `60` | A session's time budget |
+| `waitHours` | `2` | How long a parked session waits for an answer |
+| `reviewRounds` | `4` | Reviewer-agent rounds before the session asks for help |
+| `maxRetries` | `2` | Trigger-2 relaunches before the card is parked |
+| `boardSeconds` / `commentSeconds` | `300` / `120` | Poll intervals |
+| `model` | `opus` | The model every session runs on |
 
-### Environment overrides
+Only two environment variables are read: `SLOTH_CONFIG` (config path) and `SLOTH_PORT` (default
+`4400`). `SLOTH_DRY_RUN=1` makes every tick log what it *would* do without touching anything.
 
-Every value can be overridden from the process environment or a `.env` file in the repo root
-(see `.env.example`). **An override always wins over the config file** — useful for pointing one
-checkout at another watcher's directories.
+## What the UI shows
 
-| Variable | Overrides |
-|---|---|
-| `SLOTH_CONFIG` | Path of the config file itself (default `~/.sloth/config.json`) |
-| `SLOTH_REPO` | `repo` |
-| `SLOTH_RUNNER_ROOT` | `runnerRoot` |
-| `SLOTH_TRANSCRIPTS_DIR` | The transcripts path derived from `runnerRoot` |
-| `SLOTH_SESSIONS_DIR` | `sessionsDir` |
-| `SLOTH_STATE_DIR` | `stateDir` |
-| `SLOTH_WATCHER_LOG` | `watcherLog` |
-| `SLOTH_TICK_COMMAND` / `SLOTH_TICK_SECONDS` | `tickCommand` / `tickSeconds` |
-| `PICKUP_COLUMN`, `MAX_ACTIVE`, `MAX_ALIVE`, `MODEL` | The pickup column name, the caps, the model |
-| `SLOTH_COMMANDS` | Command → GitHub path segment map (default `implement`/`review`/`issue-status`) |
-| `SLOTH_TITLE` | Header and document title (default `Sloth · <repo name>`) |
-| `SLOTH_PORT` | Dev and preview port (default `4400`) |
-| `SLOTH_PLIST` | launchd plist to read `PICKUP_COLUMN` / `MAX_ACTIVE` / `MAX_ALIVE` / `MODEL` from, for watchers that predate the config file. The config file wins over it. |
+- **Sessions** grouped as live / needs help / finished, with status, elapsed time, context size and token spend.
+- **Chat** — the full transcript of a session: text, thinking, tool calls and (clipped) tool results.
+- **Subagents** — every `Agent` / `Task` call, its prompt, model, spend, and its own transcript.
+- **Watcher** — the session's directory: step, branch, PR, retries, kills, inbox, `run.log` tail.
+- **Home panel** — hourly token spend across all transcripts, the queue implied by the log, and the log itself.
+- **Top bar** — working/waiting counts against the caps, the watched column, the next board and comment ticks, GitHub rate-limit warnings.
 
-## Running
-
-```bash
-pnpm dev               # http://localhost:4400
-pnpm build && pnpm start
-pnpm lint              # tsc --noEmit
-```
+Everything refreshes on a 15s poll plus an SSE stream that fires whenever a watched file changes.
+Transcripts are read where Claude Code puts them: `~/.claude/projects/<runner root with every
+non-alphanumeric character replaced by '-'>`.
 
 ## API
 
-Monitor (read-only): `GET /api/overview`, `GET /api/sessions/:id`, `GET /api/sessions/:id/agents/:agentId`,
-`GET /api/usage?days=N` and the `GET /api/events` SSE stream.
+Read-only: `GET /api/overview`, `GET /api/sessions/:id`, `GET /api/sessions/:id/agents/:agentId`,
+`GET /api/usage?days=N`, and the `GET /api/events` SSE stream.
 
-Setup (used by the wizard):
+Writes: `POST /api/tick` (`?dry=1` for a dry run), `POST /api/setup/config`, `POST /api/setup/clone`.
 
-| Endpoint | Does |
-|---|---|
-| `GET /api/setup/env` | Runs `claude --version`, `gh --version`, `gh auth status`, `gh api user` |
-| `GET /api/setup/projects` | Open Projects (v2) boards of the user and their orgs |
-| `GET /api/setup/projects/:id/fields` | The board's Status options (in board order) and its linked repos |
-| `POST /api/setup/clone` | `gh repo clone <owner/repo> <path>` |
-| `GET /api/setup/config` | The saved config, or 404 when there is none |
-| `POST /api/setup/config` | Validates and writes the config file, then reloads it |
+Setup, used by the wizard: `GET /api/setup/env`, `GET /api/setup/projects`,
+`GET /api/setup/projects/:id/fields`, `GET /api/setup/config`.
 
-Writes: `POST /api/setup/config`, `POST /api/setup/clone`, and `POST /api/tick` — which spawns the configured
-tick command (e.g. `["launchctl","kickstart","gui/<uid>/com.example.watcher"]`) to make the watcher run
-immediately. With no tick command configured that endpoint returns 404 and the button is not rendered.
-
-Every shell-out uses `execFile` with an argv array — no shell.
+Every shell-out uses `execFile` / `spawn` with an argv array — no shell strings, anywhere.
 
 ## Conventions
 
-Source files stay under 200 lines. `useEffect` is only used inside a dedicated hook that subscribes to
-something outside React (`use-live-updates`, `use-follow-bottom`), with a comment saying why.
+Source files stay under 200 lines. `useEffect` is only used inside a dedicated hook that subscribes
+to something outside React (`use-live-updates`, `use-follow-bottom`), with a comment saying why.
+
+```bash
+pnpm lint              # tsc --noEmit
+pnpm build
+```
+
+MIT licensed.
