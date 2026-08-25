@@ -105,7 +105,6 @@ function start(bookDir: string, sessionDir: string, prompt: string, target: Targ
 /** Trigger 1 / 2 / 3: implement an issue. A fresh run clears the previous run's state and inbox. */
 export async function launch(issue: number, order?: string): Promise<boolean> {
   const dir = issueDir(issue);
-  fs.mkdirSync(path.join(dir, 'inbox'), { recursive: true });
   if (slotsFull()) {
     log(`#${issue} queued (slots full)`);
     return false;
@@ -114,6 +113,7 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
     log(`dry-run: would launch #${issue}${order ? ` (${order.slice(0, 120)})` : ''}`);
     return true;
   }
+  fs.mkdirSync(path.join(dir, 'inbox'), { recursive: true });
   remove(path.join(dir, 'state.json'));
   remove(path.join(dir, 'blocked'));
   for (const f of fs.readdirSync(path.join(dir, 'inbox'))) remove(path.join(dir, 'inbox', f));
