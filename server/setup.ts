@@ -4,7 +4,9 @@ import { execFile } from 'node:child_process';
 import { CONFIG_PATH, reloadConfig } from './config';
 import { expandPath, normalizeConfig, readConfigFile, writeConfigFile } from './config-file';
 import { watchAll } from './events';
-import type { SetupCheck, SetupEnv, SetupFields, SetupProject } from './types';
+import { ensureColumns } from './runner/columns';
+import { startLoop } from './runner/loop';
+import type { ColumnRef, ColumnRole, FieldOption, SetupCheck, SetupEnv, SetupFields, SetupProject } from './config-types';
 
 /** execFile only — never a shell. Resolves with the command's stdout or its error text. */
 function run(cmd: string, args: string[], timeout = 30_000): Promise<{ ok: boolean; out: string; err: string }> {
@@ -82,7 +84,7 @@ async function projects(): Promise<SetupProject[]> {
 const FIELDS_QUERY = `query($id: ID!) {
   node(id: $id) {
     ... on ProjectV2 {
-      fields(first: 30) { nodes { ... on ProjectV2SingleSelectField { id name options { id name } } } }
+      fields(first: 30) { nodes { ... on ProjectV2SingleSelectField { id name options { id name color description } } } }
       repositories(first: 20) { nodes { nameWithOwner } }
     }
   }
@@ -91,7 +93,7 @@ const FIELDS_QUERY = `query($id: ID!) {
 /** The board's Status single-select (options in board order) plus the repositories linked to it. */
 async function projectFields(id: string): Promise<SetupFields> {
   const data = await graphql(FIELDS_QUERY, ['-F', `id=${id}`]);
-  const nodes = (data.node?.fields?.nodes ?? []) as { id?: string; name?: string; options?: { id: string; name: string }[] }[];
+  const nodes = (data.node?.fields?.nodes ?? []) as { id?: string; name?: string; options?: FieldOption[] }[];
   const status = nodes.find((f) => f?.options && /^status$/i.test(f.name ?? '')) ?? nodes.find((f) => f?.options);
   return {
     statusField: status?.id ? { id: status.id, name: status.name ?? 'Status', options: status.options ?? [] } : undefined,
@@ -109,6 +111,19 @@ async function clone(body: any): Promise<{ ok: boolean; path?: string; error?: s
   return r.ok ? { ok: true, path: target } : { ok: false, error: notFound(r.err, 'gh') };
 }
 
+const ROLES: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'codeReview'];
+
+/** Fills in the ids of columns the wizard asked Sloth to create, creating them on the board first. */
+async function withColumns(body: unknown): Promise<unknown> {
+  const b = (body ?? {}) as any;
+  const columns = (b.statusField?.columns ?? {}) as Record<string, ColumnRef | undefined>;
+  if (!b.statusField?.id || ROLES.every((role) => columns[role]?.id)) return body;
+  const wanted = Object.fromEntries(
+    ROLES.map((role) => [role, { id: columns[role]?.id ?? '', name: columns[role]?.name ?? '' }]),
+  ) as Record<ColumnRole, ColumnRef>;
+  return { ...b, statusField: { ...b.statusField, columns: await ensureColumns(b.statusField.id, wanted) } };
+}
+
 /** Routes under /api/setup/*. Returns undefined for "404" (including "no config saved yet"). */
 export async function handleSetup(pathname: string, method: string, body: unknown): Promise<unknown> {
   const fields = /^\/api\/setup\/projects\/([\w-]+)\/fields$/.exec(pathname);
@@ -117,10 +132,11 @@ export async function handleSetup(pathname: string, method: string, body: unknow
   if (fields) return projectFields(fields[1]);
   if (pathname === '/api/setup/clone' && method === 'POST') return clone(body);
   if (pathname === '/api/setup/config' && method === 'POST') {
-    const config = normalizeConfig(body);
+    const config = normalizeConfig(await withColumns(body));
     writeConfigFile(CONFIG_PATH, config);
     reloadConfig();
     watchAll();
+    startLoop();
     return { ok: true, path: CONFIG_PATH, config };
   }
   if (pathname === '/api/setup/config') return readConfigFile(CONFIG_PATH);

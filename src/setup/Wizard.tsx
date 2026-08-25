@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { SlothConfig } from '../../server/types';
+import type { SlothConfig } from '../../server/config-types';
 import StepColumns from './StepColumns';
 import StepDone from './StepDone';
 import StepEnv from './StepEnv';
@@ -8,16 +8,29 @@ import StepRunner from './StepRunner';
 import type { Draft } from './use-setup';
 import { draftFrom } from './use-setup';
 
-const STEPS = ['Environment', 'Project board', 'Columns', 'Repository & runner', 'Done'];
+type StepKey = 'env' | 'project' | 'columns' | 'runner' | 'done';
+
+const LABELS: Record<StepKey, string> = {
+  env: 'Environment',
+  project: 'Project board',
+  columns: 'Columns',
+  runner: 'Repository & runner',
+  done: 'Done',
+};
+const FIRST_RUN: StepKey[] = ['env', 'project', 'columns', 'runner', 'done'];
+/** Settings only re-opens the two questions that change over the life of a board. */
+const SETTINGS: StepKey[] = ['project', 'columns', 'done'];
 
 export default function Wizard({ existing, onClose }: { existing: SlothConfig | null; onClose?: () => void }) {
-  const [step, setStep] = useState(existing ? 1 : 0);
+  const steps = existing ? SETTINGS : FIRST_RUN;
+  const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<Draft>(() => draftFrom(existing));
+  const key = steps[step];
   const next = (patch: Partial<Draft> = {}) => {
     setDraft({ ...draft, ...patch });
     setStep(step + 1);
   };
-  const back = () => setStep(step - 1);
+  const back = () => setStep(Math.max(0, step - 1));
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -34,26 +47,26 @@ export default function Wizard({ existing, onClose }: { existing: SlothConfig | 
 
       <div className="mx-auto w-full max-w-2xl px-6 py-8">
         <ol className="mb-6 flex flex-wrap gap-x-3 gap-y-1 text-xs">
-          {STEPS.map((s, i) => (
+          {steps.map((s, i) => (
             <li key={s} className={i === step ? 'text-zinc-100' : i < step ? 'text-zinc-500' : 'text-zinc-700'}>
-              {i + 1}. {s}
+              {i + 1}. {LABELS[s]}
             </li>
           ))}
         </ol>
-        <h1 className="mb-4 text-lg font-semibold text-zinc-100">{STEPS[step]}</h1>
+        <h1 className="mb-4 text-lg font-semibold text-zinc-100">{LABELS[key]}</h1>
 
-        {step === 0 && <StepEnv onContinue={() => next()} />}
-        {step === 1 && (
+        {key === 'env' && <StepEnv onContinue={() => next()} />}
+        {key === 'project' && (
           <StepProject
             selected={draft.project}
             onSelect={(project) => setDraft({ ...draft, project, ...(project.id === draft.project?.id ? {} : blank) })}
-            onBack={() => setStep(0)}
+            onBack={back}
             onContinue={() => next()}
           />
         )}
-        {step === 2 && <StepColumns draft={draft} onBack={back} onContinue={next} />}
-        {step === 3 && <StepRunner draft={draft} onBack={back} onContinue={next} />}
-        {step === 4 && <StepDone draft={draft} existing={existing} onBack={back} onSaved={() => onClose?.()} />}
+        {key === 'columns' && <StepColumns draft={draft} onBack={back} onContinue={next} />}
+        {key === 'runner' && <StepRunner draft={draft} onBack={back} onContinue={next} />}
+        {key === 'done' && <StepDone draft={draft} existing={existing} onBack={back} onSaved={() => onClose?.()} />}
       </div>
     </div>
   );

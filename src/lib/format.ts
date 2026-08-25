@@ -22,7 +22,7 @@ export function elapsed(s: { startedAt?: string; lastAt?: string; live: boolean 
   return duration((end - Date.parse(s.startedAt)) / 1000);
 }
 
-const KIND: Record<string, string> = { implement: 'fix', 'issue-status': 'status', other: 'run' };
+const KIND: Record<string, string> = { 'sloth:implement': 'fix', 'sloth:review': 'review', 'sloth:status': 'status', other: 'run' };
 export const label = (s: SessionSummary) => `${KIND[s.kind] ?? s.kind}${s.target ? ` #${s.target}` : ''}`;
 
 export const STATUS_COLOR: Record<SessionStatus, string> = {
@@ -37,11 +37,8 @@ export const contextOf = (u: Usage) => u.input + u.cacheRead + u.cacheWrite;
 /** Tokens actually sent fresh: uncached input plus what was written into the cache. */
 export const newInput = (u: Usage) => u.input + u.cacheWrite;
 
-export function nextTick(lastTick: string | undefined, tickSeconds: number) {
-  if (!lastTick) return '—';
-  const at = Date.parse(lastTick) + tickSeconds * 1000;
-  return at < Date.now() ? 'due' : clock(at);
-}
+/** A scheduled moment as a clock time, or "due" once it has passed. */
+export const nextAt = (at?: number) => (!at ? '—' : at < Date.now() ? 'due' : clock(at));
 
 /** Link to the command's target on GitHub — the path segment comes from the configured command map. */
 export const githubUrl = (kind: SessionKind, n: number | undefined, config: MonitorConfig) =>

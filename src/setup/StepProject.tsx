@@ -1,4 +1,4 @@
-import type { ConfigProject } from '../../server/types';
+import type { ConfigProject } from '../../server/config-types';
 import { Button, Choice, Error, Loading } from './ui';
 import { useProjects } from './use-setup';
 

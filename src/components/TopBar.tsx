@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Overview } from '../../server/types';
 import useTick from '../hooks/use-tick';
-import { clock, nextTick } from '../lib/format';
+import { clock, nextAt } from '../lib/format';
 
 const COOLDOWN_MS = 10_000;
 
@@ -22,20 +22,20 @@ function Pill({ label, value, tone = 'zinc' }: { label: string; value: string; t
   );
 }
 
-function TickButton() {
+function TickButton({ busy }: { busy: boolean }) {
   const tick = useTick();
   const [until, setUntil] = useState(0);
   const cooling = until > Date.now();
   return (
     <button
-      disabled={cooling || tick.isPending}
+      disabled={busy || cooling || tick.isPending}
       onClick={() => {
         setUntil(Date.now() + COOLDOWN_MS);
         tick.mutate();
       }}
       className="rounded-md border border-zinc-800 px-2 py-0.5 text-xs text-zinc-300 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-transparent"
     >
-      {cooling ? 'Ticked' : 'Tick now'}
+      {busy ? 'Ticking…' : cooling ? 'Ticked' : 'Tick now'}
     </button>
   );
 }
@@ -68,9 +68,9 @@ export default function TopBar({
         tone={full ? 'amber' : 'emerald'}
       />
       <Pill label="pickup" value={config.pickupColumn} />
-      <Pill label="last tick" value={clock(watcher.lastTick)} />
-      <Pill label="next tick" value={nextTick(watcher.lastTick, config.tickSeconds)} />
-      {config.tickEnabled && <TickButton />}
+      <Pill label="board" value={nextAt(watcher.loop.nextBoard)} />
+      <Pill label="comments" value={nextAt(watcher.loop.nextComment)} />
+      <TickButton busy={watcher.loop.ticking} />
       {paused && <Pill label="paused until" value={clock(watcher.pausedUntil! * 1000)} tone="amber" />}
       <span className="flex-1" />
       <button

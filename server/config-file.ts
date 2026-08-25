@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { ColumnRef, SlothConfig } from './types';
+import type { ColumnRef, SlothConfig } from './config-types';
 
 const home = os.homedir();
 
@@ -12,7 +12,7 @@ export const DEFAULT_CONFIG_PATH = '~/.sloth/config.json';
 
 export function readConfigFile(file: string): SlothConfig | undefined {
   try {
-    return JSON.parse(fs.readFileSync(file, 'utf8')) as SlothConfig;
+    return normalizeConfig(JSON.parse(fs.readFileSync(file, 'utf8')));
   } catch {
     return undefined;
   }
@@ -27,23 +27,31 @@ const str = (v: unknown, what: string): string => {
   if (typeof v !== 'string' || !v.trim()) throw new Error(`${what} is required`);
   return v.trim();
 };
-const int = (v: unknown, fallback: number) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.floor(Number(v)) : fallback);
+const text = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+const int = (v: unknown, fallback: number, min = 1) =>
+  Number.isFinite(Number(v)) && Number(v) >= min ? Math.floor(Number(v)) : fallback;
 
 function column(v: unknown, what: string): ColumnRef {
   const c = v as ColumnRef | undefined;
   return { id: str(c?.id, `${what}.id`), name: str(c?.name, `${what}.name`) };
 }
 
-/** Validates a POST /api/setup/config body into a config we are willing to persist. */
+/**
+ * Validates a config payload (a POST /api/setup/config body or the saved file) into a config we are
+ * willing to persist. Everything the wizard does not ask about gets its default here, so a config
+ * file written by an older Sloth still loads.
+ */
 export function normalizeConfig(input: unknown): SlothConfig {
   const b = (input ?? {}) as Record<string, any>;
+  const repo = str(b.repo, 'repo');
+  const name = repo.split('/')[1];
   const columns = (b.statusField?.columns ?? {}) as Record<string, unknown>;
   return {
     version: 1,
-    repo: str(b.repo, 'repo'),
+    repo,
     project: {
       id: str(b.project?.id, 'project.id'),
-      number: int(b.project?.number, 0),
+      number: int(b.project?.number, 0, 0),
       owner: str(b.project?.owner, 'project.owner'),
       title: str(b.project?.title, 'project.title'),
     },
@@ -52,18 +60,28 @@ export function normalizeConfig(input: unknown): SlothConfig {
       columns: {
         pickup: column(columns.pickup, 'pickup'),
         inProgress: column(columns.inProgress, 'inProgress'),
-        needsHelp: columns.needsHelp ? column(columns.needsHelp, 'needsHelp') : null,
+        // Optional: with no needs-help column a blocked session leaves the card and marks itself blocked.
+        needsHelp: columns.needsHelp ? column(columns.needsHelp, 'needsHelp') : { id: '', name: '' },
         codeReview: column(columns.codeReview, 'codeReview'),
       },
     },
-    runnerRoot: expandPath(str(b.runnerRoot, 'runnerRoot')),
-    sessionsDir: typeof b.sessionsDir === 'string' && b.sessionsDir ? b.sessionsDir : '~/.sloth/sessions',
-    stateDir: typeof b.stateDir === 'string' && b.stateDir ? b.stateDir : '~/.sloth/state',
-    watcherLog: typeof b.watcherLog === 'string' && b.watcherLog ? b.watcherLog : '~/.sloth/watcher.log',
+    runnerRoot: expandPath(text(b.runnerRoot) ?? `~/.sloth/runners/${name}`),
+    runnersDir: text(b.runnersDir) ?? '~/.sloth/runners',
+    worktreesDir: text(b.worktreesDir) ?? `~/.sloth/worktrees/${name}`,
+    sessionsDir: text(b.sessionsDir) ?? `~/.sloth/sessions/${name}`,
+    stateDir: text(b.stateDir) ?? '~/.sloth/state',
+    watcherLog: text(b.watcherLog) ?? '~/.sloth/watcher.log',
+    orderLogin: text(b.orderLogin) ?? '',
+    mention: text(b.mention) ?? '@sloth',
+    botPrefix: text(b.botPrefix) ?? '**Sloth:**',
     maxActive: int(b.maxActive, 3),
     maxAlive: int(b.maxAlive, 5),
-    tickSeconds: int(b.tickSeconds, 300),
-    tickCommand: Array.isArray(b.tickCommand) && b.tickCommand.length ? b.tickCommand.map(String) : null,
-    model: typeof b.model === 'string' && b.model ? b.model : 'opus',
+    budgetMinutes: int(b.budgetMinutes, 60),
+    waitHours: int(b.waitHours, 2),
+    reviewRounds: int(b.reviewRounds, 4),
+    maxRetries: int(b.maxRetries, 2, 0),
+    boardSeconds: int(b.boardSeconds, 300, 30),
+    commentSeconds: int(b.commentSeconds, 120, 30),
+    model: text(b.model) ?? 'opus',
   };
 }

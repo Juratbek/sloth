@@ -1,4 +1,4 @@
-import type { SetupCheck } from '../../server/types';
+import type { SetupCheck } from '../../server/config-types';
 import { Button, Error, Loading } from './ui';
 import { useSetupEnv } from './use-setup';
 

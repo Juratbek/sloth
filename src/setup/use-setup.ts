@@ -1,8 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ColumnRef, ConfigProject, SetupEnv, SetupFields, SetupProject, SlothConfig } from '../../server/types';
+import type { ColumnRef, ConfigProject, SetupEnv, SetupFields, SetupProject, SlothConfig } from '../../server/config-types';
 import { fetchJson, postJson } from '../lib/api';
 
 export const CONFIG_QUERY_KEY = ['setup', 'config'] as const;
+
+/**
+ * What the wizard posts: the values it asks about, plus whatever the saved config already had.
+ * Everything else (directories, budgets, poll intervals) gets its default on the server.
+ */
+export type ConfigPayload = Pick<SlothConfig, 'repo' | 'project' | 'statusField' | 'runnerRoot' | 'orderLogin' | 'maxActive' | 'maxAlive'> &
+  Partial<SlothConfig>;
 
 /** The draft the wizard carries between steps; becomes the saved config on the last one. */
 export interface Draft {
@@ -10,10 +17,12 @@ export interface Draft {
   project?: ConfigProject;
   statusFieldId?: string;
   pickup?: ColumnRef;
+  /** A column with an empty id is one Sloth creates on the board when the config is saved. */
   inProgress?: ColumnRef;
-  needsHelp?: ColumnRef | null;
+  needsHelp?: ColumnRef;
   codeReview?: ColumnRef;
   runnerRoot: string;
+  orderLogin: string;
   maxActive: number;
   maxAlive: number;
 }
@@ -24,9 +33,10 @@ export const draftFrom = (config: SlothConfig | null | undefined): Draft => ({
   statusFieldId: config?.statusField.id,
   pickup: config?.statusField.columns.pickup,
   inProgress: config?.statusField.columns.inProgress,
-  needsHelp: config?.statusField.columns.needsHelp ?? null,
+  needsHelp: config?.statusField.columns.needsHelp,
   codeReview: config?.statusField.columns.codeReview,
   runnerRoot: config?.runnerRoot ?? '',
+  orderLogin: config?.orderLogin ?? '',
   maxActive: config?.maxActive ?? 3,
   maxAlive: config?.maxAlive ?? 5,
 });
@@ -84,7 +94,7 @@ export function useClone() {
 export function useSaveConfig() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (config: Omit<SlothConfig, 'version'>) => postJson<{ ok: boolean; path: string }>('/api/setup/config', config),
+    mutationFn: (config: ConfigPayload) => postJson<{ ok: boolean; path: string }>('/api/setup/config', config),
     onSuccess: () => queryClient.invalidateQueries(),
   });
 }

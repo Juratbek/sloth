@@ -1,20 +1,11 @@
-import { execFile } from 'node:child_process';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { cfg } from './config';
-import { broadcast, sse, watchAll } from './events';
+import { sse, watchAll } from './events';
+import { startLoop, stopLoop, tick } from './runner/loop';
 import { agentDetail, overview, sessionDetail } from './sessions';
 import { handleSetup } from './setup';
 import { usageSeries } from './usage';
-
-/** Run the configured tick command, i.e. ask the watcher to run now. */
-function tick(): boolean {
-  const command = cfg().tickCommand;
-  if (!command?.length) return false;
-  const [cmd, ...args] = command;
-  execFile(cmd, args).unref();
-  return true;
-}
 
 function readBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve) => {
@@ -67,10 +58,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     const session = /^\/api\/sessions\/([\w-]+)$/.exec(p);
     const agent = /^\/api\/sessions\/([\w-]+)\/agents\/(\w+)$/.exec(p);
     if (p === '/api/tick' && req.method === 'POST') {
-      if (tick()) {
-        broadcast();
-        body = { ok: true };
-      }
+      const dryRun = url.searchParams.get('dry') === '1';
+      await tick({ board: true, comments: true, dryRun });
+      body = { ok: true, dryRun };
     } else if (p === '/api/overview') body = await overview();
     else if (p === '/api/usage') body = usageSeries(Math.min(31, Number(url.searchParams.get('days')) || 7));
     else if (session) body = sessionDetail(session[1]);
@@ -92,8 +82,15 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
 
 /** Vite plugin: serves the read-only monitor API from the same process as the UI (dev and preview). */
 export function monitorApi(): Plugin {
-  const mount = (server: { middlewares: { use: (fn: (req: IncomingMessage, res: ServerResponse, next: () => void) => void) => void } }) => {
+  const mount = (server: {
+    middlewares: { use: (fn: (req: IncomingMessage, res: ServerResponse, next: () => void) => void) => void };
+    httpServer?: { on: (event: 'close', fn: () => void) => void } | null;
+  }) => {
     watchAll();
+    // The watcher is this process: it starts with the server and stops when the server stops.
+    startLoop();
+    server.httpServer?.on('close', stopLoop);
+    process.once('exit', stopLoop);
     server.middlewares.use((req, res, next) => {
       void handle(req, res).then((handled) => handled || next());
     });

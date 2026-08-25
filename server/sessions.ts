@@ -51,7 +51,7 @@ function listSessions(): { sessions: SessionSummary[]; orphans: WatcherSession[]
   const sessions = files.map((f) => summary(path.join(cfg().transcriptsDir, f))).sort(newestFirst);
   const orphans: WatcherSession[] = [];
   for (const dir of listSessionDirs()) {
-    const wanted: SessionKind = dir.kind === 'issue' ? 'implement' : 'review';
+    const wanted: SessionKind = dir.kind === 'issue' ? 'sloth:implement' : 'sloth:review';
     const s =
       sessions.find((x) => x.id === dir.sessionId) ??
       sessions.find((x) => !x.watcher && x.kind === wanted && x.target === dir.target);
@@ -88,8 +88,8 @@ function monitorConfig(): Overview['config'] {
     runnerRoot: c.runnerRoot,
     transcriptsDir: c.transcriptsDir,
     commands: c.commands,
-    tickEnabled: !!c.tickCommand?.length,
-    tickSeconds: c.tickSeconds,
+    boardSeconds: c.boardSeconds,
+    commentSeconds: c.commentSeconds,
     pickupColumn: c.pickupColumn,
     maxActive: c.maxActive,
     maxAlive: c.maxAlive,

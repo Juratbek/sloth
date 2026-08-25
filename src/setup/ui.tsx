@@ -75,10 +75,20 @@ export function NumberInput({ value, onChange }: { value: number; onChange: (v: 
   return <input type="number" min={1} value={value} onChange={(e) => onChange(Number(e.target.value))} className={inputStyle} />;
 }
 
-export function Select({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { id: string; name: string }[] }) {
+export function Select({
+  value,
+  onChange,
+  options,
+  placeholder = 'not set',
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { id: string; name: string }[];
+  placeholder?: string;
+}) {
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} className={inputStyle}>
-      <option value="">not set</option>
+      <option value="">{placeholder}</option>
       {options.map((o) => (
         <option key={o.id} value={o.id}>
           {o.name}
