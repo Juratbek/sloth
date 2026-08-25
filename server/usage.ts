@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { TRANSCRIPTS_DIR } from './config';
+import { cfg } from './config';
 import { readRecords, type Rec } from './transcripts';
 import type { UsageBucket, UsageSeries } from './types';
 
@@ -11,14 +11,14 @@ const TTL = 30_000;
 function transcriptFiles(): string[] {
   let entries: string[] = [];
   try {
-    entries = fs.readdirSync(TRANSCRIPTS_DIR).filter((f) => f.endsWith('.jsonl'));
+    entries = fs.readdirSync(cfg().transcriptsDir).filter((f) => f.endsWith('.jsonl'));
   } catch {
     return [];
   }
   const files: string[] = [];
   for (const entry of entries) {
-    files.push(path.join(TRANSCRIPTS_DIR, entry));
-    const agents = path.join(TRANSCRIPTS_DIR, entry.replace(/\.jsonl$/, ''), 'subagents');
+    files.push(path.join(cfg().transcriptsDir, entry));
+    const agents = path.join(cfg().transcriptsDir, entry.replace(/\.jsonl$/, ''), 'subagents');
     try {
       for (const f of fs.readdirSync(agents)) {
         if (/^agent-\w+\.jsonl$/.test(f)) files.push(path.join(agents, f));

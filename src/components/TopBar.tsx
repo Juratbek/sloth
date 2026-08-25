@@ -40,7 +40,15 @@ function TickButton() {
   );
 }
 
-export default function TopBar({ overview, onHome }: { overview: Overview; onHome: () => void }) {
+export default function TopBar({
+  overview,
+  onHome,
+  onSettings,
+}: {
+  overview: Overview;
+  onHome: () => void;
+  onSettings: () => void;
+}) {
   const { config, watcher, rateLimit, sessions } = overview;
   const working = sessions.filter((s) => s.status === 'running').length;
   const waiting = sessions.filter((s) => s.status === 'waiting').length;
@@ -65,6 +73,14 @@ export default function TopBar({ overview, onHome }: { overview: Overview; onHom
       {config.tickEnabled && <TickButton />}
       {paused && <Pill label="paused until" value={clock(watcher.pausedUntil! * 1000)} tone="amber" />}
       <span className="flex-1" />
+      <button
+        onClick={onSettings}
+        title="Settings"
+        aria-label="Settings"
+        className="rounded-md border border-zinc-800 px-2 py-0.5 text-xs text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+      >
+        ⚙
+      </button>
       {low && (
         <Pill
           label={`${BUCKET_NAMES[low[0]] ?? low[0]} quota`}

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
-import { PLIST, REPO, SESSIONS_DIR, STATE_DIR, WATCHER_LOG, envValue } from './config';
+import { cfg } from './config';
 import type { Overview, RateBucket, WatcherSession, WatcherState } from './types';
 
 const read = (f: string) => {
@@ -32,14 +32,14 @@ export function pidAlive(pid?: number) {
 export function listSessionDirs(): WatcherSession[] {
   let names: string[] = [];
   try {
-    names = fs.readdirSync(SESSIONS_DIR);
+    names = fs.readdirSync(cfg().sessionsDir);
   } catch {
     return [];
   }
   return names.flatMap((name): WatcherSession[] => {
     const m = /^(issue|review)-(\d+)$/.exec(name);
     if (!m) return [];
-    const d = path.join(SESSIONS_DIR, name);
+    const d = path.join(cfg().sessionsDir, name);
     const pid = num(path.join(d, 'pid')) || undefined;
     let state: WatcherState | undefined;
     try {
@@ -77,33 +77,20 @@ export function listSessionDirs(): WatcherSession[] {
 }
 
 export function watcherInfo(): Overview['watcher'] {
-  const lines = (read(WATCHER_LOG) ?? '').trimEnd().split('\n').filter(Boolean).slice(-150);
+  const lines = (read(cfg().watcherLog) ?? '').trimEnd().split('\n').filter(Boolean).slice(-150);
   const count = (d: string) => {
     try {
-      return fs.readdirSync(path.join(STATE_DIR, d)).length;
+      return fs.readdirSync(path.join(cfg().stateDir, d)).length;
     } catch {
       return 0;
     }
   };
   return {
     logTail: lines,
-    lastTick: mtime(WATCHER_LOG)?.toISOString(),
-    pausedUntil: num(path.join(STATE_DIR, 'paused_until')) || undefined,
+    lastTick: mtime(cfg().watcherLog)?.toISOString(),
+    pausedUntil: num(path.join(cfg().stateDir, 'paused_until')) || undefined,
     seen: count('seen'),
     reviewed: count('reviewed'),
-  };
-}
-
-/** Caps, pickup column and model: from the watcher's launchd plist if configured, else this process's env / .env. */
-export function watcherConfig() {
-  const plist = PLIST ? (read(PLIST) ?? '') : '';
-  const env = (k: string) =>
-    new RegExp(`<key>${k}</key>\\s*<string>([^<]*)</string>`).exec(plist)?.[1] ?? envValue(k);
-  return {
-    pickupColumn: env('PICKUP_COLUMN') ?? 'Todo',
-    maxActive: Number(env('MAX_ACTIVE') ?? 10),
-    maxAlive: Number(env('MAX_ALIVE') ?? 15),
-    model: env('MODEL') ?? 'opus',
   };
 }
 
@@ -133,9 +120,10 @@ const pending = new Set<number>();
 /** Issue / PR title, filled in asynchronously (REST, one call per number, ever). */
 export function titleFor(n: number, coreRemaining: number | undefined): string | undefined {
   const t = titles.get(n);
-  if (!REPO || t !== undefined || pending.has(n) || (coreRemaining ?? 0) < 200) return t;
+  const repo = cfg().repo;
+  if (!repo || t !== undefined || pending.has(n) || (coreRemaining ?? 0) < 200) return t;
   pending.add(n);
-  void gh(['api', `repos/${REPO}/issues/${n}`, '--jq', '.title']).then((out) => {
+  void gh(['api', `repos/${repo}/issues/${n}`, '--jq', '.title']).then((out) => {
     pending.delete(n);
     if (out) titles.set(n, out.trim());
   });

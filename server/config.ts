@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_CONFIG_PATH, expandPath, readConfigFile } from './config-file';
+import type { SlothConfig } from './types';
 
 const home = os.homedir();
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -27,8 +29,9 @@ const file = readEnvFile();
 /** One config value: process env, then .env, then undefined. */
 export const envValue = (key: string): string | undefined => process.env[key] ?? file[key];
 
-const expand = (p: string) => (p.startsWith('~/') ? path.join(home, p.slice(2)) : path.resolve(p));
-const pathOf = (key: string, fallback: string) => expand(envValue(key) ?? fallback);
+export const CONFIG_PATH = expandPath(envValue('SLOTH_CONFIG') ?? DEFAULT_CONFIG_PATH);
+
+const pathOf = (key: string, fallback: string) => expandPath(envValue(key) ?? fallback);
 function json<T>(key: string, fallback: T): T {
   const raw = envValue(key);
   if (!raw) return fallback;
@@ -39,26 +42,78 @@ function json<T>(key: string, fallback: T): T {
   }
 }
 
-export const REPO = envValue('SLOTH_REPO') ?? '';
-export const RUNNER_ROOT = pathOf('SLOTH_RUNNER_ROOT', process.cwd());
-// Claude Code stores transcripts under ~/.claude/projects/<cwd with every non-alphanumeric char replaced by '-'>
-export const TRANSCRIPTS_DIR = pathOf(
-  'SLOTH_TRANSCRIPTS_DIR',
-  path.join(home, '.claude/projects', RUNNER_ROOT.replace(/[^a-zA-Z0-9]/g, '-')),
-);
-export const SESSIONS_DIR = pathOf('SLOTH_SESSIONS_DIR', path.join(home, 'bot-sessions'));
-export const STATE_DIR = pathOf('SLOTH_STATE_DIR', path.join(home, '.bot-state'));
-export const WATCHER_LOG = pathOf('SLOTH_WATCHER_LOG', path.join(home, 'bot-watcher.log'));
-export const PLIST = envValue('SLOTH_PLIST') ? expand(envValue('SLOTH_PLIST')!) : undefined;
+/** Caps / pickup column / model can also live in the watcher's launchd plist (legacy setups). */
+function plistValue(plist: string | undefined, key: string): string | undefined {
+  if (!plist) return undefined;
+  let text = '';
+  try {
+    text = fs.readFileSync(plist, 'utf8');
+  } catch {
+    return undefined;
+  }
+  return new RegExp(`<key>${key}</key>\\s*<string>([^<]*)</string>`).exec(text)?.[1];
+}
 
-/** Slash command → GitHub path segment for its target's link. Also drives session-kind detection. */
-export const COMMANDS = json<Record<string, string>>('SLOTH_COMMANDS', {
-  implement: 'issues',
-  review: 'pull',
-  'issue-status': 'issues',
-});
-/** argv for the "run the watcher now" button; no shell. Unset ⇒ the button and /api/tick are gone. */
-export const TICK_COMMAND = json<string[] | undefined>('SLOTH_TICK_COMMAND', undefined);
-export const TICK_SECONDS = Number(envValue('SLOTH_TICK_SECONDS') ?? 300);
-export const TITLE = envValue('SLOTH_TITLE') ?? 'Sloth';
-export const PORT = Number(envValue('SLOTH_PORT') ?? 4400);
+export interface ResolvedConfig {
+  saved?: SlothConfig;
+  repo: string;
+  title: string;
+  runnerRoot: string;
+  transcriptsDir: string;
+  sessionsDir: string;
+  stateDir: string;
+  watcherLog: string;
+  commands: Record<string, string>;
+  tickCommand?: string[];
+  tickSeconds: number;
+  port: number;
+  pickupColumn: string;
+  maxActive: number;
+  maxAlive: number;
+  model: string;
+}
+
+/** Resolution order for every value: SLOTH_* env / .env override → saved config file → plist → default. */
+function resolve(): ResolvedConfig {
+  const saved = readConfigFile(CONFIG_PATH);
+  const plist = envValue('SLOTH_PLIST') ? expandPath(envValue('SLOTH_PLIST')!) : undefined;
+  const fromPlist = (key: string) => plistValue(plist, key);
+  const repo = envValue('SLOTH_REPO') ?? saved?.repo ?? '';
+  const runnerRoot = pathOf('SLOTH_RUNNER_ROOT', saved?.runnerRoot ?? process.cwd());
+  const num = (key: string, fromFile: number | undefined, fallback: number) =>
+    Number(envValue(key) ?? fromFile ?? fromPlist(key) ?? fallback);
+  return {
+    saved,
+    repo,
+    title: envValue('SLOTH_TITLE') ?? (repo ? `Sloth · ${repo.split('/').pop()}` : 'Sloth'),
+    runnerRoot,
+    // Claude Code stores transcripts under ~/.claude/projects/<cwd with every non-alphanumeric char replaced by '-'>
+    transcriptsDir: pathOf(
+      'SLOTH_TRANSCRIPTS_DIR',
+      path.join(home, '.claude/projects', runnerRoot.replace(/[^a-zA-Z0-9]/g, '-')),
+    ),
+    sessionsDir: pathOf('SLOTH_SESSIONS_DIR', saved?.sessionsDir ?? '~/.sloth/sessions'),
+    stateDir: pathOf('SLOTH_STATE_DIR', saved?.stateDir ?? '~/.sloth/state'),
+    watcherLog: pathOf('SLOTH_WATCHER_LOG', saved?.watcherLog ?? '~/.sloth/watcher.log'),
+    commands: json<Record<string, string>>('SLOTH_COMMANDS', {
+      implement: 'issues',
+      review: 'pull',
+      'issue-status': 'issues',
+    }),
+    tickCommand: json<string[] | undefined>('SLOTH_TICK_COMMAND', saved?.tickCommand ?? undefined),
+    tickSeconds: Number(envValue('SLOTH_TICK_SECONDS') ?? saved?.tickSeconds ?? 300),
+    port: Number(envValue('SLOTH_PORT') ?? 4400),
+    pickupColumn: envValue('PICKUP_COLUMN') ?? saved?.statusField.columns.pickup.name ?? fromPlist('PICKUP_COLUMN') ?? 'Todo',
+    maxActive: num('MAX_ACTIVE', saved?.maxActive, 10),
+    maxAlive: num('MAX_ALIVE', saved?.maxAlive, 15),
+    model: envValue('MODEL') ?? saved?.model ?? fromPlist('MODEL') ?? 'opus',
+  };
+}
+
+let cached: ResolvedConfig | undefined;
+/** The resolved configuration; cached until the wizard saves a new config file. */
+export const cfg = (): ResolvedConfig => (cached ??= resolve());
+export const reloadConfig = () => {
+  cached = undefined;
+  return cfg();
+};

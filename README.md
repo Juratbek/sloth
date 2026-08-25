@@ -25,47 +25,101 @@ Everything refreshes on a 15s poll plus an SSE stream that fires whenever a watc
 | `<sessions>/{issue,review}-<n>/` | the watcher's per-run directory (see below) |
 | `<watcher log>` | log tail, last tick time, queued targets |
 | `<state>/seen`, `<state>/reviewed`, `<state>/paused_until` | watcher counters and pause window |
-| launchd plist (optional) | `PICKUP_COLUMN`, `MAX_ACTIVE`, `MAX_ALIVE`, `MODEL` |
+| `~/.sloth/config.json` | board, columns, repo, runner root, caps, model |
+| launchd plist (optional) | legacy `PICKUP_COLUMN`, `MAX_ACTIVE`, `MAX_ALIVE`, `MODEL` |
 | `gh api` | issue/PR titles and rate-limit buckets |
 
 Transcripts live where Claude Code puts them: `~/.claude/projects/<runner root with every non-alphanumeric
-character replaced by '-'>`. That path is derived from `SLOTH_RUNNER_ROOT` unless you set it directly.
+character replaced by '-'>`. That path is derived from the configured runner root unless you set it directly.
 
 Inside a session directory the monitor understands: `pid` (liveness), `session_id` (links the directory to a
 transcript), `state.json` (`state`, `step`, `note`, `branch`, `pr`, `servers`), `run.log` (tail), `inbox/*.md`
 (pending answers), `retries`, `kills`, and a `blocked` marker file. A session directory with no matching
 transcript is listed as an orphan.
 
-A session's *kind* comes from its prompt: `/<command> <number>` where `<command>` is a key of
-`SLOTH_COMMANDS`. The matching value is the GitHub path segment used for the link (`issues` or `pull`).
+A session's *kind* comes from its prompt: `/<command> <number>` where `<command>` is a key of the command
+map. The matching value is the GitHub path segment used for the link (`issues` or `pull`).
+
+## Get started
+
+```bash
+git clone https://github.com/Juratbek/sloth.git && cd sloth
+pnpm install
+pnpm dev            # http://localhost:4400
+```
+
+The first time you open the UI there is no configuration, so Sloth shows a **Get started** wizard
+instead of the monitor:
+
+1. **Environment** — checks `claude --version`, `gh --version` and `gh auth status`. All three must pass.
+2. **Project board** — pick one of your open GitHub Projects (v2) boards.
+3. **Columns** — pick the column Sloth watches, plus the ones it moves cards to (In Progress,
+   Needs help, Code Review). They are pre-filled by name where possible.
+4. **Repository & runner** — pick the repository (from the board's linked repos or by typing
+   `owner/repo`), the local checkout the sessions run from (with a "Clone it" button), and the
+   session caps.
+5. **Done** — writes the config file and opens the monitor.
+
+The gear in the header re-opens the wizard, pre-filled, to change any of it later.
 
 ## Configuration
 
-Read from the process environment first, then from a `.env` file in the repo root. Copy `.env.example`.
+Configuration lives in `~/.sloth/config.json` (override the location with `SLOTH_CONFIG`):
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `SLOTH_REPO` | — | `owner/repo` for issue/PR links and title lookups. Empty ⇒ no links, no `gh` title calls |
-| `SLOTH_RUNNER_ROOT` | cwd | Checkout the sessions run in; the transcripts path is derived from it |
-| `SLOTH_TRANSCRIPTS_DIR` | derived | Override the derived transcripts directory |
-| `SLOTH_SESSIONS_DIR` | `~/bot-sessions` | Where the watcher keeps its per-run directories |
-| `SLOTH_STATE_DIR` | `~/.bot-state` | Watcher state (`seen/`, `reviewed/`, `paused_until`) |
-| `SLOTH_WATCHER_LOG` | `~/bot-watcher.log` | Watcher log file |
-| `SLOTH_PLIST` | — | launchd plist to read the watcher's env from |
-| `SLOTH_COMMANDS` | `{"implement":"issues","review":"pull","issue-status":"issues"}` | Command → GitHub path segment |
-| `SLOTH_TICK_COMMAND` | — | JSON argv array run by the Tick button (no shell). Unset ⇒ button hidden |
-| `SLOTH_TICK_SECONDS` | `300` | Watcher tick interval, for the "next tick" pill |
-| `SLOTH_TITLE` | `Sloth` | Header and document title |
-| `SLOTH_PORT` | `4400` | Dev and preview port |
+```json
+{
+  "version": 1,
+  "repo": "owner/repo",
+  "project": { "id": "PVT_…", "number": 8, "owner": "login", "title": "Board" },
+  "statusField": {
+    "id": "PVTSSF_…",
+    "columns": {
+      "pickup":     { "id": "…", "name": "Todo" },
+      "inProgress": { "id": "…", "name": "In Progress" },
+      "needsHelp":  { "id": "…", "name": "Needs help" },
+      "codeReview": { "id": "…", "name": "Code Review" }
+    }
+  },
+  "runnerRoot": "/abs/path/to/checkout",
+  "sessionsDir": "~/.sloth/sessions",
+  "stateDir": "~/.sloth/state",
+  "watcherLog": "~/.sloth/watcher.log",
+  "maxActive": 3,
+  "maxAlive": 5,
+  "tickSeconds": 300,
+  "tickCommand": null,
+  "model": "opus"
+}
+```
 
-`PICKUP_COLUMN`, `MAX_ACTIVE`, `MAX_ALIVE` and `MODEL` are read from the plist if configured, else from the
-environment / `.env`.
+`needsHelp` may be `null`; the other three columns are required. `tickCommand` is the argv array
+(no shell) run by the "Tick now" button — unset ⇒ the button is hidden and `/api/tick` 404s.
+
+### Environment overrides
+
+Every value can be overridden from the process environment or a `.env` file in the repo root
+(see `.env.example`). **An override always wins over the config file** — useful for pointing one
+checkout at another watcher's directories.
+
+| Variable | Overrides |
+|---|---|
+| `SLOTH_CONFIG` | Path of the config file itself (default `~/.sloth/config.json`) |
+| `SLOTH_REPO` | `repo` |
+| `SLOTH_RUNNER_ROOT` | `runnerRoot` |
+| `SLOTH_TRANSCRIPTS_DIR` | The transcripts path derived from `runnerRoot` |
+| `SLOTH_SESSIONS_DIR` | `sessionsDir` |
+| `SLOTH_STATE_DIR` | `stateDir` |
+| `SLOTH_WATCHER_LOG` | `watcherLog` |
+| `SLOTH_TICK_COMMAND` / `SLOTH_TICK_SECONDS` | `tickCommand` / `tickSeconds` |
+| `PICKUP_COLUMN`, `MAX_ACTIVE`, `MAX_ALIVE`, `MODEL` | The pickup column name, the caps, the model |
+| `SLOTH_COMMANDS` | Command → GitHub path segment map (default `implement`/`review`/`issue-status`) |
+| `SLOTH_TITLE` | Header and document title (default `Sloth · <repo name>`) |
+| `SLOTH_PORT` | Dev and preview port (default `4400`) |
+| `SLOTH_PLIST` | launchd plist to read `PICKUP_COLUMN` / `MAX_ACTIVE` / `MAX_ALIVE` / `MODEL` from, for watchers that predate the config file. The config file wins over it. |
 
 ## Running
 
 ```bash
-pnpm install
-cp .env.example .env   # then edit
 pnpm dev               # http://localhost:4400
 pnpm build && pnpm start
 pnpm lint              # tsc --noEmit
@@ -73,12 +127,25 @@ pnpm lint              # tsc --noEmit
 
 ## API
 
-`GET /api/overview`, `GET /api/sessions/:id`, `GET /api/sessions/:id/agents/:agentId`, `GET /api/usage?days=N`
-and the `GET /api/events` SSE stream are all read-only.
+Monitor (read-only): `GET /api/overview`, `GET /api/sessions/:id`, `GET /api/sessions/:id/agents/:agentId`,
+`GET /api/usage?days=N` and the `GET /api/events` SSE stream.
 
-The one write is `POST /api/tick`: it spawns `SLOTH_TICK_COMMAND` (e.g.
-`["launchctl","kickstart","gui/<uid>/com.example.watcher"]`) to make the watcher run immediately. With no tick
-command configured the endpoint returns 404 and the button is not rendered.
+Setup (used by the wizard):
+
+| Endpoint | Does |
+|---|---|
+| `GET /api/setup/env` | Runs `claude --version`, `gh --version`, `gh auth status`, `gh api user` |
+| `GET /api/setup/projects` | Open Projects (v2) boards of the user and their orgs |
+| `GET /api/setup/projects/:id/fields` | The board's Status options (in board order) and its linked repos |
+| `POST /api/setup/clone` | `gh repo clone <owner/repo> <path>` |
+| `GET /api/setup/config` | The saved config, or 404 when there is none |
+| `POST /api/setup/config` | Validates and writes the config file, then reloads it |
+
+Writes: `POST /api/setup/config`, `POST /api/setup/clone`, and `POST /api/tick` — which spawns the configured
+tick command (e.g. `["launchctl","kickstart","gui/<uid>/com.example.watcher"]`) to make the watcher run
+immediately. With no tick command configured that endpoint returns 404 and the button is not rendered.
+
+Every shell-out uses `execFile` with an argv array — no shell.
 
 ## Conventions
 

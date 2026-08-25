@@ -137,3 +137,63 @@ export interface UsageSeries {
   to: string;
   buckets: UsageBucket[];
 }
+
+/** ---- Saved configuration (~/.sloth/config.json, override with SLOTH_CONFIG) ---- */
+
+export interface ColumnRef {
+  id: string;
+  name: string;
+}
+export interface ConfigProject {
+  id: string;
+  number: number;
+  owner: string;
+  title: string;
+}
+export interface ConfigColumns {
+  pickup: ColumnRef;
+  inProgress: ColumnRef;
+  needsHelp: ColumnRef | null;
+  codeReview: ColumnRef;
+}
+export interface SlothConfig {
+  version: 1;
+  repo: string;
+  project: ConfigProject;
+  statusField: { id: string; columns: ConfigColumns };
+  runnerRoot: string;
+  sessionsDir: string;
+  stateDir: string;
+  watcherLog: string;
+  maxActive: number;
+  maxAlive: number;
+  tickSeconds: number;
+  tickCommand: string[] | null;
+  model: string;
+}
+
+/** ---- Get-started wizard payloads ---- */
+
+export interface SetupCheck {
+  ok: boolean;
+  version?: string;
+  login?: string;
+  error?: string;
+}
+export interface SetupEnv {
+  claude: SetupCheck;
+  gh: SetupCheck;
+  ghAuth: SetupCheck;
+}
+export interface SetupProject {
+  id: string;
+  number: number;
+  title: string;
+  url: string;
+  owner: string;
+  items: number;
+}
+export interface SetupFields {
+  statusField?: { id: string; name: string; options: ColumnRef[] };
+  repositories: string[];
+}
