@@ -84,7 +84,8 @@ export function ensureTrust(root: string): void {
  */
 function start(bookDir: string, sessionDir: string, prompt: string, target: Target, logFile: string): void {
   const c = cfg();
-  fs.mkdirSync(path.join(sessionDir, 'inbox'), { recursive: true });
+  // A status reply borrows the issue's directory read-only — it must not conjure one that never ran.
+  if (bookDir === sessionDir) fs.mkdirSync(path.join(sessionDir, 'inbox'), { recursive: true });
   fs.mkdirSync(bookDir, { recursive: true });
   fs.mkdirSync(c.worktreesDir, { recursive: true });
   ensureTrust(c.runnerRoot);
