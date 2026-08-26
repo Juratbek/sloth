@@ -15,6 +15,7 @@ const CREATED: { role: ColumnRole; color: string }[] = [
   { role: 'inProgress', color: 'YELLOW' },
   { role: 'needsHelp', color: 'ORANGE' },
   { role: 'codeReview', color: 'PURPLE' },
+  { role: 'approved', color: 'GREEN' },
 ];
 
 export async function fieldOptions(fieldId: string): Promise<FieldOption[]> {
@@ -33,8 +34,8 @@ const asInput = (o: FieldOption) => ({
 });
 
 /**
- * Resolves the four column roles to real Status option ids, creating the missing In Progress /
- * needs-help / Code Review options right after the pickup column. The mutation replaces the whole
+ * Resolves the five column roles to real Status option ids, creating the missing In Progress /
+ * needs-help / Code Review / Approved options right after the pickup column. The mutation replaces the whole
  * option list, so every existing option is passed back with its id — dropping one deletes it.
  */
 export async function ensureColumns(fieldId: string, wanted: Record<ColumnRole, ColumnRef>): Promise<ConfigColumns> {
@@ -56,7 +57,7 @@ export async function ensureColumns(fieldId: string, wanted: Record<ColumnRole, 
   }
 
   const out = {} as ConfigColumns;
-  for (const role of ['pickup', 'inProgress', 'needsHelp', 'codeReview'] as ColumnRole[]) {
+  for (const role of ['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved'] as ColumnRole[]) {
     const found = resolve(role);
     if (!found?.id) throw new Error(`could not resolve the ${role} column`);
     out[role] = { id: found.id, name: found.name };

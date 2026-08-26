@@ -12,11 +12,13 @@ const MATCH: Record<ColumnRole, RegExp> = {
   inProgress: /in[\s_-]?progress/i,
   needsHelp: /needs?[\s_-]?help|blocked|question/i,
   codeReview: /review/i,
+  approved: /approved|accepted/i,
 };
 const OTHERS: { role: ColumnRole; label: string; hint: string }[] = [
   { role: 'inProgress', label: 'In Progress', hint: 'where a card goes while a session works on it' },
   { role: 'needsHelp', label: 'Needs help', hint: 'where a blocked session parks its card' },
   { role: 'codeReview', label: 'Code Review', hint: 'where a card goes once its PR is open' },
+  { role: 'approved', label: 'Approved', hint: 'cards you approve get a final review of their PR' },
 ];
 
 export default function StepColumns({
@@ -35,6 +37,7 @@ export default function StepColumns({
     inProgress: draft.inProgress,
     needsHelp: draft.needsHelp,
     codeReview: draft.codeReview,
+    approved: draft.approved,
   });
 
   // Untouched roles fall back to the first column whose name matches; with no match Sloth creates one.
@@ -63,7 +66,7 @@ export default function StepColumns({
               ))}
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             {OTHERS.map(({ role, label, hint }) => (
               <Field key={role} label={label} hint={value(role).id ? hint : `“${value(role).name}” will be created`}>
                 <Select
@@ -89,6 +92,7 @@ export default function StepColumns({
               inProgress: value('inProgress'),
               needsHelp: value('needsHelp'),
               codeReview: value('codeReview'),
+              approved: value('approved'),
             })
           }
         >

@@ -89,8 +89,12 @@ export interface WiredPr {
   sha: string;
 }
 
-/** The open, non-draft, not-yet-approved PRs wired to these issues — one aliased query for all of them. */
-export async function wiredPrs(issues: number[]): Promise<WiredPr[]> {
+/**
+ * The open, non-draft PRs wired to these issues — one aliased query for all of them. By default a PR a
+ * human already approved on GitHub is left out; trigger 5 asks for all of them, since the Approved
+ * column itself is the signal there.
+ */
+export async function wiredPrs(issues: number[], { unapprovedOnly = true } = {}): Promise<WiredPr[]> {
   if (!issues.length) return [];
   const [owner, name] = cfg().repo.split('/');
   const parts = issues
@@ -100,7 +104,7 @@ export async function wiredPrs(issues: number[]): Promise<WiredPr[]> {
     const data = await graphql(`{ repository(owner: "${owner}", name: "${name}") { ${parts} } }`);
     return Object.entries(data.repository ?? {}).flatMap(([key, value]: [string, any]) =>
       ((value?.closedByPullRequestsReferences?.nodes ?? []) as any[])
-        .filter((p) => p.state === 'OPEN' && !p.isDraft && p.reviewDecision !== 'APPROVED')
+        .filter((p) => p.state === 'OPEN' && !p.isDraft && (!unapprovedOnly || p.reviewDecision !== 'APPROVED'))
         .map((p) => ({ issue: Number(key.slice(1)), pr: p.number as number, sha: p.headRefOid as string })),
     );
   } catch (e) {

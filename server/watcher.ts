@@ -39,7 +39,7 @@ export function listSessionDirs(): WatcherSession[] {
     return [];
   }
   return names.flatMap((name): WatcherSession[] => {
-    const m = /^(issue|review)-(\d+)$/.exec(name);
+    const m = /^(issue|review|approved)-(\d+)$/.exec(name);
     if (!m) return [];
     const d = path.join(cfg().sessionsDir, name);
     const pid = num(path.join(d, 'pid')) || undefined;
@@ -61,7 +61,7 @@ export function listSessionDirs(): WatcherSession[] {
     return [
       {
         name,
-        kind: m[1] as 'issue' | 'review',
+        kind: m[1] as 'issue' | 'review' | 'approved',
         target: Number(m[2]),
         pid,
         alive: pidAlive(pid),
@@ -93,7 +93,7 @@ export function watcherInfo(): Overview['watcher'] {
     paused: isPaused(),
     pausedUntil: num(path.join(cfg().stateDir, 'paused_until')) || undefined,
     seen: count('seen'),
-    reviewed: count('reviewed'),
+    reviewed: count('reviewed') + count('approved'),
     loop: loopStatus(),
   };
 }

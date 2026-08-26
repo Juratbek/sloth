@@ -42,7 +42,7 @@ export interface WatcherState {
 }
 export interface WatcherSession {
   name: string;
-  kind: 'issue' | 'review';
+  kind: 'issue' | 'review' | 'approved';
   target: number;
   pid?: number;
   alive: boolean;

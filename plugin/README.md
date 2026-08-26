@@ -70,6 +70,7 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_COL_IN_PROGRESS_ID` / `_NAME` | Claimed / being worked on |
 | `SLOTH_COL_NEEDS_HELP_ID` / `_NAME` | Parked, waiting for a human (may be empty) |
 | `SLOTH_COL_CODE_REVIEW_ID` / `_NAME` | Handed to a human reviewer |
+| `SLOTH_COL_APPROVED_ID` / `_NAME` | Approved by a human; the server runs the project's own review command on its PR (may be empty) |
 | `SLOTH_RUNNER_ROOT` | The checkout sessions run from |
 | `SLOTH_WORKTREES_DIR` | Where per-issue worktrees go — `issue-<n>` under it |
 | `SLOTH_ORDER_LOGIN` | The one login whose comments are orders |

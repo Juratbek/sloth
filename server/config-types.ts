@@ -16,6 +16,8 @@ export interface ConfigColumns {
   inProgress: ColumnRef;
   needsHelp: ColumnRef;
   codeReview: ColumnRef;
+  /** Optional: with no Approved column trigger 5 never fires. */
+  approved: ColumnRef;
 }
 export type ColumnRole = keyof ConfigColumns;
 
@@ -25,6 +27,7 @@ export const DEFAULT_COLUMN_NAMES: Record<ColumnRole, string> = {
   inProgress: 'In Progress',
   needsHelp: 'Sloth needs help',
   codeReview: 'Code Review',
+  approved: 'Approved',
 };
 
 export interface SlothConfig {
@@ -52,6 +55,10 @@ export interface SlothConfig {
   boardSeconds: number;
   commentSeconds: number;
   model: string;
+  /** The project's own slash command (no slash) trigger 5 runs on an Approved card's PR — e.g. `review` for `/review <pr>`. */
+  approvedCommand: string;
+  /** The model the Approved reviews run on; every other session runs on `model`. */
+  approvedModel: string;
 }
 
 /** ---- Get-started wizard payloads ---- */

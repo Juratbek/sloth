@@ -22,7 +22,8 @@ export function elapsed(s: { startedAt?: string; lastAt?: string; live: boolean 
   return duration((end - Date.parse(s.startedAt)) / 1000);
 }
 
-const KIND: Record<string, string> = { 'sloth:implement': 'fix', 'sloth:review': 'review', 'sloth:status': 'status', other: 'run' };
+/** `review` is the default `approvedCommand` — the project's own command trigger 5 runs on Approved cards. */
+const KIND: Record<string, string> = { 'sloth:implement': 'fix', 'sloth:review': 'review', 'sloth:status': 'status', review: 'final review', other: 'run' };
 export const label = (s: SessionSummary) => `${KIND[s.kind] ?? s.kind}${s.target ? ` #${s.target}` : ''}`;
 
 export const STATUS_COLOR: Record<SessionStatus, string> = {

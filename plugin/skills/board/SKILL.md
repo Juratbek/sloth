@@ -22,6 +22,7 @@ Every id comes from the environment the server set for this session — never ha
 | `SLOTH_COL_IN_PROGRESS_ID` / `_NAME` | Claimed / being worked on |
 | `SLOTH_COL_NEEDS_HELP_ID` / `_NAME` | Parked, waiting for a human (may be empty) |
 | `SLOTH_COL_CODE_REVIEW_ID` / `_NAME` | Handed to a human reviewer |
+| `SLOTH_COL_APPROVED_ID` / `_NAME` | Approved by a human — never move a card here (may be empty) |
 
 ```bash
 OWNER=${SLOTH_REPO%%/*}; NAME=${SLOTH_REPO##*/}

@@ -63,6 +63,8 @@ export function normalizeConfig(input: unknown): SlothConfig {
         // Optional: with no needs-help column a blocked session leaves the card and marks itself blocked.
         needsHelp: columns.needsHelp ? column(columns.needsHelp, 'needsHelp') : { id: '', name: '' },
         codeReview: column(columns.codeReview, 'codeReview'),
+        // Optional: without it trigger 5 (the final review of Approved cards) never fires.
+        approved: columns.approved ? column(columns.approved, 'approved') : { id: '', name: '' },
       },
     },
     runnerRoot: expandPath(text(b.runnerRoot) ?? `~/.sloth/runners/${name}`),
@@ -83,5 +85,7 @@ export function normalizeConfig(input: unknown): SlothConfig {
     boardSeconds: int(b.boardSeconds, 300, 30),
     commentSeconds: int(b.commentSeconds, 120, 30),
     model: text(b.model) ?? 'opus',
+    approvedCommand: (text(b.approvedCommand) ?? 'review').replace(/^\//, ''),
+    approvedModel: text(b.approvedModel) ?? 'fable',
   };
 }

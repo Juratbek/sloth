@@ -21,6 +21,7 @@ export interface Draft {
   inProgress?: ColumnRef;
   needsHelp?: ColumnRef;
   codeReview?: ColumnRef;
+  approved?: ColumnRef;
   runnerRoot: string;
   orderLogin: string;
   maxActive: number;
@@ -35,6 +36,8 @@ export const draftFrom = (config: SlothConfig | null | undefined): Draft => ({
   inProgress: config?.statusField.columns.inProgress,
   needsHelp: config?.statusField.columns.needsHelp,
   codeReview: config?.statusField.columns.codeReview,
+  // An older config has no Approved column; the wizard offers to create one.
+  approved: config?.statusField.columns.approved?.id ? config.statusField.columns.approved : undefined,
   runnerRoot: config?.runnerRoot ?? '',
   orderLogin: config?.orderLogin ?? '',
   maxActive: config?.maxActive ?? 3,

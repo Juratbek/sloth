@@ -7,7 +7,7 @@ import { PLUGIN_DIR, cfg } from '../config';
 import { moveCard } from './board';
 import { run } from './gh';
 import { isDry, log, nowSec, remove, write } from './log';
-import { issueDir, reviewDir, slotsFull } from './session-dirs';
+import { approvedDir, issueDir, reviewDir, slotsFull } from './session-dirs';
 
 const APPEND_PROMPT =
   'You run as a Sloth session; the SLOTH_* environment variables describe the board, the session directory and the time budget.';
@@ -43,6 +43,8 @@ function sessionEnv(dir: string, target: Target): NodeJS.ProcessEnv {
     SLOTH_COL_NEEDS_HELP_NAME: col.needsHelp.name,
     SLOTH_COL_CODE_REVIEW_ID: col.codeReview.id,
     SLOTH_COL_CODE_REVIEW_NAME: col.codeReview.name,
+    SLOTH_COL_APPROVED_ID: col.approved.id,
+    SLOTH_COL_APPROVED_NAME: col.approved.name,
     SLOTH_RUNNER_ROOT: c.runnerRoot,
     SLOTH_WORKTREES_DIR: c.worktreesDir,
     SLOTH_ORDER_LOGIN: c.orderLogin,
@@ -80,9 +82,10 @@ export function ensureTrust(root: string): void {
 /**
  * Starts a detached `claude -p` run that survives a Sloth restart. `bookDir` holds Sloth's own pid /
  * session_id files; `sessionDir` is what the session itself works in (they differ only for a status
- * reply, which reads the issue's previous run directory but must not overwrite its pid).
+ * reply, which reads the issue's previous run directory but must not overwrite its pid). `model`
+ * defaults to the configured one; trigger 5 runs on `approvedModel`.
  */
-function start(bookDir: string, sessionDir: string, prompt: string, target: Target, logFile: string): void {
+function start(bookDir: string, sessionDir: string, prompt: string, target: Target, logFile: string, model = cfg().model): void {
   const c = cfg();
   // A status reply borrows the issue's directory read-only — it must not conjure one that never ran.
   if (bookDir === sessionDir) fs.mkdirSync(path.join(sessionDir, 'inbox'), { recursive: true });
@@ -94,7 +97,7 @@ function start(bookDir: string, sessionDir: string, prompt: string, target: Targ
   const fd = fs.openSync(logFile, 'a');
   const child = spawn(
     'claude',
-    ['-p', prompt, '--plugin-dir', PLUGIN_DIR, '--session-id', sessionId, '--model', c.model,
+    ['-p', prompt, '--plugin-dir', PLUGIN_DIR, '--session-id', sessionId, '--model', model,
       '--dangerously-skip-permissions', '--append-system-prompt', APPEND_PROMPT],
     { cwd: c.runnerRoot, detached: true, stdio: ['ignore', fd, fd], env: sessionEnv(sessionDir, target) },
   );
@@ -138,6 +141,25 @@ export function launchReview(pr: number, issue: number): boolean {
   }
   log(`review PR #${pr} (issue #${issue})`);
   start(dir, dir, `/sloth:review ${pr}`, { pr, issue }, path.join(dir, 'run.log'));
+  return true;
+}
+
+/**
+ * Trigger 5: the final review of one PR version, with the project's own `/<approvedCommand> <pr>` on
+ * `approvedModel` — the one session that runs a project command instead of a Sloth plugin one.
+ */
+export function launchApproved(pr: number, issue: number): boolean {
+  const c = cfg();
+  if (slotsFull()) {
+    log(`final review PR #${pr} queued (slots full)`);
+    return false;
+  }
+  if (isDry()) {
+    log(`dry-run: would run final review PR #${pr} (issue #${issue}) — /${c.approvedCommand} on ${c.approvedModel}`);
+    return true;
+  }
+  log(`final review PR #${pr} (issue #${issue}) — /${c.approvedCommand} on ${c.approvedModel}`);
+  start(approvedDir(pr), approvedDir(pr), `/${c.approvedCommand} ${pr}`, { pr, issue }, path.join(approvedDir(pr), 'run.log'), c.approvedModel);
   return true;
 }
 

@@ -16,6 +16,7 @@ function payload(draft: Draft, existing: SlothConfig | null): ConfigPayload {
         inProgress: draft.inProgress!,
         needsHelp: draft.needsHelp!,
         codeReview: draft.codeReview!,
+        approved: draft.approved!,
       },
     },
     runnerRoot: draft.runnerRoot,
@@ -49,6 +50,7 @@ export default function StepDone({
     ['In Progress', columnLabel(columns.inProgress)],
     ['Needs help', columnLabel(columns.needsHelp)],
     ['Code Review', columnLabel(columns.codeReview)],
+    ['Approved', columnLabel(columns.approved)],
     ['Orders from', config.orderLogin || 'nobody'],
     ['Caps', `${config.maxActive} active · ${config.maxAlive} alive`],
   ];

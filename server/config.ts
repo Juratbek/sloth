@@ -50,7 +50,7 @@ const BLANK: SlothConfig = {
   project: { id: '', number: 0, owner: '', title: '' },
   statusField: {
     id: '',
-    columns: { pickup: BLANK_COLUMN, inProgress: BLANK_COLUMN, needsHelp: BLANK_COLUMN, codeReview: BLANK_COLUMN },
+    columns: { pickup: BLANK_COLUMN, inProgress: BLANK_COLUMN, needsHelp: BLANK_COLUMN, codeReview: BLANK_COLUMN, approved: BLANK_COLUMN },
   },
   runnerRoot: process.cwd(),
   runnersDir: '~/.sloth/runners',
@@ -70,9 +70,12 @@ const BLANK: SlothConfig = {
   boardSeconds: 300,
   commentSeconds: 120,
   model: 'opus',
+  approvedCommand: 'review',
+  approvedModel: 'fable',
 };
 
-/** The commands the Sloth plugin ships, mapped to the GitHub path segment of their target. */
+/** The commands the Sloth plugin ships, mapped to the GitHub path segment of their target. The project's
+ *  own `approvedCommand` (trigger 5) is added at resolve time. */
 export const COMMANDS: Record<string, string> = {
   'sloth:implement': 'issues',
   'sloth:review': 'pull',
@@ -95,7 +98,7 @@ function resolve(): ResolvedConfig {
     title: c.repo ? `Sloth · ${c.repo.split('/').pop()}` : 'Sloth',
     // Claude Code stores transcripts under ~/.claude/projects/<cwd with every non-alphanumeric char replaced by '-'>
     transcriptsDir: path.join(home, '.claude/projects', runnerRoot.replace(/[^a-zA-Z0-9]/g, '-')),
-    commands: COMMANDS,
+    commands: { ...COMMANDS, [c.approvedCommand]: 'pull' },
     port: Number(envValue('SLOTH_PORT') ?? 4400),
     pickupColumn: c.statusField.columns.pickup.name,
   };

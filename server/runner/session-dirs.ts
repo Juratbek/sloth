@@ -3,7 +3,8 @@ import path from 'node:path';
 import { cfg } from '../config';
 import { readFile, readNumber } from './log';
 
-export type Kind = 'issue' | 'review';
+/** `review` is trigger 4's `/sloth:review`; `approved` is trigger 5's final review with the project's own command. */
+export type Kind = 'issue' | 'review' | 'approved';
 
 export interface RunDir {
   name: string;
@@ -12,10 +13,11 @@ export interface RunDir {
   dir: string;
 }
 
-/** `<sessionsDir>/issue-12` for the implement session of issue 12, `review-34` for a PR review. */
+/** `<sessionsDir>/issue-12` for the implement session of issue 12, `review-34` / `approved-34` for a PR review. */
 export const dirOf = (kind: Kind, target: number) => path.join(cfg().sessionsDir, `${kind}-${target}`);
 export const issueDir = (issue: number) => dirOf('issue', issue);
 export const reviewDir = (pr: number) => dirOf('review', pr);
+export const approvedDir = (pr: number) => dirOf('approved', pr);
 
 export function pidAlive(pid: number | undefined): boolean {
   if (!pid) return false;
@@ -40,7 +42,7 @@ export function runDirs(): RunDir[] {
     return [];
   }
   return names.flatMap((name) => {
-    const m = /^(issue|review)-(\d+)$/.exec(name);
+    const m = /^(issue|review|approved)-(\d+)$/.exec(name);
     return m ? [{ name, kind: m[1] as Kind, target: Number(m[2]), dir: path.join(cfg().sessionsDir, name) }] : [];
   });
 }

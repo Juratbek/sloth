@@ -6,8 +6,9 @@ import type { BoardItem } from './board';
 import { comment, run } from './gh';
 import { limitExit } from './limits';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
-import { counter, dirAlive, isBlocked, issueAlive, issueDir, reviewDir, runDirs, startedAt, stateOf } from './session-dirs';
-import { launch, launchReview } from './spawn';
+import { approvedDir, counter, dirAlive, isBlocked, issueAlive, issueDir, reviewDir, runDirs, startedAt, stateOf } from './session-dirs';
+import type { Kind } from './session-dirs';
+import { launch, launchApproved, launchReview } from './spawn';
 
 const KILL_GRACE = 5 * 60; // extra time before Sloth kills a session that is past its budget
 const LIMIT_PAUSE = 30 * 60; // how long the whole watcher sleeps after a usage-limit exit
@@ -74,7 +75,7 @@ export async function reap(): Promise<void> {
       if (!limitExit(readFile(path.join(dir, 'run.log')))) continue;
       log(`${name} stopped on a usage limit — pausing ${LIMIT_PAUSE / 60} min, card untouched`);
       write(statePath('paused_until'), String(nowSec() + LIMIT_PAUSE));
-      if (kind === 'review') for (const f of reviewedFiles(target)) remove(statePath('reviewed', f));
+      if (kind !== 'issue') for (const f of markerFiles(kind, target)) remove(statePath(MARKERS[kind], f));
       continue;
     }
     const budget = cfg().budgetMinutes * 60;
@@ -85,8 +86,8 @@ export async function reap(): Promise<void> {
       /* raced with its own exit */
     }
     remove(pidFile);
-    if (kind === 'review') {
-      log(`review PR #${target} killed: hung past the budget`);
+    if (kind !== 'issue') {
+      log(`${kind === 'review' ? 'review' : 'final review'} PR #${target} killed: hung past the budget`);
       continue;
     }
     await cleanup(target);
@@ -97,9 +98,12 @@ export async function reap(): Promise<void> {
   }
 }
 
-function reviewedFiles(pr: number): string[] {
+/** Where each review kind keeps its `<pr>-<sha>` "already reviewed this head" markers. */
+const MARKERS: Record<Exclude<Kind, 'issue'>, string> = { review: 'reviewed', approved: 'approved' };
+
+function markerFiles(kind: Exclude<Kind, 'issue'>, pr: number): string[] {
   try {
-    return fs.readdirSync(statePath('reviewed')).filter((f) => f.startsWith(`${pr}-`));
+    return fs.readdirSync(statePath(MARKERS[kind])).filter((f) => f.startsWith(`${pr}-`));
   } catch {
     return [];
   }
@@ -109,9 +113,25 @@ function reviewedFiles(pr: number): string[] {
 export async function reviews(board: BoardItem[]): Promise<void> {
   const issues = unassignedIn(board, cfg().statusField.columns.codeReview.name);
   for (const { issue, pr, sha } of await wiredPrs(issues)) {
-    const marker = statePath('reviewed', `${pr}-${sha}`);
+    const marker = statePath(MARKERS.review, `${pr}-${sha}`);
     if (fs.existsSync(marker) || dirAlive(reviewDir(pr))) continue;
     if (launchReview(pr, issue) && !isDry()) write(marker, '');
+  }
+}
+
+/**
+ * Trigger 5 — Approved cards whose wired PR is open get one final review per PR head, with the
+ * project's own review command on `approvedModel`. A GitHub approval does not exclude the PR here:
+ * the column is the signal. No Approved column configured → nothing to do.
+ */
+export async function finalReviews(board: BoardItem[]): Promise<void> {
+  const column = cfg().statusField.columns.approved;
+  if (!column.id) return;
+  const issues = unassignedIn(board, column.name);
+  for (const { issue, pr, sha } of await wiredPrs(issues, { unapprovedOnly: false })) {
+    const marker = statePath(MARKERS.approved, `${pr}-${sha}`);
+    if (fs.existsSync(marker) || dirAlive(approvedDir(pr))) continue;
+    if (launchApproved(pr, issue) && !isDry()) write(marker, '');
   }
 }
 

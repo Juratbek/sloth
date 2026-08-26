@@ -7,10 +7,10 @@ import UsageChart from './UsageChart';
 function queued(logTail: string[]): string[] {
   const pending = new Set<string>();
   for (const line of logTail) {
-    const target = /(?:review PR )?#(\d+)/.exec(line)?.[0];
+    const target = /(?:(?:final )?review PR )?#(\d+)/.exec(line)?.[0];
     if (!target) continue;
     if (/queued \(slots full\)/.test(line)) pending.add(target);
-    else if (/^\[[^\]]+\] (launch|review PR) /.test(line)) pending.delete(target);
+    else if (/^\[[^\]]+\] (launch|review PR|final review PR) /.test(line)) pending.delete(target);
   }
   return [...pending];
 }
