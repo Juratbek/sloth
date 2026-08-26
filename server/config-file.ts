@@ -85,7 +85,7 @@ export function normalizeConfig(input: unknown): SlothConfig {
     boardSeconds: int(b.boardSeconds, 300, 30),
     commentSeconds: int(b.commentSeconds, 120, 30),
     model: text(b.model) ?? 'opus',
-    approvedCommand: (text(b.approvedCommand) ?? 'review').replace(/^\//, ''),
     approvedModel: text(b.approvedModel) ?? 'fable',
+    chrome: b.chrome !== false,
   };
 }

@@ -20,7 +20,7 @@ interface Target {
   pr?: number;
 }
 
-function sessionEnv(dir: string, target: Target): NodeJS.ProcessEnv {
+function sessionEnv(dir: string, target: Target, chrome: boolean): NodeJS.ProcessEnv {
   const c = cfg();
   const col = c.statusField.columns;
   const start = nowSec();
@@ -49,6 +49,7 @@ function sessionEnv(dir: string, target: Target): NodeJS.ProcessEnv {
     SLOTH_WORKTREES_DIR: c.worktreesDir,
     SLOTH_ORDER_LOGIN: c.orderLogin,
     SLOTH_MODEL: c.model,
+    SLOTH_CHROME: chrome ? '1' : '0',
     SLOTH_START: String(start),
     SLOTH_DEADLINE: String(start + c.budgetMinutes * 60),
     SLOTH_BUDGET_MIN: String(c.budgetMinutes),
@@ -83,10 +84,16 @@ export function ensureTrust(root: string): void {
  * Starts a detached `claude -p` run that survives a Sloth restart. `bookDir` holds Sloth's own pid /
  * session_id files; `sessionDir` is what the session itself works in (they differ only for a status
  * reply, which reads the issue's previous run directory but must not overwrite its pid). `model`
- * defaults to the configured one; trigger 5 runs on `approvedModel`.
+ * defaults to the configured one; trigger 5 runs on `approvedModel`. `chrome` attaches the Claude in
+ * Chrome extension — only implement sessions need a browser, and its tools cost context.
  */
-function start(bookDir: string, sessionDir: string, prompt: string, target: Target, logFile: string, model = cfg().model): void {
+interface StartOptions {
+  model?: string;
+  chrome?: boolean;
+}
+function start(bookDir: string, sessionDir: string, prompt: string, target: Target, logFile: string, options: StartOptions = {}): void {
   const c = cfg();
+  const { model = c.model, chrome = false } = options;
   // A status reply borrows the issue's directory read-only — it must not conjure one that never ran.
   if (bookDir === sessionDir) fs.mkdirSync(path.join(sessionDir, 'inbox'), { recursive: true });
   fs.mkdirSync(bookDir, { recursive: true });
@@ -98,8 +105,8 @@ function start(bookDir: string, sessionDir: string, prompt: string, target: Targ
   const child = spawn(
     'claude',
     ['-p', prompt, '--plugin-dir', PLUGIN_DIR, '--session-id', sessionId, '--model', model,
-      '--dangerously-skip-permissions', '--append-system-prompt', APPEND_PROMPT],
-    { cwd: c.runnerRoot, detached: true, stdio: ['ignore', fd, fd], env: sessionEnv(sessionDir, target) },
+      chrome ? '--chrome' : '--no-chrome', '--dangerously-skip-permissions', '--append-system-prompt', APPEND_PROMPT],
+    { cwd: c.runnerRoot, detached: true, stdio: ['ignore', fd, fd], env: sessionEnv(sessionDir, target, chrome) },
   );
   fs.closeSync(fd);
   if (child.pid) write(path.join(bookDir, 'pid'), String(child.pid));
@@ -124,7 +131,7 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
   await moveCard(issue, cfg().statusField.columns.inProgress.id);
   await run('git', ['-C', cfg().runnerRoot, 'fetch', '-q', 'origin'], 120_000);
   log(`launch #${issue}${order ? ` (${order.slice(0, 120)})` : ''}`);
-  start(dir, dir, `/sloth:implement ${issue}${order ? ` ${order}` : ''}`, { issue }, path.join(dir, 'run.log'));
+  start(dir, dir, `/sloth:implement ${issue}${order ? ` ${order}` : ''}`, { issue }, path.join(dir, 'run.log'), { chrome: cfg().chrome });
   return true;
 }
 
@@ -145,8 +152,7 @@ export function launchReview(pr: number, issue: number): boolean {
 }
 
 /**
- * Trigger 5: the final review of one PR version, with the project's own `/<approvedCommand> <pr>` on
- * `approvedModel` — the one session that runs a project command instead of a Sloth plugin one.
+ * Trigger 5: the final review of one PR version — the same `/sloth:review`, on `approvedModel`.
  */
 export function launchApproved(pr: number, issue: number): boolean {
   const c = cfg();
@@ -155,11 +161,11 @@ export function launchApproved(pr: number, issue: number): boolean {
     return false;
   }
   if (isDry()) {
-    log(`dry-run: would run final review PR #${pr} (issue #${issue}) — /${c.approvedCommand} on ${c.approvedModel}`);
+    log(`dry-run: would run final review PR #${pr} (issue #${issue}) on ${c.approvedModel}`);
     return true;
   }
-  log(`final review PR #${pr} (issue #${issue}) — /${c.approvedCommand} on ${c.approvedModel}`);
-  start(approvedDir(pr), approvedDir(pr), `/${c.approvedCommand} ${pr}`, { pr, issue }, path.join(approvedDir(pr), 'run.log'), c.approvedModel);
+  log(`final review PR #${pr} (issue #${issue}) on ${c.approvedModel}`);
+  start(approvedDir(pr), approvedDir(pr), `/sloth:review ${pr}`, { pr, issue }, path.join(approvedDir(pr), 'run.log'), { model: c.approvedModel });
   return true;
 }
 

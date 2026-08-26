@@ -60,7 +60,6 @@ export async function park(issue: number, reason: string): Promise<void> {
     write(path.join(issueDir(issue), 'blocked'), '1');
     log(`#${issue} parked in place (no needs-help column configured)`);
   }
-  remove(path.join(issueDir(issue), 'kills'));
   remove(path.join(issueDir(issue), 'retries'));
 }
 
@@ -91,10 +90,8 @@ export async function reap(): Promise<void> {
       continue;
     }
     await cleanup(target);
-    const kills = counter(dir, 'kills') + 1;
-    write(path.join(dir, 'kills'), String(kills));
-    log(`#${target} killed: hung past the budget (kill ${kills})`);
-    if (kills >= 2) await park(target, 'the run for this issue hung past its time budget twice and was stopped by Sloth.');
+    log(`#${target} killed: hung past the budget`);
+    await park(target, 'the run for this issue hung past its time budget and was stopped by Sloth.');
   }
 }
 
@@ -109,10 +106,18 @@ function markerFiles(kind: Exclude<Kind, 'issue'>, pr: number): string[] {
   }
 }
 
-/** Trigger 4 — Code Review cards whose wired PR is open and unapproved get one review per PR head. */
+/** The branches `/sloth:implement` pushes to — its reviewer loop already vetted that head before the hand-off. */
+const OWN_BRANCH = /^sloth\/issue-\d+/;
+
+/**
+ * Trigger 4 — Code Review cards whose wired PR is open and unapproved get one review per PR head.
+ * Sloth's own PRs are skipped: the implement session's reviewer loop passed on exactly that head,
+ * so a second `/sloth:review` would only repeat it. Human-written PRs are what this trigger is for.
+ */
 export async function reviews(board: BoardItem[]): Promise<void> {
   const issues = unassignedIn(board, cfg().statusField.columns.codeReview.name);
-  for (const { issue, pr, sha } of await wiredPrs(issues)) {
+  for (const { issue, pr, sha, head } of await wiredPrs(issues)) {
+    if (OWN_BRANCH.test(head)) continue;
     const marker = statePath(MARKERS.review, `${pr}-${sha}`);
     if (fs.existsSync(marker) || dirAlive(reviewDir(pr))) continue;
     if (launchReview(pr, issue) && !isDry()) write(marker, '');
@@ -120,8 +125,8 @@ export async function reviews(board: BoardItem[]): Promise<void> {
 }
 
 /**
- * Trigger 5 — Approved cards whose wired PR is open get one final review per PR head, with the
- * project's own review command on `approvedModel`. A GitHub approval does not exclude the PR here:
+ * Trigger 5 — Approved cards whose wired PR is open get one final review per PR head, with
+ * `/sloth:review` on `approvedModel`. A GitHub approval does not exclude the PR here:
  * the column is the signal. No Approved column configured → nothing to do.
  */
 export async function finalReviews(board: BoardItem[]): Promise<void> {

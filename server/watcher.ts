@@ -68,7 +68,6 @@ export function listSessionDirs(): WatcherSession[] {
         sessionId: read(path.join(d, 'session_id'))?.trim() || undefined,
         state,
         retries: num(path.join(d, 'retries')),
-        kills: num(path.join(d, 'kills')),
         blocked: fs.existsSync(path.join(d, 'blocked')),
         runLogTail: (read(path.join(d, 'run.log')) ?? '').slice(-4000),
         inbox,

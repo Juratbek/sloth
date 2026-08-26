@@ -18,13 +18,15 @@ run from, then writes `~/.sloth/config.json`. The gear in the header re-opens it
 
 ## How it works
 
+The short version; the tick-by-tick account is in [docs/how-it-works.md](docs/how-it-works.md).
+
 | # | When | What Sloth does |
 |---|---|---|
 | 1 | An unassigned issue sits in the watched column | Moves it to In Progress and starts `/sloth:implement <n>` |
 | 2 | An unassigned issue sits in In Progress with no live session | Relaunches it, at most `maxRetries` times in a row |
 | 3 | A comment mentions `@sloth` | Delivers it to the live session; with no session, an order starts one and anything else gets a status reply |
-| 4 | An unassigned issue in Code Review has an open, non-draft, unapproved wired PR | Runs `/sloth:review <pr>`, once per PR head |
-| 5 | An unassigned issue in Approved has an open, non-draft wired PR | Runs the project's own `/review <pr>` on the `fable` model, once per PR head |
+| 4 | An unassigned issue in Code Review has an open, non-draft, unapproved wired PR **written by a human** | Runs `/sloth:review <pr>`, once per PR head. Sloth's own PRs were already vetted by their session's reviewer loop |
+| 5 | An unassigned issue in Approved has an open, non-draft wired PR | Runs `/sloth:review <pr>` on the `fable` model, once per PR head |
 
 The board is read every 5 minutes, comments every 2; **Tick now** runs both at once. **Pause**
 stops Sloth from starting anything new (running sessions, inbox deliveries and status replies carry
@@ -36,13 +38,12 @@ on) and survives a restart.
   Every comment Sloth writes starts with `**Sloth:**`.
 - **Columns** are roles mapped to the board's Status options: *pickup* (Sloth only reads it),
   *In Progress*, *needs help* (a stuck session parks the card here after asking its questions),
-  *Code Review* (trigger 4) and *Approved* (trigger 5 — the final review runs the project's
-  `.claude/commands/review.md`, so it follows the project's rules; a GitHub approval does not skip it).
+  *Code Review* (trigger 4) and *Approved* (trigger 5 — a final review on the Fable model; a GitHub approval does not skip it).
   Missing columns are created after the pickup column, without dropping any existing option.
 - **Sessions** are detached `claude -p … --plugin-dir <sloth>/plugin` runs in the runner checkout.
   They survive a Sloth restart. `maxActive` may work at once, `maxAlive` including the ones waiting
   for an answer; a trigger with no free slot is retried next tick. A session past
-  `budgetMinutes + 5` is killed and cleaned up, and its card parked on the second kill. A Claude usage
+  `budgetMinutes + 5` is killed, cleaned up, and its card parked. A Claude usage
   limit pauses the watcher for 30 minutes without costing the card its place.
 
 ```
@@ -76,7 +77,8 @@ columns, `repo`, `runnerRoot`, `orderLogin` and the caps; the rest defaults:
 | `reviewRounds` / `maxRetries` | `4` / `2` | Reviewer-agent rounds before asking for help; trigger-2 relaunches before parking |
 | `boardSeconds` / `commentSeconds` | `300` / `120` | Poll intervals |
 | `model` | `opus` | The model every session runs on — except trigger 5's |
-| `approvedCommand` / `approvedModel` | `review` / `fable` | The project command (no slash) and model of trigger 5's final review |
+| `chrome` | `true` | Start implement sessions with `--chrome`, so a tester subagent can click through the change in your Chrome |
+| `approvedModel` | `fable` | The model trigger 5's final reviews run on |
 
 Environment: `SLOTH_CONFIG`, `SLOTH_PORT` (default `4400`), and `SLOTH_DRY_RUN=1` to log what every
 tick *would* do without doing it.

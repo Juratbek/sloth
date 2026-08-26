@@ -38,7 +38,6 @@ function WatcherLine({ s }: { s: SessionDetail }) {
         )}
         {st?.servers && <span className="text-[11px] text-zinc-500">servers: {st.servers}</span>}
         {w.retries > 0 && <span className="text-amber-400">retries {w.retries}</span>}
-        {w.kills > 0 && <span className="text-amber-400">kills {w.kills}</span>}
         {w.blocked && <span className="text-red-400">blocked</span>}
         {w.inbox.length > 0 && <span className="text-sky-400">inbox {w.inbox.length}</span>}
         <span className="text-zinc-600">updated {ago(w.updatedAt)} ago</span>

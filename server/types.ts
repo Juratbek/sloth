@@ -49,7 +49,6 @@ export interface WatcherSession {
   sessionId?: string;
   state?: WatcherState;
   retries: number;
-  kills: number;
   blocked: boolean;
   runLogTail: string;
   inbox: string[];

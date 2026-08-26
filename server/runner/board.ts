@@ -87,6 +87,8 @@ export interface WiredPr {
   issue: number;
   pr: number;
   sha: string;
+  /** The head branch — `sloth/issue-<n>-…` marks a PR Sloth wrote itself. */
+  head: string;
 }
 
 /**
@@ -98,14 +100,14 @@ export async function wiredPrs(issues: number[], { unapprovedOnly = true } = {})
   if (!issues.length) return [];
   const [owner, name] = cfg().repo.split('/');
   const parts = issues
-    .map((n) => `i${n}: issue(number: ${n}) { closedByPullRequestsReferences(first: 5) { nodes { number state isDraft headRefOid reviewDecision } } }`)
+    .map((n) => `i${n}: issue(number: ${n}) { closedByPullRequestsReferences(first: 5) { nodes { number state isDraft headRefOid headRefName reviewDecision } } }`)
     .join(' ');
   try {
     const data = await graphql(`{ repository(owner: "${owner}", name: "${name}") { ${parts} } }`);
     return Object.entries(data.repository ?? {}).flatMap(([key, value]: [string, any]) =>
       ((value?.closedByPullRequestsReferences?.nodes ?? []) as any[])
         .filter((p) => p.state === 'OPEN' && !p.isDraft && (!unapprovedOnly || p.reviewDecision !== 'APPROVED'))
-        .map((p) => ({ issue: Number(key.slice(1)), pr: p.number as number, sha: p.headRefOid as string })),
+        .map((p) => ({ issue: Number(key.slice(1)), pr: p.number as number, sha: p.headRefOid as string, head: String(p.headRefName ?? '') })),
     );
   } catch (e) {
     log(`wired PR lookup failed: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
