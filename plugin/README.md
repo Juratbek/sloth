@@ -12,7 +12,7 @@ what the commit convention is, how designs are read — all of that comes from t
 
 | Path | What |
 |---|---|
-| `commands/implement.md` | `/sloth:implement <issue> [order]` — claim → worktree → fix → verify → PR → reviewer loop → Code Review |
+| `commands/implement.md` | `/sloth:implement <issue> [order]` — claim → worktree → fix → verify → browser tester → PR → reviewer loop → Code Review |
 | `commands/review.md` | `/sloth:review <pr> [feedback-only]` — verdict block, inline comments, card back to In Progress |
 | `commands/status.md` | `/sloth:status <issue> <comment-id>` — answer a mention when no session is running |
 | `skills/board/SKILL.md` | Board reads and moves with the ids from the environment, wired-PR lookup, `retry` |
@@ -70,10 +70,12 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_COL_IN_PROGRESS_ID` / `_NAME` | Claimed / being worked on |
 | `SLOTH_COL_NEEDS_HELP_ID` / `_NAME` | Parked, waiting for a human (may be empty) |
 | `SLOTH_COL_CODE_REVIEW_ID` / `_NAME` | Handed to a human reviewer |
+| `SLOTH_COL_APPROVED_ID` / `_NAME` | Approved by a human; the server gives its PR a final `/sloth:review` on Fable (may be empty) |
 | `SLOTH_RUNNER_ROOT` | The checkout sessions run from |
 | `SLOTH_WORKTREES_DIR` | Where per-issue worktrees go — `issue-<n>` under it |
 | `SLOTH_ORDER_LOGIN` | The one login whose comments are orders |
 | `SLOTH_MODEL` | The model subagents run on (`opus`) |
+| `SLOTH_CHROME` | `1` when the session was started with `--chrome`; implement then tests the change in the browser |
 | `SLOTH_START`, `SLOTH_DEADLINE` | Epoch seconds: run start, hard deadline |
 | `SLOTH_BUDGET_MIN` | Minutes in a full budget (60) |
 | `SLOTH_WAIT_HOURS` | How long a parked session waits (2) |
@@ -102,4 +104,6 @@ The **last message of the transcript is the report** — the monitor shows it.
 - Orders from `$SLOTH_ORDER_LOGIN` override everything, in any column, at any step.
 - An open PR on the issue whose branch is `sloth/issue-<n>-*` is resumed, not duplicated.
 - The reviewer subagent is spawned once and reused across rounds.
-- No image, gif or video is ever required: verification and design fidelity are described in words.
+- With `SLOTH_CHROME=1` the implement session spawns one tester subagent that drives the change in the user's Chrome
+  (own tab, console and network checked) and fixes what it finds before the PR.
+- No image, gif or video is ever required in a PR: verification, the tester's run and design fidelity are described in words.

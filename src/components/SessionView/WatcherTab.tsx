@@ -13,7 +13,7 @@ export default function WatcherTab({ watcher }: { watcher?: WatcherSession }) {
           <Row label="name" value={watcher.name} />
           <Row label="pid" value={watcher.pid ?? '—'} />
           <Row label="alive" value={watcher.alive ? 'yes' : 'no'} />
-          <Row label="retries / kills" value={`${watcher.retries} / ${watcher.kills}`} />
+          <Row label="retries" value={String(watcher.retries)} />
           <Row label="blocked" value={watcher.blocked ? 'yes' : 'no'} />
           <Row label="session id" value={watcher.sessionId ? watcher.sessionId.slice(0, 8) : '—'} />
         </Card>

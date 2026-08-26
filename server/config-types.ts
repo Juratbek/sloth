@@ -16,6 +16,8 @@ export interface ConfigColumns {
   inProgress: ColumnRef;
   needsHelp: ColumnRef;
   codeReview: ColumnRef;
+  /** Optional: with no Approved column trigger 5 never fires. */
+  approved: ColumnRef;
 }
 export type ColumnRole = keyof ConfigColumns;
 
@@ -25,6 +27,7 @@ export const DEFAULT_COLUMN_NAMES: Record<ColumnRole, string> = {
   inProgress: 'In Progress',
   needsHelp: 'Sloth needs help',
   codeReview: 'Code Review',
+  approved: 'Approved',
 };
 
 export interface SlothConfig {
@@ -52,6 +55,10 @@ export interface SlothConfig {
   boardSeconds: number;
   commentSeconds: number;
   model: string;
+  /** The model the Approved reviews run on; every other session runs on `model`. */
+  approvedModel: string;
+  /** Pass `--chrome` to implement sessions, so a tester subagent can exercise the change in the user's Chrome. */
+  chrome: boolean;
 }
 
 /** ---- Get-started wizard payloads ---- */

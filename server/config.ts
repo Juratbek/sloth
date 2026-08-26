@@ -50,7 +50,7 @@ const BLANK: SlothConfig = {
   project: { id: '', number: 0, owner: '', title: '' },
   statusField: {
     id: '',
-    columns: { pickup: BLANK_COLUMN, inProgress: BLANK_COLUMN, needsHelp: BLANK_COLUMN, codeReview: BLANK_COLUMN },
+    columns: { pickup: BLANK_COLUMN, inProgress: BLANK_COLUMN, needsHelp: BLANK_COLUMN, codeReview: BLANK_COLUMN, approved: BLANK_COLUMN },
   },
   runnerRoot: process.cwd(),
   runnersDir: '~/.sloth/runners',
@@ -70,6 +70,8 @@ const BLANK: SlothConfig = {
   boardSeconds: 300,
   commentSeconds: 120,
   model: 'opus',
+  approvedModel: 'fable',
+  chrome: true,
 };
 
 /** The commands the Sloth plugin ships, mapped to the GitHub path segment of their target. */

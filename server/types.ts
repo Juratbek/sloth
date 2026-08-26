@@ -42,14 +42,13 @@ export interface WatcherState {
 }
 export interface WatcherSession {
   name: string;
-  kind: 'issue' | 'review';
+  kind: 'issue' | 'review' | 'approved';
   target: number;
   pid?: number;
   alive: boolean;
   sessionId?: string;
   state?: WatcherState;
   retries: number;
-  kills: number;
   blocked: boolean;
   runLogTail: string;
   inbox: string[];

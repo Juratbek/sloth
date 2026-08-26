@@ -73,4 +73,4 @@ export default function Wizard({ existing, onClose }: { existing: SlothConfig | 
 }
 
 /** Picking a different board invalidates the columns chosen for the previous one. */
-const blank = { statusFieldId: undefined, pickup: undefined, inProgress: undefined, needsHelp: undefined, codeReview: undefined };
+const blank = { statusFieldId: undefined, pickup: undefined, inProgress: undefined, needsHelp: undefined, codeReview: undefined, approved: undefined };

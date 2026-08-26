@@ -4,7 +4,7 @@ import { fetchBoard } from './board';
 import { comments } from './comments';
 import { isDry, log, nowSec, setDry } from './log';
 import { isPaused } from './pause';
-import { pausedUntil, pickup, reap, retryStranded, reviews } from './triggers';
+import { finalReviews, pausedUntil, pickup, reap, retryStranded, reviews } from './triggers';
 import type { LoopStatus } from '../types';
 
 export interface TickOptions {
@@ -47,6 +47,7 @@ async function runTick({ board = false, comments: wantComments = false, dryRun =
     const items = await fetchBoard();
     if (!items) return;
     await reviews(items);
+    await finalReviews(items);
     await retryStranded(items);
     await pickup(items);
   } finally {

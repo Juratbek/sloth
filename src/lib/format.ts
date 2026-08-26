@@ -23,7 +23,9 @@ export function elapsed(s: { startedAt?: string; lastAt?: string; live: boolean 
 }
 
 const KIND: Record<string, string> = { 'sloth:implement': 'fix', 'sloth:review': 'review', 'sloth:status': 'status', other: 'run' };
-export const label = (s: SessionSummary) => `${KIND[s.kind] ?? s.kind}${s.target ? ` #${s.target}` : ''}`;
+/** A trigger-5 review runs the same command as a trigger-4 one; its `approved-<pr>` directory tells them apart. */
+export const label = (s: SessionSummary) =>
+  `${s.watcher?.kind === 'approved' ? 'final review' : (KIND[s.kind] ?? s.kind)}${s.target ? ` #${s.target}` : ''}`;
 
 export const STATUS_COLOR: Record<SessionStatus, string> = {
   running: 'bg-emerald-400',

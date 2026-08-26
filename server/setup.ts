@@ -111,7 +111,7 @@ async function clone(body: any): Promise<{ ok: boolean; path?: string; error?: s
   return r.ok ? { ok: true, path: target } : { ok: false, error: notFound(r.err, 'gh') };
 }
 
-const ROLES: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'codeReview'];
+const ROLES: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved'];
 
 /** Fills in the ids of columns the wizard asked Sloth to create, creating them on the board first. */
 async function withColumns(body: unknown): Promise<unknown> {
