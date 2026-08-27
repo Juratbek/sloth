@@ -126,8 +126,9 @@ export async function reviews(board: BoardItem[]): Promise<void> {
 
 /**
  * Trigger 5 — Approved cards whose wired PR is open get one final review per PR head, with
- * `/sloth:review` on `approvedModel`. A GitHub approval does not exclude the PR here:
- * the column is the signal. No Approved column configured → nothing to do.
+ * `/sloth:review <pr> final` on `approvedModel`; a pass labels the issue `Fable: approved`. A GitHub
+ * approval does not exclude the PR here: the column is the signal. No Approved column configured →
+ * nothing to do.
  */
 export async function finalReviews(board: BoardItem[]): Promise<void> {
   const column = cfg().statusField.columns.approved;

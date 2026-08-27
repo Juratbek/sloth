@@ -1,6 +1,6 @@
 ---
-description: Assess a PR against its wired issue — does it resolve it, is it safe to merge, does it add bugs or unnecessary changes — rate it 0–10, comment inline on the findings, and move the wired issue back to In Progress
-argument-hint: <PR number or URL> [feedback-only]
+description: Assess a PR against its wired issue — does it resolve it, is it safe to merge, does it add bugs or unnecessary changes — rate it 0–10, comment inline on the findings, and move the wired issue back to In Progress; in final mode a pass labels the issue `Fable: approved`
+argument-hint: <PR number or URL> [feedback-only|final]
 allowed-tools: Bash, Read, Grep, Glob, Skill, ToolSearch
 ---
 
@@ -22,6 +22,12 @@ If `$ARGUMENTS` contains `feedback-only`, this review runs inside the autonomous
 Step 6 block, with every bug and unmet requirement as a bullet inside it so the implementer can act. When
 re-asked on the same PR, **re-read the diff** (`gh pr diff`) — it has changed — and judge the new state, not
 your memory of the old one.
+
+## Final mode
+
+If `$ARGUMENTS` contains `final`, this is the server's last review before merge (trigger 5): a human moved
+the card to `$SLOTH_COL_APPROVED_NAME` and waits for the verdict. Everything else applies unchanged, plus
+Step 5.5: the wired issue carries the label **`Fable: approved`** exactly when this review passed.
 
 ## 1. Resolve the PR and its wired issue
 
@@ -99,6 +105,22 @@ New bugs, or the PR does not resolve its issue, or both → move that issue's ca
 `$SLOTH_COL_IN_PROGRESS_ID`). Not on the board, or already there → leave it and note that in the report.
 Only ever move the issue wired to **this** PR.
 
+## 5.5. Label the wired issue — final mode only
+
+"OK to merge" **yes** → add `Fable: approved` to the wired issue. **No** → remove it, so a label an earlier
+final review left there does not outlive a rejected new head. Create the label first: a repository that
+never had it rejects the add.
+
+```bash
+retry gh label create "Fable: approved" --repo "$SLOTH_REPO" --color 6f42c1 \
+  --description "Passed Sloth's final review on the Fable model" --force
+retry gh issue edit <issue> --repo "$SLOTH_REPO" --add-label "Fable: approved"       # OK to merge: yes
+retry gh issue edit <issue> --repo "$SLOTH_REPO" --remove-label "Fable: approved"    # OK to merge: no
+```
+
+Only ever label the issue wired to **this** PR; no wired issue → nothing to label. Outside final mode
+never touch the label.
+
 ## 6. Report
 
 Respond with exactly this block and nothing else — no text before or after, no justification paragraph:
@@ -111,6 +133,7 @@ New bugs: <yes/no>
 Unnecessary changes: <yes/no>
 Review comment: <review URL, or none>
 Issue moved to In Progress: <yes/no — issue number, or n/a>
+Fable: approved label: <added/removed — issue number, or n/a>
 ```
 
 The only permitted additions are inside the block:
@@ -133,3 +156,5 @@ real gaps or scope creep; 3–4 partial or introduces bugs; 0–2 does not resol
    the comment.
 6. A missing image, gif or video is **never** a finding and never lowers the rating: Sloth runs headless, so
    PRs describe verification and design fidelity in words.
+7. The `Fable: approved` label is touched in final mode only, on the wired issue only, and mirrors this
+   review's "OK to merge": yes adds it, no removes it.
