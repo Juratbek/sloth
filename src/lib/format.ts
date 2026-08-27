@@ -14,6 +14,18 @@ export function duration(sec: number) {
 export const clock = (iso?: string | number) =>
   iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
 
+/** Calendar day of a moment in local time, as "Today", "Yesterday", or a short date — for grouping lists by day. */
+export function dayLabel(iso: string) {
+  const d = new Date(iso);
+  const today = new Date();
+  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((startOf(today) - startOf(d)) / 86_400_000);
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  const sameYear = d.getFullYear() === today.getFullYear();
+  return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }) });
+}
+
 export const ago = (iso?: string) => (iso ? duration((Date.now() - Date.parse(iso)) / 1000) : '—');
 
 export function elapsed(s: { startedAt?: string; lastAt?: string; live: boolean }) {
