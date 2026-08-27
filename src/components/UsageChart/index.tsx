@@ -1,4 +1,5 @@
 import useUsage from '../../hooks/use-usage';
+import { usd } from '../../lib/format';
 import Bars from './Bars';
 import { AXIS, GRID, INK, PLOT, SERIES, VIEW } from './constants';
 import { dayLabel, millions, niceMax, totalOf } from './utils';
@@ -11,11 +12,12 @@ export default function UsageChart({ days = 7 }: { days?: number }) {
   if (error) return <p className="text-sm text-red-400">{String(error)}</p>;
   if (!data) return <p className="text-sm text-zinc-500">Loading usage…</p>;
 
-  const { buckets } = data;
+  const { buckets, cost, byModel } = data;
   const max = niceMax(Math.max(...buckets.map(totalOf)));
   const band = PLOT.w / buckets.length;
   const baseline = PLOT.y + PLOT.h;
   const totals = SERIES.map((s) => ({ ...s, total: buckets.reduce((n, b) => n + b[s.key], 0) }));
+  const unpriced = byModel.filter((m) => m.cost === null);
 
   return (
     <section className="space-y-1">
@@ -23,6 +25,22 @@ export default function UsageChart({ days = 7 }: { days?: number }) {
         <h3 className="text-[10px] font-semibold tracking-wide text-zinc-500 uppercase">
           token usage · last {days} days
         </h3>
+        <span className="flex flex-wrap items-baseline gap-x-2 text-[11px] text-zinc-400">
+          <span className="text-base font-semibold text-zinc-100">{usd(cost)}</span>
+          <span className="text-zinc-500">API estimate</span>
+          {byModel
+            .filter((m) => m.cost !== null)
+            .map((m) => (
+              <span key={m.model}>
+                {m.model.replace(/^claude-/, '')} <span className="text-zinc-200">{usd(m.cost ?? 0)}</span>
+              </span>
+            ))}
+          {unpriced.length > 0 && (
+            <span className="text-amber-400" title="No list price known for these models, so their tokens are not counted.">
+              excl. {unpriced.map((m) => m.model).join(', ')}
+            </span>
+          )}
+        </span>
         <div className="ml-auto flex flex-wrap items-center gap-3 text-[11px] text-zinc-400">
           {totals.map((s) => (
             <span key={s.key} className="flex items-center gap-1.5">

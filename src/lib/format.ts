@@ -3,6 +3,9 @@ import type { MonitorConfig, SessionKind, SessionStatus, SessionSummary, Usage, 
 export const k = (n: number) =>
   n < 1000 ? String(n) : n < 1e6 ? `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k` : `${(n / 1e6).toFixed(2)}M`;
 
+/** `$5,627.90` — always cents, so small hourly amounts still read as money. */
+export const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+
 export function duration(sec: number) {
   sec = Math.max(0, Math.round(sec));
   const h = Math.floor(sec / 3600);
