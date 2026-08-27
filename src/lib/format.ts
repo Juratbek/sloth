@@ -1,4 +1,4 @@
-import type { MonitorConfig, SessionKind, SessionStatus, SessionSummary, Usage } from '../../server/types';
+import type { MonitorConfig, SessionKind, SessionStatus, SessionSummary, Usage, WatcherSession } from '../../server/types';
 
 export const k = (n: number) =>
   n < 1000 ? String(n) : n < 1e6 ? `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k` : `${(n / 1e6).toFixed(2)}M`;
@@ -38,6 +38,34 @@ const KIND: Record<string, string> = { 'sloth:implement': 'fix', 'sloth:review':
 /** A trigger-5 review runs the same command as a trigger-4 one; its `approved-<pr>` directory tells them apart. */
 export const label = (s: SessionSummary) =>
   `${s.watcher?.kind === 'approved' ? 'final review' : (KIND[s.kind] ?? s.kind)}${s.target ? ` #${s.target}` : ''}`;
+
+/** Step numbers are the section headings of the plugin commands; the UI shows what the session is doing instead. */
+const IMPLEMENT_STEPS: Record<string, string> = {
+  '0': 'claiming',
+  '1': 'reading issue',
+  '2': 'setting up',
+  '3': 'implementing',
+  '4': 'verifying',
+  '4.5': 'browser testing',
+  '5': 'opening PR',
+  '5.5': 'in review',
+  '6': 'handing off',
+  '7': 'cleaning up',
+  Q: 'asking',
+};
+const REVIEW_STEPS: Record<string, string> = {
+  '1': 'resolving PR',
+  '2': 'reading diff',
+  '3': 'assessing',
+  '4': 'commenting',
+  '5': 'sending back',
+  '5.5': 'labeling',
+  '6': 'reporting',
+};
+const STEPS: Record<WatcherSession['kind'], Record<string, string>> = { issue: IMPLEMENT_STEPS, review: REVIEW_STEPS, approved: REVIEW_STEPS };
+/** Human words for a session's current step; unknown values fall back to "step N" so nothing is hidden. */
+export const stepLabel = (kind: WatcherSession['kind'], step?: string) =>
+  step ? (STEPS[kind]?.[step.trim()] ?? `step ${step}`) : undefined;
 
 export const STATUS_COLOR: Record<SessionStatus, string> = {
   running: 'bg-emerald-400',

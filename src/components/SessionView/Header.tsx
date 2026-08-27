@@ -1,5 +1,5 @@
 import type { MonitorConfig, SessionDetail } from '../../../server/types';
-import { STATUS_COLOR, ago, elapsed, githubUrl, k, label, newInput } from '../../lib/format';
+import { STATUS_COLOR, ago, elapsed, githubUrl, k, label, newInput, stepLabel } from '../../lib/format';
 import { ToolChips } from './Usage';
 
 function Stats({ s }: { s: SessionDetail }) {
@@ -29,7 +29,11 @@ function WatcherLine({ s }: { s: SessionDetail }) {
     <div className="space-y-1 text-xs text-zinc-400">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="text-zinc-500">{w.name}</span>
-        {st?.step && <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[11px]">step {st.step}</span>}
+        {st?.step && (
+          <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[11px]" title={`step ${st.step}`}>
+            {stepLabel(w.kind, st.step)}
+          </span>
+        )}
         {st?.branch && <span className="font-mono text-[11px] text-zinc-500">{st.branch}</span>}
         {st?.pr && (
           <a href={st.pr} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">

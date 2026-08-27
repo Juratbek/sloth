@@ -1,5 +1,6 @@
 import type { WatcherSession } from '../../../server/types';
 import useFollowBottom from '../../hooks/use-follow-bottom';
+import { stepLabel } from '../../lib/format';
 import { Card, Row } from './Usage';
 
 export default function WatcherTab({ watcher }: { watcher?: WatcherSession }) {
@@ -19,7 +20,7 @@ export default function WatcherTab({ watcher }: { watcher?: WatcherSession }) {
         </Card>
         <Card title="state.json">
           <Row label="state" value={st?.state ?? '—'} />
-          <Row label="step" value={st?.step ?? '—'} />
+          <Row label="step" value={st?.step ? `${st.step} · ${stepLabel(watcher.kind, st.step)}` : '—'} />
           <Row label="branch" value={st?.branch ?? '—'} />
           <Row label="pr" value={st?.pr?.replace(/.*\//, '#') ?? '—'} />
           <Row label="servers" value={st?.servers ?? '—'} />
