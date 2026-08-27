@@ -55,8 +55,8 @@ Post one comment: `gh issue comment "$ISSUE" --repo "$SLOTH_REPO" --body-file <f
     parked for help, stopped, killed);
   - the branch and PR links when they exist, and whether the PR is a draft;
   - the open question when the card sits in `$SLOTH_COL_NEEDS_HELP_NAME`;
-  - **what would make Sloth continue**: an answer in this thread, or moving the card back to
-    `$SLOTH_COL_PICKUP_NAME`.
+  - **what would make Sloth continue**: an answer in this thread (a parked card is picked up again at the
+    next board check), or moving the card back to `$SLOTH_COL_PICKUP_NAME` to start over.
 - Never write `$SLOTH_MENTION` in your own comment — the server reads it as a new trigger.
 - If the comment is an **order** rather than a status question and its author is not `$SLOTH_ORDER_LOGIN`,
   reply only that orders come from `$SLOTH_ORDER_LOGIN` and stop.

@@ -28,10 +28,15 @@ board. When it finds work, it starts a Claude Code session to do it. That is all
 
 If the session cannot continue — the issue is unclear, the tests will not pass, the time runs out —
 it does not guess. It writes **one comment** on the issue with its questions, moves the card to
-*Sloth needs help*, and waits up to 2 hours.
+*Sloth needs help*, and waits up to 2 hours. The people configured as responsible are `@`-mentioned
+in that comment, so GitHub tells them; with a webhook configured, Slack (or whatever is behind the
+URL) hears about the card too, within one board poll. Both are set in the wizard's *Columns* step
+(`helpLogins` and `helpWebhook` in `config.json`); with neither, nobody is told.
 
 - Answer in the issue thread, and the session continues.
-- No answer? The session stops. Move the card back to the pickup column to try again.
+- No answer within 2 hours? The session stops, the card stays in *Sloth needs help*. Sloth keeps
+  watching that column: an answer written later starts a new session on the issue, which re-reads the
+  whole thread and continues. Moving the card back to the pickup column instead starts over.
 
 ## Talking to Sloth
 
@@ -40,6 +45,9 @@ Write `@sloth` in an issue comment.
 - If a session is working on that issue, it reads your comment at its next step.
 - If you are the configured `orderLogin` and your comment is not a question, it is an **order**:
   Sloth starts a session to do what you said ("address the review comments", "start over with X").
+  An order about the board itself — "move it to Planning", "back to Backlog", "close it" — is carried
+  out as is: sessions know every column on the board, not only Sloth's own. This also works as the
+  answer on a card in *Sloth needs help*.
 - Anything else gets a short **status reply**: which column the card is in, what the last session
   did, where the branch and PR are.
 
@@ -57,7 +65,7 @@ Every comment Sloth writes starts with `**Sloth:**`.
   most twice in a row. After that it goes to *Sloth needs help*.
 - **Claude usage limit reached?** Sloth waits 30 minutes and tries again. The card keeps its place.
 - **Pause** in the header stops Sloth from starting anything new. Running sessions finish, comments
-  are still answered. Press **Resume** to continue.
+  are still answered, parked cards are still announced. Press **Resume** to continue.
 
 ## Where everything is
 

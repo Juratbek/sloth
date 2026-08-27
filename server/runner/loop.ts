@@ -1,10 +1,12 @@
 import { cfg } from '../config';
 import { broadcast } from '../events';
 import { fetchBoard } from './board';
+import { refreshColumns } from './columns';
 import { comments } from './comments';
 import { isDry, log, nowSec, setDry } from './log';
+import { notifyParked } from './notify';
 import { isPaused } from './pause';
-import { finalReviews, pausedUntil, pickup, reap, retryStranded, reviews } from './triggers';
+import { answered, finalReviews, pausedUntil, pickup, reap, retryStranded, reviews } from './triggers';
 import type { LoopStatus } from '../types';
 
 export interface TickOptions {
@@ -30,6 +32,7 @@ async function runTick({ board = false, comments: wantComments = false, dryRun =
   state.ticking = true;
   try {
     await reap();
+    await refreshColumns();
     const paused = pausedUntil();
     if (nowSec() < paused) {
       log(`paused until ${new Date(paused * 1000).toISOString()} (usage limit)`);
@@ -42,13 +45,17 @@ async function runTick({ board = false, comments: wantComments = false, dryRun =
       state.lastComment = Date.now();
       await comments();
     }
-    if (!board || userPaused) return;
+    if (!board) return;
     state.lastBoard = Date.now();
     const items = await fetchBoard();
     if (!items) return;
+    // A parked card is announced even while paused: sessions keep running, so they keep parking.
+    await notifyParked(items);
+    if (userPaused) return;
     await reviews(items);
     await finalReviews(items);
     await retryStranded(items);
+    await answered(items);
     await pickup(items);
   } finally {
     state.ticking = false;

@@ -23,6 +23,8 @@ function payload(draft: Draft, existing: SlothConfig | null): ConfigPayload {
     orderLogin: draft.orderLogin,
     maxActive: draft.maxActive,
     maxAlive: draft.maxAlive,
+    helpLogins: draft.helpLogins,
+    helpWebhook: draft.helpWebhook,
   };
 }
 
@@ -52,6 +54,7 @@ export default function StepDone({
     ['Code Review', columnLabel(columns.codeReview)],
     ['Approved', columnLabel(columns.approved)],
     ['Orders from', config.orderLogin || 'nobody'],
+    ['Needs help → notify', [...(config.helpLogins ?? []).map((l) => `@${l}`), config.helpWebhook && 'webhook'].filter(Boolean).join(' · ') || 'nobody'],
     ['Caps', `${config.maxActive} active · ${config.maxAlive} alive`],
   ];
 

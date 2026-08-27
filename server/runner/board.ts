@@ -4,6 +4,7 @@ import { isDry, log } from './log';
 
 export interface BoardItem {
   number: number;
+  title: string;
   status: string;
   labels: string[];
   assignees: string[];
@@ -16,13 +17,13 @@ const BOARD_QUERY = `query($id: ID!, $cursor: String) {
     pageInfo { hasNextPage endCursor }
     nodes {
       fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
-      content { __typename ... on Issue { number labels(first: 20) { nodes { name } }
+      content { __typename ... on Issue { number title labels(first: 20) { nodes { name } }
         assignees(first: 10) { nodes { login } } } }
     } } } } }`;
 
 interface RawNode {
   fieldValueByName?: { name?: string };
-  content?: { __typename?: string; number?: number; labels?: { nodes: { name: string }[] }; assignees?: { nodes: { login: string }[] } };
+  content?: { __typename?: string; number?: number; title?: string; labels?: { nodes: { name: string }[] }; assignees?: { nodes: { login: string }[] } };
 }
 
 /** Every issue card on the board, in board order. */
@@ -37,6 +38,7 @@ export async function fetchBoard(): Promise<BoardItem[] | undefined> {
         if (n.content?.__typename !== 'Issue' || !n.content.number) continue;
         items.push({
           number: n.content.number,
+          title: n.content.title ?? '',
           status: n.fieldValueByName?.name ?? '',
           labels: (n.content.labels?.nodes ?? []).map((l) => l.name),
           assignees: (n.content.assignees?.nodes ?? []).map((a) => a.login),

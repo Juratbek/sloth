@@ -31,10 +31,24 @@ const text = (v: unknown): string | undefined => (typeof v === 'string' && v.tri
 const int = (v: unknown, fallback: number, min = 1) =>
   Number.isFinite(Number(v)) && Number(v) >= min ? Math.floor(Number(v)) : fallback;
 
+/** GitHub logins from a list or a comma / space separated string; a leading `@` is dropped. */
+export function logins(v: unknown): string[] {
+  const raw = Array.isArray(v) ? v.map(String) : typeof v === 'string' ? v.split(/[\s,]+/) : [];
+  return [...new Set(raw.map((l) => l.trim().replace(/^@/, '')).filter(Boolean))];
+}
+
+function webhook(v: unknown): string {
+  const url = text(v) ?? '';
+  if (url && !/^https?:\/\/\S+$/.test(url)) throw new Error('helpWebhook must be an http(s) URL');
+  return url;
+}
+
 function column(v: unknown, what: string): ColumnRef {
   const c = v as ColumnRef | undefined;
   return { id: str(c?.id, `${what}.id`), name: str(c?.name, `${what}.name`) };
 }
+/** An optional role: absent, or saved as the blank it normalizes to, both mean "no such column". */
+const optional = (v: unknown, what: string): ColumnRef => ((v as ColumnRef | undefined)?.id ? column(v, what) : { id: '', name: '' });
 
 /**
  * Validates a config payload (a POST /api/setup/config body or the saved file) into a config we are
@@ -61,10 +75,10 @@ export function normalizeConfig(input: unknown): SlothConfig {
         pickup: column(columns.pickup, 'pickup'),
         inProgress: column(columns.inProgress, 'inProgress'),
         // Optional: with no needs-help column a blocked session leaves the card and marks itself blocked.
-        needsHelp: columns.needsHelp ? column(columns.needsHelp, 'needsHelp') : { id: '', name: '' },
+        needsHelp: optional(columns.needsHelp, 'needsHelp'),
         codeReview: column(columns.codeReview, 'codeReview'),
         // Optional: without it trigger 5 (the final review of Approved cards) never fires.
-        approved: columns.approved ? column(columns.approved, 'approved') : { id: '', name: '' },
+        approved: optional(columns.approved, 'approved'),
       },
     },
     runnerRoot: expandPath(text(b.runnerRoot) ?? `~/.sloth/runners/${name}`),
@@ -87,5 +101,7 @@ export function normalizeConfig(input: unknown): SlothConfig {
     model: text(b.model) ?? 'opus',
     approvedModel: text(b.approvedModel) ?? 'fable',
     chrome: b.chrome !== false,
+    helpLogins: logins(b.helpLogins),
+    helpWebhook: webhook(b.helpWebhook),
   };
 }

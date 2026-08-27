@@ -59,6 +59,10 @@ export interface SlothConfig {
   approvedModel: string;
   /** Pass `--chrome` to implement sessions, so a tester subagent can exercise the change in the user's Chrome. */
   chrome: boolean;
+  /** GitHub logins `@`-mentioned in the comment Sloth writes when it parks a card in the needs-help column. */
+  helpLogins: string[];
+  /** Optional URL POSTed (Slack / Discord incoming-webhook shape) when a card lands in the needs-help column. */
+  helpWebhook: string;
 }
 
 /** ---- Get-started wizard payloads ---- */
