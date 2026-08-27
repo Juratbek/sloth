@@ -120,9 +120,29 @@ export interface LoopStatus {
   nextComment?: number;
 }
 
+/** Remote access: where the UI is reachable from outside once the tunnel is up, or why it is not. */
+export interface RemoteStatus {
+  url?: string;
+  error?: string;
+}
+export interface InstallStatus {
+  running: boolean;
+  /** The last lines brew printed. */
+  output: string;
+  error?: string;
+}
+/** The QR code's payload — the address with the secret that signs a phone in — and what stands in its way. */
+export interface RemoteLink extends RemoteStatus {
+  link?: string;
+  /** The tunnel tool; absent when `publicUrl` is set and no tool is needed. */
+  tool?: { command: string; installed: boolean; installable: boolean };
+  install: InstallStatus;
+}
+
 export interface Overview {
   generatedAt: string;
   config: MonitorConfig;
+  remote: RemoteStatus;
   watcher: {
     logTail: string[];
     lastTick?: string;

@@ -46,16 +46,19 @@ function Row({ s, active, onSelect }: { s: SessionSummary; active: boolean; onSe
 }
 
 export default function Sidebar({
+  open,
   sessions,
   selected,
   onSelect,
 }: {
+  /** On a phone the list is the whole page when open and hidden otherwise; wider screens always show it. */
+  open: boolean;
   sessions: SessionSummary[];
   selected: string | null;
   onSelect: (id: string) => void;
 }) {
   return (
-    <aside className="w-80 shrink-0 overflow-y-auto border-r border-zinc-800">
+    <aside className={`${open ? 'block' : 'hidden'} w-full shrink-0 overflow-y-auto border-r border-zinc-800 md:block md:w-80`}>
       {GROUPS.map((g) => {
         const rows = sessions.filter((s) => g.statuses.includes(s.status));
         if (!rows.length) return null;

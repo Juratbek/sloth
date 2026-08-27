@@ -76,12 +76,12 @@ export default function ToolBlock({
         )}
       </summary>
       <div className="space-y-2 border-t border-zinc-800 p-2">
-        <pre className="max-h-72 overflow-auto text-[11px] whitespace-pre-wrap text-zinc-400">
+        <pre className="max-h-72 overflow-auto text-[11px] break-words whitespace-pre-wrap text-zinc-400">
           {inputText(block.name, block.input)}
         </pre>
         {result && (
           <pre
-            className={`max-h-72 overflow-auto border-t border-zinc-800 pt-2 text-[11px] whitespace-pre-wrap ${result.isError ? 'text-red-300' : 'text-zinc-500'}`}
+            className={`max-h-72 overflow-auto border-t border-zinc-800 pt-2 text-[11px] break-words whitespace-pre-wrap ${result.isError ? 'text-red-300' : 'text-zinc-500'}`}
           >
             {result.content}
             {result.truncated && '\n… truncated'}

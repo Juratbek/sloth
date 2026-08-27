@@ -64,16 +64,25 @@ function TickButton({ busy }: { busy: boolean }) {
   );
 }
 
+const iconButton = 'rounded-md border border-zinc-800 px-2 py-0.5 text-xs text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200';
+
 export default function TopBar({
   overview,
+  menu,
+  onMenu,
   onHome,
   onSettings,
+  onRemote,
 }: {
   overview: Overview;
+  menu: boolean;
+  onMenu: () => void;
   onHome: () => void;
   onSettings: () => void;
+  /** Opens the QR dialog; absent when the page is not on the machine Sloth runs on, where there is no QR. */
+  onRemote?: () => void;
 }) {
-  const { config, watcher, rateLimit, sessions } = overview;
+  const { config, watcher, rateLimit, sessions, remote } = overview;
   const working = sessions.filter((s) => s.status === 'running').length;
   const waiting = sessions.filter((s) => s.status === 'waiting').length;
   const full = working >= config.maxActive;
@@ -82,7 +91,7 @@ export default function TopBar({
   const low = Object.entries(rateLimit ?? {}).find(([, b]) => b.remaining < b.limit * 0.1);
 
   return (
-    <header className="flex items-center gap-2 border-b border-zinc-800 px-4 py-2">
+    <header className="flex flex-wrap items-center gap-2 border-b border-zinc-800 px-3 py-2 md:px-4">
       <button onClick={onHome} className="mr-2 text-sm font-semibold text-zinc-100 hover:text-white">
         {config.title}
       </button>
@@ -91,21 +100,31 @@ export default function TopBar({
         value={`${working}${full ? `/${config.maxActive}` : ''} working · ${waiting} waiting`}
         tone={full ? 'amber' : 'emerald'}
       />
-      <Pill label="pickup" value={config.pickupColumn} />
-      <Pill label="board" value={nextAt(watcher.loop.nextBoard)} />
-      <Pill label="comments" value={nextAt(watcher.loop.nextComment)} />
+      <span className="hidden md:contents">
+        <Pill label="pickup" value={config.pickupColumn} />
+        <Pill label="board" value={nextAt(watcher.loop.nextBoard)} />
+        <Pill label="comments" value={nextAt(watcher.loop.nextComment)} />
+      </span>
       <TickButton busy={watcher.loop.ticking} />
       <PauseButton paused={watcher.paused} />
       {watcher.paused && <Pill value="paused" tone="amber" />}
       {limitPaused && <Pill label="paused until" value={clock(watcher.pausedUntil! * 1000)} tone="amber" />}
       <span className="flex-1" />
-      <button
-        onClick={onSettings}
-        title="Settings"
-        aria-label="Settings"
-        className="rounded-md border border-zinc-800 px-2 py-0.5 text-xs text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
-      >
+      {onRemote && (
+        <button
+          onClick={onRemote}
+          title={remote.error ?? 'Open on your phone'}
+          aria-label="Open on your phone"
+          className={`${iconButton} ${remote.error ? 'border-amber-900 text-amber-300' : ''}`}
+        >
+          ▦
+        </button>
+      )}
+      <button onClick={onSettings} title="Settings" aria-label="Settings" className={iconButton}>
         ⚙
+      </button>
+      <button onClick={onMenu} className={`${iconButton} md:hidden`} aria-expanded={menu}>
+        {menu ? 'Close' : 'Sessions'}
       </button>
       {low && (
         <Pill

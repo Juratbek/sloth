@@ -5,6 +5,8 @@ import TopBar from './components/TopBar';
 import Sidebar from './components/Sidebar';
 import SessionView from './components/SessionView';
 import WatcherPanel from './components/WatcherPanel';
+import RemoteDialog from './components/RemoteDialog';
+import { isLocalPage } from './hooks/use-remote';
 import Wizard from './setup/Wizard';
 import { useConfig } from './setup/use-setup';
 
@@ -14,6 +16,13 @@ export default function App() {
   const { data, error } = useOverview();
   const [settings, setSettings] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+  const [remote, setRemote] = useState(false);
+  // On a phone the session list and the page take turns; `menu` is which one shows.
+  const [menu, setMenu] = useState(false);
+  const show = (id: string | null) => {
+    setSelected(id);
+    setMenu(false);
+  };
 
   if (config.isPending) return <div className="p-6 text-zinc-500">Loading…</div>;
   // No config file yet ⇒ the get-started wizard is the whole app.
@@ -25,13 +34,21 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col">
-      <TopBar overview={data} onHome={() => setSelected(null)} onSettings={() => setSettings(true)} />
+      <TopBar
+        overview={data}
+        menu={menu}
+        onMenu={() => setMenu(!menu)}
+        onHome={() => show(null)}
+        onSettings={() => setSettings(true)}
+        onRemote={isLocalPage() ? () => setRemote(true) : undefined}
+      />
       <div className="flex min-h-0 flex-1">
-        <Sidebar sessions={data.sessions} selected={selected} onSelect={setSelected} />
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <Sidebar open={menu} sessions={data.sessions} selected={selected} onSelect={show} />
+        <main className={`${menu ? 'hidden' : 'flex'} min-h-0 min-w-0 flex-1 flex-col md:flex`}>
           {selected ? <SessionView key={selected} id={selected} config={data.config} /> : <WatcherPanel overview={data} />}
         </main>
       </div>
+      {remote && <RemoteDialog onClose={() => setRemote(false)} />}
     </div>
   );
 }

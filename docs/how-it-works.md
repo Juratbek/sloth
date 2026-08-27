@@ -76,8 +76,8 @@ Every comment Sloth writes starts with `**Sloth:**`.
 ├── runners/<repo>/      the checkout sessions start from
 ├── worktrees/<repo>/    one worktree per issue
 ├── sessions/<repo>/     one folder per session: its log, its state, its inbox
-└── state/               markers so nothing is done twice; the pause
+└── state/               markers so nothing is done twice; the pause; the remote-access secret
 ```
 
 The UI at `http://localhost:4400` shows every session, its full transcript, its token spend, and
-the log.
+the log. The ▦ button in its header is a QR code that opens the same UI on your phone.

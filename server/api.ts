@@ -1,9 +1,11 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { Plugin } from 'vite';
+import type { Plugin, PreviewServer, ViteDevServer } from 'vite';
 import { cfg } from './config';
 import { broadcast, sse, watchAll } from './events';
 import { startLoop, stopLoop, tick } from './runner/loop';
 import { isPaused, setPaused } from './runner/pause';
+import { install } from './install';
+import { guard, isLocal, remoteLink, rotateToken, startTunnel, stopTunnel } from './remote';
 import { agentDetail, overview, sessionDetail } from './sessions';
 import { handleSetup } from './setup';
 import { usageSeries } from './usage';
@@ -54,7 +56,22 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     return true;
   }
   let body: unknown;
+  // Reconfiguring (the wizard) and the QR's secret stay on the machine Sloth runs on: a phone that holds
+  // the cookie may read and tick, never rewrite the config — that would be code execution here.
+  if (p.startsWith('/api/setup/') || p.startsWith('/api/remote')) {
+    if (!isLocal(req)) {
+      res.statusCode = 403;
+      res.end('only from the machine Sloth runs on');
+      return true;
+    }
+  }
   if (p.startsWith('/api/setup/')) return setup(p, req, res);
+  if (p.startsWith('/api/remote')) {
+    if (p === '/api/remote/rotate' && req.method === 'POST') rotateToken();
+    // Once the tool is there the tunnel starts on its own and the QR follows.
+    else if (p === '/api/remote/install' && req.method === 'POST') install(cfg().tunnel[0], () => startTunnel());
+    return json(res, remoteLink());
+  }
   try {
     const session = /^\/api\/sessions\/([\w-]+)$/.exec(p);
     const agent = /^\/api\/sessions\/([\w-]+)\/agents\/(\w+)$/.exec(p);
@@ -88,15 +105,25 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
 
 /** Vite plugin: serves the read-only monitor API from the same process as the UI (dev and preview). */
 export function monitorApi(): Plugin {
-  const mount = (server: {
-    middlewares: { use: (fn: (req: IncomingMessage, res: ServerResponse, next: () => void) => void) => void };
-    httpServer?: { on: (event: 'close', fn: () => void) => void } | null;
-  }) => {
+  const mount = (server: ViteDevServer | PreviewServer) => {
     watchAll();
     // The watcher is this process: it starts with the server and stops when the server stops.
     startLoop();
-    server.httpServer?.on('close', stopLoop);
-    process.once('exit', stopLoop);
+    const http = server.httpServer;
+    // The tunnel needs the port actually bound — Vite moves to the next one when the configured port is taken.
+    const tunnel = () => {
+      const address = http?.address();
+      startTunnel(typeof address === 'object' && address ? address.port : cfg().port);
+    };
+    if (http?.listening) tunnel();
+    else http?.once('listening', tunnel);
+    const stop = () => {
+      stopLoop();
+      stopTunnel();
+    };
+    http?.on('close', stop);
+    process.once('exit', stop);
+    server.middlewares.use(guard);
     server.middlewares.use((req, res, next) => {
       void handle(req, res).then((handled) => handled || next());
     });

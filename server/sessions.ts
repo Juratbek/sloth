@@ -3,6 +3,7 @@ import path from 'node:path';
 import { cfg } from './config';
 import { add, promptOf, readRecords, summarize, toMessages, zero } from './transcripts';
 import { agentsDirOf, linkAgents, listAgents } from './agents';
+import { remoteStatus } from './remote';
 import { listSessionDirs, rateLimit, titleFor, watcherInfo } from './watcher';
 import type { AgentDetail, Overview, SessionDetail, SessionKind, SessionSummary, WatcherSession } from './types';
 
@@ -73,6 +74,7 @@ export async function overview(): Promise<Overview> {
   return {
     generatedAt: new Date().toISOString(),
     config: monitorConfig(),
+    remote: remoteStatus(),
     watcher: watcherInfo(),
     rateLimit: rate,
     sessions,
