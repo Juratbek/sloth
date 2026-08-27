@@ -26,7 +26,7 @@ The short version; the tick-by-tick account is in [docs/how-it-works.md](docs/ho
 | 2 | An unassigned issue sits in In Progress with no live session | Relaunches it, at most `maxRetries` times in a row |
 | 3 | Someone on the team mentions `@sloth` in a comment | Delivers it to the live session; with no session, an order (admin or developer) starts one and anything else gets a status reply. A login with no role is ignored |
 | 4 | An unassigned issue in Code Review has an open, non-draft, unapproved wired PR **written by a human** | Runs `/sloth:review <pr>`, once per PR head. Sloth's own PRs were already vetted by their session's reviewer loop |
-| 5 | An issue in Approved — assigned or not — has an open, non-draft wired PR and no `Fable: approved` label | Runs `/sloth:review <pr> final` on the `fable` model, once per PR head; a pass labels the issue `Fable: approved`, which keeps it from being reviewed again |
+| 5 | An issue in Approved — assigned or not — has an open, non-draft wired PR and no `Fable: approved` label | Runs `/sloth:review <pr> final` on the `fable` model, once per PR head; the verdict is posted on the PR either way, and a pass labels the issue `Fable: approved`, which keeps it from being reviewed again |
 
 The board is read every 5 minutes, comments every 2; **Tick now** runs both at once. **Pause**
 stops Sloth from starting anything new (running sessions, inbox deliveries, status replies and
@@ -47,7 +47,7 @@ needs-help notifications carry on) and survives a restart.
   answer in the thread brings it back — `helpLogins` are mentioned in that question and `helpWebhook`
   is called, see *Configuration*),
   *Code Review* (trigger 4) and *Approved* (trigger 5 — a final review on the Fable model; a GitHub approval does not skip it,
-  and a pass labels the issue `Fable: approved`).
+  the verdict lands on the PR pass or fail, and a pass labels the issue `Fable: approved`).
   Missing columns are created after the pickup column, without dropping any existing option.
 - **Sessions** are detached `claude -p … --plugin-dir <sloth>/plugin` runs in the runner checkout.
   They survive a Sloth restart. `maxActive` may work at once, `maxAlive` including the ones waiting

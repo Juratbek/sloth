@@ -1,5 +1,5 @@
 ---
-description: Assess a PR against its wired issue — does it resolve it, is it safe to merge, does it add bugs or unnecessary changes — rate it 0–10, comment inline on the findings, and move the wired issue back to In Progress; in final mode a pass labels the issue `Fable: approved`
+description: Assess a PR against its wired issue — does it resolve it, is it safe to merge, does it add bugs or unnecessary changes — rate it 0–10, comment inline on the findings, and move the wired issue back to In Progress; in final mode the verdict is always posted on the PR and a pass labels the issue `Fable: approved`
 argument-hint: <PR number or URL> [feedback-only|final]
 allowed-tools: Bash, Read, Grep, Glob, Skill, ToolSearch
 ---
@@ -26,8 +26,10 @@ your memory of the old one.
 ## Final mode
 
 If `$ARGUMENTS` contains `final`, this is the server's last review before merge (trigger 5): a human moved
-the card to `$SLOTH_COL_APPROVED_NAME` and waits for the verdict. Everything else applies unchanged, plus
-Step 5.5: the wired issue carries the label **`Fable: approved`** exactly when this review passed.
+the card to `$SLOTH_COL_APPROVED_NAME` and waits for the verdict — on the PR, where they will look for it.
+Everything else applies unchanged, plus two things: Step 4 **always** submits the review, pass or fail, with
+the verdict in its body; and Step 5.5: the wired issue carries the label **`Fable: approved`** exactly when
+this review passed.
 
 ## 1. Resolve the PR and its wired issue
 
@@ -68,12 +70,13 @@ ambiguous.
 3. **Scope** — changes unrelated to the wired issue: drive-by refactors, formatting churn in untouched code,
    features nobody asked for. A small refactor that directly enables the fix is fine, not "unnecessary".
 
-## 4. Comment on the PR — whenever "OK to merge" is no
+## 4. Comment on the PR — whenever "OK to merge" is no, and always in final mode
 
-Clean and resolves its issue → submit nothing; the verdict block is the whole output.
+Clean and resolves its issue, **not** in final mode → submit nothing; the verdict block is the whole output.
 
 Otherwise submit **one** review with `event: "COMMENT"`: an inline comment per bug, plus a body bullet per
-unmet requirement.
+unmet requirement. In final mode the body opens with the verdict, so the human who moved the card sees
+the result on the PR — a pass has no inline comments and an empty `comments` array.
 
 ```bash
 cat > /tmp/sloth-review-<N>.json <<'EOF'
@@ -87,6 +90,19 @@ cat > /tmp/sloth-review-<N>.json <<'EOF'
 }
 EOF
 retry gh api "repos/$SLOTH_REPO/pulls/<N>/reviews" --method POST --input /tmp/sloth-review-<N>.json
+```
+
+Body in final mode — the first line is `$SLOTH_BOT_PREFIX`, the second the verdict, then the findings:
+
+```
+**Sloth:**
+Final review: **passed** — <rating>/10, resolves #<issue>, no new bugs. Labelled `Fable: approved`; ready to merge.
+```
+
+```
+**Sloth:**
+Final review: **failed** — <rating>/10. <how many bugs>; card back to <In Progress column name>.
+- <unmet requirement, where it is missing>
 ```
 
 - `line` is the **new-file** line number and must fall inside a diff hunk, or GitHub rejects the whole
@@ -131,7 +147,7 @@ Resolves the issue: <yes/no>
 OK to merge: <yes/no>
 New bugs: <yes/no>
 Unnecessary changes: <yes/no>
-Review comment: <review URL, or none>
+Review comment: <review URL, or none — never none in final mode>
 Issue moved to In Progress: <yes/no — issue number, or n/a>
 Fable: approved label: <added/removed — issue number, or n/a>
 ```
@@ -150,11 +166,13 @@ real gaps or scope creep; 3–4 partial or introduces bugs; 0–2 does not resol
    mode, never submit any review and never move a card.
 2. The wired issue comes from `closingIssuesReferences` only.
 3. Outside feedback-only mode, the comments and the board move happen **exactly** when "OK to merge" is no.
-   A clean PR that still leaves a requirement unimplemented gets both.
+   A clean PR that still leaves a requirement unimplemented gets both. Final mode adds one exception: the
+   review is submitted on every verdict, so a pass leaves a body-only review saying so.
 4. "OK to merge" is **no** whenever the PR introduces a bug or fails to resolve its wired issue.
 5. Base every claim on the actual diff and issue text — cite `file:line` for each bug, in the block and in
    the comment.
 6. A missing image, gif or video is **never** a finding and never lowers the rating: Sloth runs headless, so
    PRs describe verification and design fidelity in words.
 7. The `Fable: approved` label is touched in final mode only, on the wired issue only, and mirrors this
-   review's "OK to merge": yes adds it, no removes it.
+   review's "OK to merge": yes adds it, no removes it. The label never stands alone: the review body on
+   the PR says the same thing in words, whichever way the verdict went.

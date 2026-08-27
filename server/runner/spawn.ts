@@ -159,7 +159,8 @@ export function launchReview(pr: number, issue: number): boolean {
 
 /**
  * Trigger 5: the final review of one PR version — the same `/sloth:review`, on `approvedModel`, in
- * `final` mode: a pass labels the wired issue `Fable: approved`, a fail removes that label.
+ * `final` mode: the verdict is always posted on the PR; a pass labels the wired issue `Fable: approved`,
+ * a fail removes that label.
  */
 export function launchApproved(pr: number, issue: number): boolean {
   const c = cfg();
