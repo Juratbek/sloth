@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button, Choice, Field, NumberInput, TextInput } from './ui';
 import type { Draft } from './use-setup';
-import { useClone, useProjectFields, useSetupEnv } from './use-setup';
+import { useClone, useProjectFields } from './use-setup';
 
 export default function StepRunner({
   draft,
@@ -13,13 +13,11 @@ export default function StepRunner({
   onContinue: (patch: Partial<Draft>) => void;
 }) {
   const { data } = useProjectFields(draft.project?.id);
-  const login = useSetupEnv().data?.ghAuth.login ?? '';
   const linked = data?.repositories ?? [];
   const clone = useClone();
   const [repo, setRepo] = useState(draft.repo);
   const [typed, setTyped] = useState(!!draft.repo && !linked.includes(draft.repo));
   const [root, setRoot] = useState<string | undefined>(draft.runnerRoot || undefined);
-  const [orderLogin, setOrderLogin] = useState<string | undefined>(draft.orderLogin || undefined);
   const [caps, setCaps] = useState({ maxActive: draft.maxActive, maxAlive: draft.maxAlive });
 
   const runnerRoot = root ?? (repo ? `~/.sloth/runners/${repo.split('/')[1]}` : '');
@@ -60,10 +58,6 @@ export default function StepRunner({
         </span>
       </div>
 
-      <Field label="Who can give orders" hint="Only this GitHub login can tell Sloth what to do in a comment. Anyone may ask for a status.">
-        <TextInput value={orderLogin ?? login} onChange={setOrderLogin} placeholder="your-github-login" />
-      </Field>
-
       <div className="grid grid-cols-2 gap-3">
         <Field label="Max active sessions" hint="how many run at once">
           <NumberInput value={caps.maxActive} onChange={(maxActive) => setCaps({ ...caps, maxActive })} />
@@ -78,7 +72,7 @@ export default function StepRunner({
         <Button
           variant="primary"
           disabled={!ready}
-          onClick={() => onContinue({ repo, runnerRoot, orderLogin: orderLogin ?? login, ...caps })}
+          onClick={() => onContinue({ repo, runnerRoot, ...caps })}
         >
           Continue
         </Button>

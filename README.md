@@ -24,18 +24,24 @@ The short version; the tick-by-tick account is in [docs/how-it-works.md](docs/ho
 |---|---|---|
 | 1 | An unassigned issue sits in the watched column | Moves it to In Progress and starts `/sloth:implement <n>` |
 | 2 | An unassigned issue sits in In Progress with no live session | Relaunches it, at most `maxRetries` times in a row |
-| 3 | A comment mentions `@sloth` | Delivers it to the live session; with no session, an order starts one and anything else gets a status reply |
+| 3 | Someone on the team mentions `@sloth` in a comment | Delivers it to the live session; with no session, an order (admin or developer) starts one and anything else gets a status reply. A login with no role is ignored |
 | 4 | An unassigned issue in Code Review has an open, non-draft, unapproved wired PR **written by a human** | Runs `/sloth:review <pr>`, once per PR head. Sloth's own PRs were already vetted by their session's reviewer loop |
-| 5 | An unassigned issue in Approved has an open, non-draft wired PR | Runs `/sloth:review <pr> final` on the `fable` model, once per PR head; a pass labels the issue `Fable: approved` |
+| 5 | An issue in Approved — assigned or not — has an open, non-draft wired PR and no `Fable: approved` label | Runs `/sloth:review <pr> final` on the `fable` model, once per PR head; a pass labels the issue `Fable: approved`, which keeps it from being reviewed again |
 
 The board is read every 5 minutes, comments every 2; **Tick now** runs both at once. **Pause**
 stops Sloth from starting anything new (running sessions, inbox deliveries, status replies and
 needs-help notifications carry on) and survives a restart.
 
-- An **assignee on a card means a human owns it** — Sloth never touches it. Sloth never assigns
-  anyone and never requests a reviewer.
-- Only `orderLogin` gives orders; a comment from that login ending in `?` is a status question.
-  Every comment Sloth writes starts with `**Sloth:**`.
+- An **assignee on a card means a human owns it** — Sloth never works on it. The one exception is the
+  final review in Approved (trigger 5): an assigned card is reviewed too, and a rejection sends it back
+  to In Progress still assigned, so the owner keeps it. Sloth never assigns anyone and
+  never requests a reviewer.
+- **Roles** (`roles` in the config, the wizard's *Team* step): one **admin** orders Sloth anything —
+  work, a move to any column, closing an issue. **Developers** order work within an issue — how to do
+  it, address the review comments, start over, stop; an order that reaches beyond the issue becomes a
+  question for the admin. **Testers** answer a parked card's questions and ask for status, but never
+  order. A comment ending in `?` is always a status question. Sloth ignores logins with no role: no
+  reply, and their comments do not count as answers. Every comment Sloth writes starts with `**Sloth:**`.
 - **Columns** are roles mapped to the board's Status options: *pickup* (Sloth only reads it),
   *In Progress*, *needs help* (a stuck session parks the card here after asking its questions; an
   answer in the thread brings it back — `helpLogins` are mentioned in that question and `helpWebhook`
@@ -69,11 +75,12 @@ The session protocol (environment variables, `state.json`, the inbox) is in [plu
 ## Configuration
 
 `~/.sloth/config.json` (path overridable with `SLOTH_CONFIG`). The wizard asks about the board, the
-columns, who to notify when a card needs help, `repo`, `runnerRoot`, `orderLogin` and the caps; the rest defaults:
+columns, who to notify when a card needs help, `repo`, `runnerRoot`, the team (`roles`) and the caps; the rest defaults:
 
 | Key | Default | Means |
 |---|---|---|
 | `runnersDir` / `worktreesDir` / `sessionsDir` / `stateDir` / `watcherLog` | under `~/.sloth/` | Where checkouts, worktrees, session directories, markers and the log live |
+| `roles` | `{admin, developers, testers}` | The team: the one login that orders anything, the logins that order within an issue, the logins that answer and ask. A config from before roles keeps its `orderLogin` as the admin |
 | `mention` / `botPrefix` | `@sloth` / `**Sloth:**` | The keyword that wakes Sloth; the first line of every comment it writes |
 | `maxActive` / `maxAlive` | `3` / `5` | Session caps |
 | `budgetMinutes` / `waitHours` | `60` / `2` | A session's time budget; how long a parked session waits for an answer |
@@ -141,8 +148,9 @@ Sloth runs `claude … --dangerously-skip-permissions` in `runnerRoot` with **yo
   access can put one there) starts an implement session that reads the issue and acts on it; an `@sloth`
   order or comment feeds text straight into the session. Only give board write access to people you
   trust with a shell on this machine.
-- **Only `orderLogin` gives orders**, but *any* unassigned pickup card is worked — the card, not the
-  author, is the trigger. Keep the pickup column behind the same trust boundary as the repo.
+- **Only the admin and the developers give orders**, and only the team's comments reach a session at
+  all — but *any* unassigned pickup card is worked: the card, not the author, is the trigger. Keep the
+  pickup column behind the same trust boundary as the repo.
 - For a stronger boundary, run Sloth (or at least the sessions) in a VM or container with a **scoped**
   `GITHUB_TOKEN` rather than your personal `gh` login, so a prompt-injected run cannot reach beyond the
   one repo.

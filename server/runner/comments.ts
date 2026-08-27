@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
+import { canOrder, roleOf } from '../roles';
+import type { Role } from '../roles';
 import { gh } from './gh';
 import { isDry, log, write } from './log';
 import { isPaused } from './pause';
@@ -40,25 +42,26 @@ async function commentsOf(issue: number, since: string): Promise<Comment[]> {
     .map((line) => JSON.parse(Buffer.from(line, 'base64').toString('utf8')) as Comment);
 }
 
-/** Hands a comment to the session that is already working on the issue. */
-function deliver(issue: number, c: Comment): void {
+/** Hands a comment to the session that is already working on the issue, with the author's role. */
+function deliver(issue: number, c: Comment, role: Role): void {
   const dir = path.join(issueDir(issue), 'inbox');
   if (isDry()) {
-    log(`dry-run: would deliver comment ${c.id} by ${c.login} to #${issue}`);
+    log(`dry-run: would deliver comment ${c.id} by ${c.login} (${role}) to #${issue}`);
     return;
   }
   fs.mkdirSync(dir, { recursive: true });
-  write(path.join(dir, `${c.id}.md`), `author: ${c.login}\ncomment: ${c.id}\n\n${c.body}\n`);
-  log(`#${issue} inbox <- comment ${c.id} by ${c.login}`);
+  write(path.join(dir, `${c.id}.md`), `author: ${c.login}\nrole: ${role}\ncomment: ${c.id}\n\n${c.body}\n`);
+  log(`#${issue} inbox <- comment ${c.id} by ${c.login} (${role})`);
 }
 
-/** An order is a non-question comment from the one login allowed to give orders. */
-const isOrder = (c: Comment) => c.login === cfg().orderLogin && !!cfg().orderLogin && !c.body.trimEnd().endsWith('?');
+/** A question ends with `?`; everything else from someone who may order is an order. */
+const isOrder = (c: Comment, role: Role) => canOrder(role) && !c.body.trimEnd().endsWith('?');
 
 /**
- * Trigger 3 — `@sloth` comments. A live session gets the comment in its inbox; otherwise an order
- * starts a session and anything else gets a status reply. Marked seen only after it was acted on,
- * so a comment that found every slot busy is retried next tick.
+ * Trigger 3 — `@sloth` comments from the team. A live session gets the comment in its inbox;
+ * otherwise an order (admin or developer) starts a session and anything else gets a status reply.
+ * A login with no role is ignored, and marked seen so it is not looked at again. Everything else is
+ * marked seen only after it was acted on, so a comment that found every slot busy is retried next tick.
  */
 export async function comments(): Promise<void> {
   const c = cfg();
@@ -72,14 +75,16 @@ export async function comments(): Promise<void> {
       if (!mention.test(comment.body) || comment.body.startsWith(c.botPrefix)) continue;
       const seen = path.join(seenDir, String(comment.id));
       if (fs.existsSync(seen)) continue;
-      if (issueAlive(issue)) deliver(issue, comment);
-      else if (isOrder(comment)) {
+      const role = roleOf(c.roles, comment.login);
+      if (!role) log(`#${issue} ignored comment ${comment.id} by ${comment.login} (no role)`);
+      else if (issueAlive(issue)) deliver(issue, comment, role);
+      else if (isOrder(comment, role)) {
         // Left unseen on purpose: an order held back by the pause is picked up when Sloth resumes.
         if (isPaused()) {
           log(`paused: skipped order on #${issue}`);
           continue;
         }
-        const order = `Order from ${comment.login} (issue comment ${comment.id}): ${comment.body}`;
+        const order = `Order from ${comment.login} (${role}, issue comment ${comment.id}): ${comment.body}`;
         if (!(await launch(issue, order))) continue;
       } else statusReply(issue, String(comment.id));
       if (!isDry()) write(seen, '');

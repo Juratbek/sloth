@@ -74,7 +74,9 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_COLUMNS` | Every Status column on the board as JSON `[{"id","name"}]`, Sloth's and the rest, so a session can move a card anywhere a human asks |
 | `SLOTH_RUNNER_ROOT` | The checkout sessions run from |
 | `SLOTH_WORKTREES_DIR` | Where per-issue worktrees go — `issue-<n>` under it |
-| `SLOTH_ORDER_LOGIN` | The one login whose comments are orders |
+| `SLOTH_ADMIN_LOGIN` | The admin — the one login whose orders have no limit (may be empty: nobody is admin) |
+| `SLOTH_DEVELOPER_LOGINS` | Space-separated logins whose orders are followed within the issue they are on (may be empty) |
+| `SLOTH_TESTER_LOGINS` | Space-separated logins that answer questions and ask for status, never order (may be empty) |
 | `SLOTH_MODEL` | The model subagents run on (`opus`) |
 | `SLOTH_CHROME` | `1` when the session was started with `--chrome`; implement then tests the change in the browser |
 | `SLOTH_START`, `SLOTH_DEADLINE` | Epoch seconds: run start, hard deadline |
@@ -92,7 +94,7 @@ Inside `$SLOTH_SESSION_DIR`:
 | File | Content |
 |---|---|
 | `state.json` | `{state:"working"\|"waiting"\|"done", since, step, note, branch, pr, servers}` — updated at every step change |
-| `inbox/<commentId>.md` | Written by the **server**; read, acted on, then deleted by the session |
+| `inbox/<commentId>.md` | Written by the **server** — `author:`, `role:` (`admin` / `developer` / `tester`) and `comment:` header lines, then the body; read, acted on, then deleted by the session |
 | `blocked` | Touched when the run is parked and must not be retried; removed on resume |
 | `asked_at` | Epoch seconds of the question comment |
 | `dev.pid`, `redis.pid`, `demo.db` | Pids / database name of anything the session started, for the server's cleanup |
@@ -104,7 +106,7 @@ The **last message of the transcript is the report** — the monitor shows it.
 - One comment per question, numbered, with the context each answer needs; it ends with `cc $SLOTH_HELP_MENTIONS`
   when the server configured people to notify.
 - Every comment starts with `$SLOTH_BOT_PREFIX`; the session never writes `$SLOTH_MENTION` itself.
-- Orders from `$SLOTH_ORDER_LOGIN` override everything, in any column, at any step.
+- Orders override everything, in any column, at any step: the admin's without limit, a developer's within the issue. A tester answers and asks; a login with no role never reaches a session — the server drops those comments.
 - An open PR on the issue whose branch is `sloth/issue-<n>-*` is resumed, not duplicated.
 - The reviewer subagent is spawned once and reused across rounds.
 - With `SLOTH_CHROME=1` the implement session spawns one tester subagent that drives the change in the user's Chrome

@@ -8,7 +8,7 @@ export const CONFIG_QUERY_KEY = ['setup', 'config'] as const;
  * What the wizard posts: the values it asks about, plus whatever the saved config already had.
  * Everything else (directories, budgets, poll intervals) gets its default on the server.
  */
-export type ConfigPayload = Pick<SlothConfig, 'repo' | 'project' | 'statusField' | 'runnerRoot' | 'orderLogin' | 'maxActive' | 'maxAlive'> &
+export type ConfigPayload = Pick<SlothConfig, 'repo' | 'project' | 'statusField' | 'runnerRoot' | 'roles' | 'maxActive' | 'maxAlive'> &
   Partial<SlothConfig>;
 
 /** The draft the wizard carries between steps; becomes the saved config on the last one. */
@@ -23,7 +23,10 @@ export interface Draft {
   codeReview?: ColumnRef;
   approved?: ColumnRef;
   runnerRoot: string;
-  orderLogin: string;
+  /** The team: one admin, developers, testers (see server/roles.ts). */
+  admin: string;
+  developers: string[];
+  testers: string[];
   maxActive: number;
   maxAlive: number;
   /** Who hears about a card landing in needs help: `@`-mentioned logins, and an optional webhook URL. */
@@ -42,7 +45,9 @@ export const draftFrom = (config: SlothConfig | null | undefined): Draft => ({
   // An older config has no Approved column; the wizard offers to create one.
   approved: config?.statusField.columns.approved?.id ? config.statusField.columns.approved : undefined,
   runnerRoot: config?.runnerRoot ?? '',
-  orderLogin: config?.orderLogin ?? '',
+  admin: config?.roles.admin ?? '',
+  developers: config?.roles.developers ?? [],
+  testers: config?.roles.testers ?? [],
   maxActive: config?.maxActive ?? 3,
   maxAlive: config?.maxAlive ?? 5,
   helpLogins: config?.helpLogins ?? [],

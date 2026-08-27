@@ -6,7 +6,8 @@ import { comments } from './comments';
 import { isDry, log, nowSec, setDry } from './log';
 import { notifyParked } from './notify';
 import { isPaused } from './pause';
-import { answered, finalReviews, pausedUntil, pickup, reap, retryStranded, reviews } from './triggers';
+import { answered } from './answers';
+import { finalReviews, pausedUntil, pickup, reap, retryStranded, reviews } from './triggers';
 import type { LoopStatus } from '../types';
 
 export interface TickOptions {

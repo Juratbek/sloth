@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { DEFAULT_TUNNEL, type ColumnRef, type SlothConfig } from './config-types';
+import { DEFAULT_TUNNEL, type ColumnRef, type Roles, type SlothConfig } from './config-types';
+import { sameLogin } from './roles';
 
 const home = os.homedir();
 
@@ -35,6 +36,21 @@ const int = (v: unknown, fallback: number, min = 1) =>
 export function logins(v: unknown): string[] {
   const raw = Array.isArray(v) ? v.map(String) : typeof v === 'string' ? v.split(/[\s,]+/) : [];
   return [...new Set(raw.map((l) => l.trim().replace(/^@/, '')).filter(Boolean))];
+}
+
+/**
+ * The team. A login appears in one role only: the admin is dropped from the other lists and a
+ * developer from the testers. `orderLogin` is what a config from before roles called the admin.
+ */
+function roles(v: unknown, orderLogin: unknown): Roles {
+  const r = (v ?? {}) as Record<string, unknown>;
+  const admin = (text(r.admin) ?? text(orderLogin) ?? '').replace(/^@/, '');
+  // Keeps the first spelling of every login and drops the rest, across the lists and within one.
+  const seen = [admin];
+  const fresh = (login: string) => !seen.some((t) => sameLogin(t, login)) && !!seen.push(login);
+  const developers = logins(r.developers).filter(fresh);
+  const testers = logins(r.testers).filter(fresh);
+  return { admin, developers, testers };
 }
 
 const REPO_RE = /^[\w.-]+\/[\w.-]+$/;
@@ -98,7 +114,7 @@ export function normalizeConfig(input: unknown): SlothConfig {
     sessionsDir: text(b.sessionsDir) ?? `~/.sloth/sessions/${name}`,
     stateDir: text(b.stateDir) ?? '~/.sloth/state',
     watcherLog: text(b.watcherLog) ?? '~/.sloth/watcher.log',
-    orderLogin: text(b.orderLogin) ?? '',
+    roles: roles(b.roles, b.orderLogin),
     mention: text(b.mention) ?? '@sloth',
     botPrefix: text(b.botPrefix) ?? '**Sloth:**',
     maxActive: int(b.maxActive, 3),

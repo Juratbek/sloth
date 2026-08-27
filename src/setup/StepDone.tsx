@@ -20,7 +20,7 @@ function payload(draft: Draft, existing: SlothConfig | null): ConfigPayload {
       },
     },
     runnerRoot: draft.runnerRoot,
-    orderLogin: draft.orderLogin,
+    roles: { admin: draft.admin, developers: draft.developers, testers: draft.testers },
     maxActive: draft.maxActive,
     maxAlive: draft.maxAlive,
     helpLogins: draft.helpLogins,
@@ -28,6 +28,7 @@ function payload(draft: Draft, existing: SlothConfig | null): ConfigPayload {
   };
 }
 
+const people = (logins: string[]) => logins.map((l) => `@${l}`).join(' · ') || 'nobody';
 const columnLabel = (column: { id: string; name: string }) => (column.id ? column.name : `${column.name} (will be created)`);
 
 export default function StepDone({
@@ -53,7 +54,9 @@ export default function StepDone({
     ['Needs help', columnLabel(columns.needsHelp)],
     ['Code Review', columnLabel(columns.codeReview)],
     ['Approved', columnLabel(columns.approved)],
-    ['Orders from', config.orderLogin || 'nobody'],
+    ['Admin', config.roles.admin || 'nobody'],
+    ['Developers', people(config.roles.developers)],
+    ['Testers', people(config.roles.testers)],
     ['Needs help → notify', [...(config.helpLogins ?? []).map((l) => `@${l}`), config.helpWebhook && 'webhook'].filter(Boolean).join(' · ') || 'nobody'],
     ['Caps', `${config.maxActive} active · ${config.maxAlive} alive`],
   ];

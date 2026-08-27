@@ -3,7 +3,7 @@ import path from 'node:path';
 import { cfg } from '../config';
 import { moveCard, unassignedIn, wiredPrs } from './board';
 import type { BoardItem } from './board';
-import { comment, gh, run } from './gh';
+import { comment, run } from './gh';
 import { limitExit } from './limits';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
 import { helpMentions } from './notify';
@@ -126,16 +126,21 @@ export async function reviews(board: BoardItem[]): Promise<void> {
   }
 }
 
+/** The label `/sloth:review <pr> final` puts on a wired issue whose PR passed; a failing final review removes it. */
+const APPROVED_LABEL = 'Fable: approved';
+
 /**
  * Trigger 5 — Approved cards whose wired PR is open get one final review per PR head, with
- * `/sloth:review <pr> final` on `approvedModel`; a pass labels the issue `Fable: approved`. A GitHub
- * approval does not exclude the PR here: the column is the signal. No Approved column configured →
- * nothing to do.
+ * `/sloth:review <pr> final` on `approvedModel`; a pass labels the issue `Fable: approved`, and a card
+ * carrying that label is done — it is not reviewed again until the label goes (a failing review removes
+ * it; a human can too). Neither a GitHub approval nor an assignee excludes the PR: the column is the
+ * signal. A rejected assigned card goes back to In Progress with its assignee intact, so the human keeps
+ * it (trigger 2 skips it). No Approved column configured → nothing to do.
  */
 export async function finalReviews(board: BoardItem[]): Promise<void> {
   const column = cfg().statusField.columns.approved;
   if (!column.id) return;
-  const issues = unassignedIn(board, column.name);
+  const issues = board.filter((i) => i.status === column.name && !i.labels.includes(APPROVED_LABEL)).map((i) => i.number);
   for (const { issue, pr, sha } of await wiredPrs(issues, { unapprovedOnly: false })) {
     const marker = statePath(MARKERS.approved, `${pr}-${sha}`);
     if (fs.existsSync(marker) || dirAlive(approvedDir(pr))) continue;
@@ -154,60 +159,6 @@ export async function retryStranded(board: BoardItem[]): Promise<void> {
     }
     if (!(await launch(issue))) break;
     if (!isDry()) write(path.join(issueDir(issue), 'retries'), String(retries + 1));
-  }
-}
-
-interface Answer {
-  id: number;
-  login: string;
-}
-
-/**
- * The first human comment after Sloth's last comment on the issue — the answer a parked card waits for.
- * Undefined when Sloth never wrote there (a human parked the card by hand) or nobody replied since.
- */
-async function answerOn(issue: number): Promise<Answer | undefined> {
-  const c = cfg();
-  const r = await gh([
-    'api', `repos/${c.repo}/issues/${issue}/comments`, '--paginate',
-    '--jq', `.[] | [.id, .user.login, (.body | startswith(${JSON.stringify(c.botPrefix)}))] | @tsv`,
-  ]);
-  if (!r.ok) {
-    log(`#${issue} thread read failed: ${r.err.split('\n')[0]}`);
-    return undefined;
-  }
-  let answer: Answer | undefined;
-  let asked = false;
-  for (const line of r.out.split('\n').filter(Boolean)) {
-    const [id, login, sloth] = line.split('\t');
-    if (sloth === 'true') {
-      asked = true;
-      answer = undefined;
-    } else if (asked) answer ??= { id: Number(id), login };
-  }
-  return answer;
-}
-
-/**
- * Trigger 6 — parked cards whose thread got an answer. A needs-help card (or a card blocked in place
- * when no such column is configured) with no live session is relaunched once a human comment is newer
- * than Sloth's last comment on the issue. Only the thread is consulted, so a card parked before a
- * reboot, or by a session that has since died, counts the same as one parked a minute ago. A session
- * that parks again writes a newer Sloth comment, so the card waits for the next answer.
- */
-export async function answered(board: BoardItem[]): Promise<void> {
-  const col = cfg().statusField.columns;
-  const parked = [
-    ...(col.needsHelp.name ? unassignedIn(board, col.needsHelp.name) : []),
-    ...unassignedIn(board, col.inProgress.name).filter((issue) => isBlocked(issueDir(issue))),
-  ];
-  for (const issue of parked) {
-    if (issueAlive(issue)) continue;
-    const answer = await answerOn(issue);
-    if (!answer) continue;
-    const hint = `Answer from ${answer.login} in the issue thread (comment ${answer.id}): re-read the whole thread and continue where the last session stopped.`;
-    if (!(await launch(issue, hint))) break;
-    if (!isDry()) remove(path.join(issueDir(issue), 'retries'));
   }
 }
 
