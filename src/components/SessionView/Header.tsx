@@ -1,5 +1,5 @@
 import type { MonitorConfig, SessionDetail } from '../../../server/types';
-import { STATUS_COLOR, ago, elapsed, githubUrl, k, label, newInput, stepLabel } from '../../lib/format';
+import { STATUS_COLOR, ago, elapsed, githubUrl, k, label, newInput, safeUrl, stepLabel } from '../../lib/format';
 import { ToolChips } from './Usage';
 
 function Stats({ s }: { s: SessionDetail }) {
@@ -35,9 +35,9 @@ function WatcherLine({ s }: { s: SessionDetail }) {
           </span>
         )}
         {st?.branch && <span className="font-mono text-[11px] text-zinc-500">{st.branch}</span>}
-        {st?.pr && (
-          <a href={st.pr} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">
-            {st.pr.replace(/.*\//, 'PR #')}
+        {safeUrl(st?.pr) && (
+          <a href={safeUrl(st?.pr)} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">
+            {st!.pr!.replace(/.*\//, 'PR #')}
           </a>
         )}
         {st?.servers && <span className="text-[11px] text-zinc-500">servers: {st.servers}</span>}

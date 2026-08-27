@@ -82,6 +82,9 @@ export const newInput = (u: Usage) => u.input + u.cacheWrite;
 /** A scheduled moment as a clock time, or "due" once it has passed. */
 export const nextAt = (at?: number) => (!at ? '—' : at < Date.now() ? 'due' : clock(at));
 
+/** Only http(s) URLs are safe as an href — a session writes `state.json`, so a `javascript:` value must not render. */
+export const safeUrl = (u?: string) => (u && /^https?:\/\//i.test(u) ? u : undefined);
+
 /** Link to the command's target on GitHub — the path segment comes from the configured command map. */
 export const githubUrl = (kind: SessionKind, n: number | undefined, config: MonitorConfig) =>
   n && config.repo ? `https://github.com/${config.repo}/${config.commands[kind] ?? 'issues'}/${n}` : undefined;

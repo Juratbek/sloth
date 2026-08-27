@@ -37,6 +37,14 @@ export function logins(v: unknown): string[] {
   return [...new Set(raw.map((l) => l.trim().replace(/^@/, '')).filter(Boolean))];
 }
 
+const REPO_RE = /^[\w.-]+\/[\w.-]+$/;
+/** `owner/repo`, constrained to the characters GitHub allows — it flows into shell argv, URLs and the page title. */
+function repoSlug(v: unknown): string {
+  const r = str(v, 'repo');
+  if (!REPO_RE.test(r)) throw new Error('repo must be owner/repo');
+  return r;
+}
+
 function url(v: unknown, what: string): string {
   const u = text(v) ?? '';
   if (u && !/^https?:\/\/\S+$/.test(u)) throw new Error(`${what} must be an http(s) URL`);
@@ -60,7 +68,7 @@ const optional = (v: unknown, what: string): ColumnRef => ((v as ColumnRef | und
  */
 export function normalizeConfig(input: unknown): SlothConfig {
   const b = (input ?? {}) as Record<string, any>;
-  const repo = str(b.repo, 'repo');
+  const repo = repoSlug(b.repo);
   const name = repo.split('/')[1];
   const columns = (b.statusField?.columns ?? {}) as Record<string, unknown>;
   return {

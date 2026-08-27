@@ -5,15 +5,26 @@ import { broadcast, sse, watchAll } from './events';
 import { startLoop, stopLoop, tick } from './runner/loop';
 import { isPaused, setPaused } from './runner/pause';
 import { install } from './install';
-import { guard, isLocal, remoteLink, rotateToken, startTunnel, stopTunnel } from './remote';
+import { guard, isLocal, remoteLink, rotateToken, sameOrigin, startTunnel, stopTunnel } from './remote';
 import { agentDetail, overview, sessionDetail } from './sessions';
 import { handleSetup } from './setup';
 import { usageSeries } from './usage';
 
+const MAX_BODY = 1 << 20; // 1 MiB — a config payload is a few KB; anything larger is rejected
+
 function readBody(req: IncomingMessage): Promise<unknown> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let raw = '';
-    req.on('data', (chunk) => (raw += chunk));
+    let size = 0;
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > MAX_BODY) {
+        reject(new Error('request body too large'));
+        req.destroy();
+        return;
+      }
+      raw += chunk;
+    });
     req.on('end', () => {
       try {
         resolve(JSON.parse(raw || '{}'));
@@ -21,8 +32,13 @@ function readBody(req: IncomingMessage): Promise<unknown> {
         resolve({});
       }
     });
+    req.on('error', () => reject(new Error('request body error')));
   });
 }
+
+/** Escapes text bound for HTML — the page title comes from config and must not be able to inject markup. */
+const escapeHtml = (s: string) =>
+  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 
 const json = (res: ServerResponse, body: unknown) => {
   res.setHeader('content-type', 'application/json');
@@ -56,14 +72,21 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     return true;
   }
   let body: unknown;
-  // Reconfiguring (the wizard) and the QR's secret stay on the machine Sloth runs on: a phone that holds
+  const mutating = (req.method ?? 'GET') !== 'GET';
+  const sensitive = p.startsWith('/api/setup/') || p.startsWith('/api/remote');
+  // CSRF guard: a cross-site page (even one open on the machine itself) must not be able to drive a
+  // POST or reach the sensitive endpoints. `sameOrigin` fails closed on a cross-site fetch.
+  if ((mutating || sensitive) && !sameOrigin(req)) {
+    res.statusCode = 403;
+    res.end('cross-site request blocked');
+    return true;
+  }
+  // Reconfiguring (the wizard) and the QR's link stay on the machine Sloth runs on: a phone that holds
   // the cookie may read and tick, never rewrite the config — that would be code execution here.
-  if (p.startsWith('/api/setup/') || p.startsWith('/api/remote')) {
-    if (!isLocal(req)) {
-      res.statusCode = 403;
-      res.end('only from the machine Sloth runs on');
-      return true;
-    }
+  if (sensitive && !isLocal(req)) {
+    res.statusCode = 403;
+    res.end('only from the machine Sloth runs on');
+    return true;
   }
   if (p.startsWith('/api/setup/')) return setup(p, req, res);
   if (p.startsWith('/api/remote')) {
@@ -130,7 +153,7 @@ export function monitorApi(): Plugin {
   };
   return {
     name: 'sloth-api',
-    transformIndexHtml: (html) => html.replace(/<title>[^<]*<\/title>/, `<title>${cfg().title}</title>`),
+    transformIndexHtml: (html) => html.replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(cfg().title)}</title>`),
     configureServer: mount,
     configurePreviewServer: mount,
   };
