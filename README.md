@@ -26,7 +26,7 @@ The short version; the tick-by-tick account is in [docs/how-it-works.md](docs/ho
 | 2 | An unassigned issue sits in In Progress with no live session | Relaunches it, at most `maxRetries` times in a row |
 | 3 | A comment mentions `@sloth` | Delivers it to the live session; with no session, an order starts one and anything else gets a status reply |
 | 4 | An unassigned issue in Code Review has an open, non-draft, unapproved wired PR **written by a human** | Runs `/sloth:review <pr>`, once per PR head. Sloth's own PRs were already vetted by their session's reviewer loop |
-| 5 | An unassigned issue in Approved has an open, non-draft wired PR | Runs `/sloth:review <pr>` on the `fable` model, once per PR head |
+| 5 | An unassigned issue in Approved has an open, non-draft wired PR | Runs `/sloth:review <pr> final` on the `fable` model, once per PR head; a pass labels the issue `Fable: approved` |
 
 The board is read every 5 minutes, comments every 2; **Tick now** runs both at once. **Pause**
 stops Sloth from starting anything new (running sessions, inbox deliveries and status replies carry
@@ -38,7 +38,8 @@ on) and survives a restart.
   Every comment Sloth writes starts with `**Sloth:**`.
 - **Columns** are roles mapped to the board's Status options: *pickup* (Sloth only reads it),
   *In Progress*, *needs help* (a stuck session parks the card here after asking its questions),
-  *Code Review* (trigger 4) and *Approved* (trigger 5 — a final review on the Fable model; a GitHub approval does not skip it).
+  *Code Review* (trigger 4) and *Approved* (trigger 5 — a final review on the Fable model; a GitHub approval does not skip it,
+  and a pass labels the issue `Fable: approved`).
   Missing columns are created after the pickup column, without dropping any existing option.
 - **Sessions** are detached `claude -p … --plugin-dir <sloth>/plugin` runs in the runner checkout.
   They survive a Sloth restart. `maxActive` may work at once, `maxAlive` including the ones waiting

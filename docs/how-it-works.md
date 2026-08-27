@@ -21,7 +21,8 @@ board. When it finds work, it starts a Claude Code session to do it. That is all
    finds bugs, it comments on the PR and moves the card back to *In Progress*.
 6. **You move the card to *Approved*.** Sloth gives the PR a final review — the same review as in
    step 5, but on the Fable model. If it finds problems, it comments and sends the card back
-   to *In Progress*. If not, the card stays in *Approved* and the PR is ready to merge.
+   to *In Progress*. If not, the card stays in *Approved*, the issue gets the label `Fable: approved`,
+   and the PR is ready to merge.
 
 ## When the session gets stuck
 

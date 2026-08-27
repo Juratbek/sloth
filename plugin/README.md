@@ -13,7 +13,7 @@ what the commit convention is, how designs are read — all of that comes from t
 | Path | What |
 |---|---|
 | `commands/implement.md` | `/sloth:implement <issue> [order]` — claim → worktree → fix → verify → browser tester → PR → reviewer loop → Code Review |
-| `commands/review.md` | `/sloth:review <pr> [feedback-only]` — verdict block, inline comments, card back to In Progress |
+| `commands/review.md` | `/sloth:review <pr> [feedback-only\|final]` — verdict block, inline comments, card back to In Progress; `final` labels a passing issue `Fable: approved` |
 | `commands/status.md` | `/sloth:status <issue> <comment-id>` — answer a mention when no session is running |
 | `skills/board/SKILL.md` | Board reads and moves with the ids from the environment, wired-PR lookup, `retry` |
 | `skills/session/SKILL.md` | `state.json`, the inbox, the time budget, the needs-help protocol, teardown |

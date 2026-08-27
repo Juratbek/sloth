@@ -152,7 +152,8 @@ export function launchReview(pr: number, issue: number): boolean {
 }
 
 /**
- * Trigger 5: the final review of one PR version — the same `/sloth:review`, on `approvedModel`.
+ * Trigger 5: the final review of one PR version — the same `/sloth:review`, on `approvedModel`, in
+ * `final` mode: a pass labels the wired issue `Fable: approved`, a fail removes that label.
  */
 export function launchApproved(pr: number, issue: number): boolean {
   const c = cfg();
@@ -165,7 +166,7 @@ export function launchApproved(pr: number, issue: number): boolean {
     return true;
   }
   log(`final review PR #${pr} (issue #${issue}) on ${c.approvedModel}`);
-  start(approvedDir(pr), approvedDir(pr), `/sloth:review ${pr}`, { pr, issue }, path.join(approvedDir(pr), 'run.log'), { model: c.approvedModel });
+  start(approvedDir(pr), approvedDir(pr), `/sloth:review ${pr} final`, { pr, issue }, path.join(approvedDir(pr), 'run.log'), { model: c.approvedModel });
   return true;
 }
 
