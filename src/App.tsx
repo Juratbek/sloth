@@ -12,7 +12,10 @@ import { useConfig } from './setup/use-setup';
 
 export default function App() {
   useLiveUpdates();
-  const config = useConfig();
+  // Configuring happens on the machine Sloth runs on; a phone reached Sloth through the tunnel, which
+  // only starts once a config exists, so it skips the wizard and never calls the setup endpoints.
+  const local = isLocalPage();
+  const config = useConfig(local);
   const { data, error } = useOverview();
   const [settings, setSettings] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -24,9 +27,9 @@ export default function App() {
     setMenu(false);
   };
 
-  if (config.isPending) return <div className="p-6 text-zinc-500">Loading…</div>;
+  if (local && config.isPending) return <div className="p-6 text-zinc-500">Loading…</div>;
   // No config file yet ⇒ the get-started wizard is the whole app.
-  if (!config.data || settings)
+  if (local && (!config.data || settings))
     return <Wizard existing={config.data ?? null} onClose={config.data ? () => setSettings(false) : undefined} />;
 
   if (error) return <div className="p-6 text-red-400">Monitor API unreachable: {String(error)}</div>;
@@ -39,8 +42,8 @@ export default function App() {
         menu={menu}
         onMenu={() => setMenu(!menu)}
         onHome={() => show(null)}
-        onSettings={() => setSettings(true)}
-        onRemote={isLocalPage() ? () => setRemote(true) : undefined}
+        onSettings={local ? () => setSettings(true) : undefined}
+        onRemote={local ? () => setRemote(true) : undefined}
       />
       <div className="flex min-h-0 flex-1">
         <Sidebar open={menu} sessions={data.sessions} selected={selected} onSelect={show} />

@@ -111,16 +111,43 @@ anywhere, and the layout fits a phone. Sloth keeps running on your machine — t
 Behind the code: Sloth starts a tunnel when the server starts (`tunnel`, by default a Cloudflare quick
 tunnel — no account needed; if `cloudflared` is missing the dialog offers to `brew install` it and shows
 the QR once the tunnel is up) and guards everything it serves with one secret kept in
-`state/remote-token`. Requests from the machine itself pass; the QR's link carries the secret and signs
-the phone in with a cookie for a year; anything else gets a 401. The wizard stays on the machine: a phone
-cannot rewrite the config. Only a page open on the machine can
-see the code or mint a new one, and **New link** in the dialog signs every phone out. Treat the code
-like a password: whoever scans it reads every session and can tick and pause.
+`state/remote-token`. Requests from the machine itself pass; the QR's link carries a **single-use code**
+(good for a few minutes) that is exchanged once for a cookie — the secret itself never travels in a URL —
+and the cookie signs the phone in for 30 days; anything else gets a 401. State-changing requests are
+also rejected unless they are same-origin, so a page open on the machine cannot silently drive the API.
+The wizard stays on the machine: a phone cannot rewrite the config. Only a page open on the machine can
+see the code or mint a new one, and **New link** in the dialog rotates the secret and signs every phone
+out. Treat the code like a password: whoever scans it reads every session and can tick and pause.
+
+Sloth decides a request is "local" from its loopback socket, a `localhost` Host header and the absence
+of any proxy header (`X-Forwarded-For`, `Forwarded`, …). If you front Sloth with **your own** reverse
+proxy or tunnel, leave those forwarding headers in place — a proxy that strips them all and rewrites the
+Host to `localhost` would make external requests look local. Note too that `pnpm start` runs Vite's
+preview server; for a hardened deployment put Sloth behind a proxy that terminates TLS and forwards the
+headers above.
 
 A quick tunnel gets a new address on every start — the QR follows it. For a stable address run your
 own tunnel (a named `cloudflared` tunnel on your domain, `jprq`, `ngrok`) and set `publicUrl`, or
 put its command in `tunnel` so Sloth starts it — `"tunnel": ["jprq", "http", "{port}"]`, say. Keep the machine awake (`caffeinate -i pnpm start`):
 watching stops when the process stops.
+
+## Security
+
+Sloth runs `claude … --dangerously-skip-permissions` in `runnerRoot` with **your** environment — your
+`gh` token, your SSH keys, your PATH, your network. A git worktree isolates the *checkout*, not the
+*host*. So treat every input that reaches a session as capable of running code as you:
+
+- **Issue, PR and comment text is untrusted.** A card in the pickup column (anyone with board write
+  access can put one there) starts an implement session that reads the issue and acts on it; an `@sloth`
+  order or comment feeds text straight into the session. Only give board write access to people you
+  trust with a shell on this machine.
+- **Only `orderLogin` gives orders**, but *any* unassigned pickup card is worked — the card, not the
+  author, is the trigger. Keep the pickup column behind the same trust boundary as the repo.
+- For a stronger boundary, run Sloth (or at least the sessions) in a VM or container with a **scoped**
+  `GITHUB_TOKEN` rather than your personal `gh` login, so a prompt-injected run cannot reach beyond the
+  one repo.
+
+The remote-access guard (above) protects the monitor; it does not sandbox the sessions.
 
 ## Conventions
 
