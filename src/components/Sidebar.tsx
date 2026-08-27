@@ -1,11 +1,26 @@
 import type { SessionStatus, SessionSummary } from '../../server/types';
-import { STATUS_COLOR, elapsed, k, label } from '../lib/format';
+import { STATUS_COLOR, dayLabel, elapsed, k, label } from '../lib/format';
 
-const GROUPS: { title: string; statuses: SessionStatus[] }[] = [
+const GROUPS: { title: string; statuses: SessionStatus[]; byDay?: boolean }[] = [
   { title: 'Live', statuses: ['running', 'waiting'] },
   { title: 'Needs help', statuses: ['parked'] },
-  { title: 'Finished', statuses: ['done'] },
+  { title: 'Finished', statuses: ['done'], byDay: true },
 ];
+
+const endedAt = (s: SessionSummary) => s.lastAt ?? s.startedAt ?? '';
+
+/** Sessions bucketed by the local day they ended, newest day first — the server orders by start, which can differ. */
+function groupByDay(rows: SessionSummary[]) {
+  const out: { day: string; rows: SessionSummary[] }[] = [];
+  for (const s of [...rows].sort((a, b) => endedAt(b).localeCompare(endedAt(a)))) {
+    const at = endedAt(s);
+    const day = at ? dayLabel(at) : 'Unknown';
+    const last = out[out.length - 1];
+    if (last?.day === day) last.rows.push(s);
+    else out.push({ day, rows: [s] });
+  }
+  return out;
+}
 
 function Row({ s, active, onSelect }: { s: SessionSummary; active: boolean; onSelect: () => void }) {
   const step = s.watcher?.state?.step;
@@ -49,9 +64,18 @@ export default function Sidebar({
             <h2 className="sticky top-0 bg-zinc-950 px-3 py-1.5 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
               {g.title} · {rows.length}
             </h2>
-            {rows.map((s) => (
-              <Row key={s.id} s={s} active={s.id === selected} onSelect={() => onSelect(s.id)} />
-            ))}
+            {g.byDay
+              ? groupByDay(rows).map((d) => (
+                  <div key={d.day}>
+                    <h3 className="border-b border-zinc-900 bg-zinc-950/80 px-3 py-1 text-[10px] font-medium text-zinc-600">
+                      {d.day} · {d.rows.length}
+                    </h3>
+                    {d.rows.map((s) => (
+                      <Row key={s.id} s={s} active={s.id === selected} onSelect={() => onSelect(s.id)} />
+                    ))}
+                  </div>
+                ))
+              : rows.map((s) => <Row key={s.id} s={s} active={s.id === selected} onSelect={() => onSelect(s.id)} />)}
           </section>
         );
       })}
