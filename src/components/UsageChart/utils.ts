@@ -1,4 +1,5 @@
 import type { UsageBucket } from '../../../server/types';
+import { usd } from '../../lib/format';
 
 const MANTISSAS = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
 
@@ -21,6 +22,7 @@ export function tooltip(b: UsageBucket) {
   return [
     `${day} ${hh(start)}–${hh(end)}`,
     `cache reads ${millions(b.cacheRead)} · new input ${millions(b.newInput)} · output ${millions(b.output)}`,
+    `≈ ${usd(b.cost)} on API billing`,
   ].join('\n');
 }
 
