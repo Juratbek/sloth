@@ -5,21 +5,23 @@ import StepDone from './StepDone';
 import StepEnv from './StepEnv';
 import StepProject from './StepProject';
 import StepRunner from './StepRunner';
+import StepTeam from './StepTeam';
 import type { Draft } from './use-setup';
 import { draftFrom } from './use-setup';
 
-type StepKey = 'env' | 'project' | 'columns' | 'runner' | 'done';
+type StepKey = 'env' | 'project' | 'columns' | 'runner' | 'team' | 'done';
 
 const LABELS: Record<StepKey, string> = {
   env: 'Environment',
   project: 'Project board',
   columns: 'Columns',
   runner: 'Repository & runner',
+  team: 'Team',
   done: 'Done',
 };
-const FIRST_RUN: StepKey[] = ['env', 'project', 'columns', 'runner', 'done'];
-/** Settings only re-opens the two questions that change over the life of a board. */
-const SETTINGS: StepKey[] = ['project', 'columns', 'done'];
+const FIRST_RUN: StepKey[] = ['env', 'project', 'columns', 'runner', 'team', 'done'];
+/** Settings only re-opens the questions that change over the life of a board. */
+const SETTINGS: StepKey[] = ['project', 'columns', 'team', 'done'];
 
 export default function Wizard({ existing, onClose }: { existing: SlothConfig | null; onClose?: () => void }) {
   const steps = existing ? SETTINGS : FIRST_RUN;
@@ -66,6 +68,7 @@ export default function Wizard({ existing, onClose }: { existing: SlothConfig | 
         )}
         {key === 'columns' && <StepColumns draft={draft} onBack={back} onContinue={next} />}
         {key === 'runner' && <StepRunner draft={draft} onBack={back} onContinue={next} />}
+        {key === 'team' && <StepTeam draft={draft} onBack={back} onContinue={next} />}
         {key === 'done' && <StepDone draft={draft} existing={existing} onBack={back} onSaved={() => onClose?.()} />}
       </div>
     </div>

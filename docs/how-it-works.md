@@ -22,7 +22,8 @@ board. When it finds work, it starts a Claude Code session to do it. That is all
 6. **You move the card to *Approved*.** Sloth gives the PR a final review — the same review as in
    step 5, but on the Fable model. If it finds problems, it comments and sends the card back
    to *In Progress*. If not, the card stays in *Approved*, the issue gets the label `Fable: approved`,
-   and the PR is ready to merge.
+   and the PR is ready to merge. A labelled card is not reviewed again — remove the label to ask for
+   another look.
 
 ## When the session gets stuck
 
@@ -33,30 +34,41 @@ in that comment, so GitHub tells them; with a webhook configured, Slack (or what
 URL) hears about the card too, within one board poll. Both are set in the wizard's *Columns* step
 (`helpLogins` and `helpWebhook` in `config.json`); with neither, nobody is told.
 
-- Answer in the issue thread, and the session continues.
+- Anyone on the team — the admin, a developer or a tester — answers in the issue thread, and the
+  session continues. A comment from someone with no role is not an answer.
 - No answer within 2 hours? The session stops, the card stays in *Sloth needs help*. Sloth keeps
   watching that column: an answer written later starts a new session on the issue, which re-reads the
   whole thread and continues. Moving the card back to the pickup column instead starts over.
 
 ## Talking to Sloth
 
-Write `@sloth` in an issue comment.
+Write `@sloth` in an issue comment. Sloth listens to the team from the wizard's *Team* step — one
+**admin**, any number of **developers** and **testers** — and ignores everyone else: no reply, and
+their comments never count as answers.
 
 - If a session is working on that issue, it reads your comment at its next step.
-- If you are the configured `orderLogin` and your comment is not a question, it is an **order**:
-  Sloth starts a session to do what you said ("address the review comments", "start over with X").
-  An order about the board itself — "move it to Planning", "back to Backlog", "close it" — is carried
-  out as is: sessions know every column on the board, not only Sloth's own. This also works as the
-  answer on a card in *Sloth needs help*.
-- Anything else gets a short **status reply**: which column the card is in, what the last session
+- The **admin**'s comment, when it is not a question, is an **order** without limits: Sloth starts a
+  session (or tells the running one) to do what you said — "address the review comments", "start over
+  with X". An order about the board itself — "move it to Planning", "back to Backlog", "close it" — is
+  carried out as is: sessions know every column on the board, not only Sloth's own. This also works as
+  the answer on a card in *Sloth needs help*.
+- A **developer**'s comment, when it is not a question, is an **order within the issue**: how to
+  implement it, what to change, address the review comments, start over, stop. An order that reaches
+  beyond the issue — the board, closing it, other issues — is not carried out; Sloth asks the admin.
+- A **tester** answers: on a card in *Sloth needs help*, a comment from anyone on the team is the answer
+  the session waits for. A tester cannot give orders.
+- Anything else from the team — a comment ending in `?`, or a tester's comment when nothing is waiting
+  for an answer — gets a short **status reply**: which column the card is in, what the last session
   did, where the branch and PR are.
 
 Every comment Sloth writes starts with `**Sloth:**`.
 
 ## Rules to know
 
-- **An assignee means a human owns the card.** Sloth never touches an assigned card, in any column.
-  Sloth never assigns anyone.
+- **An assignee means a human owns the card.** Sloth never works on an assigned card, in any column.
+  The one exception is the final review in *Approved*: every open, non-draft PR wired to a card there
+  gets it, assigned or not. A rejection sends the card back to *In Progress* still assigned, so the
+  owner keeps it. Sloth never assigns anyone.
 - **Sessions have a time budget** (60 minutes). A session that runs 5 minutes over is killed and
   its card goes to *Sloth needs help*.
 - **At most 3 sessions work at once** (and 5 alive, counting the ones waiting for an answer).

@@ -30,6 +30,16 @@ export const DEFAULT_COLUMN_NAMES: Record<ColumnRole, string> = {
   approved: 'Approved',
 };
 
+/** One admin, any number of developers and testers. A login holds one role: admin wins, then developer. */
+export interface Roles {
+  /** Orders anything — work, board moves, closing issues. Empty means nobody can. */
+  admin: string;
+  /** Order work on an issue, within that issue. */
+  developers: string[];
+  /** Answer a parked card's questions and ask for status; never order. */
+  testers: string[];
+}
+
 export interface SlothConfig {
   version: 1;
   repo: string;
@@ -42,8 +52,8 @@ export interface SlothConfig {
   sessionsDir: string;
   stateDir: string;
   watcherLog: string;
-  /** The only gh login whose `@sloth` comments are orders. Anyone may ask for status. */
-  orderLogin: string;
+  /** Who may talk to Sloth (see `roles.ts`); a saved `orderLogin` from an older config loads as the admin. */
+  roles: Roles;
   mention: string;
   botPrefix: string;
   maxActive: number;

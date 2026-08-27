@@ -58,7 +58,7 @@ const BLANK: SlothConfig = {
   sessionsDir: '~/.sloth/sessions',
   stateDir: '~/.sloth/state',
   watcherLog: '~/.sloth/watcher.log',
-  orderLogin: '',
+  roles: { admin: '', developers: [], testers: [] },
   mention: '@sloth',
   botPrefix: '**Sloth:**',
   maxActive: 3,
