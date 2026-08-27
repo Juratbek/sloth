@@ -50,9 +50,11 @@ export const draftFrom = (config: SlothConfig | null | undefined): Draft => ({
 });
 
 /** The saved config, or null when the user has not been through the wizard yet. */
-export function useConfig() {
+/** The saved config, for the wizard. Only the machine Sloth runs on may read it — a phone never asks. */
+export function useConfig(enabled = true) {
   return useQuery({
     queryKey: CONFIG_QUERY_KEY,
+    enabled,
     queryFn: async () => {
       const res = await fetch('/api/setup/config');
       if (res.status === 404) return null;

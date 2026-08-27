@@ -78,7 +78,8 @@ export default function TopBar({
   menu: boolean;
   onMenu: () => void;
   onHome: () => void;
-  onSettings: () => void;
+  /** Opens the settings wizard; absent on a phone, where the config is out of reach. */
+  onSettings?: () => void;
   /** Opens the QR dialog; absent when the page is not on the machine Sloth runs on, where there is no QR. */
   onRemote?: () => void;
 }) {
@@ -120,9 +121,11 @@ export default function TopBar({
           ▦
         </button>
       )}
-      <button onClick={onSettings} title="Settings" aria-label="Settings" className={iconButton}>
-        ⚙
-      </button>
+      {onSettings && (
+        <button onClick={onSettings} title="Settings" aria-label="Settings" className={iconButton}>
+          ⚙
+        </button>
+      )}
       <button onClick={onMenu} className={`${iconButton} md:hidden`} aria-expanded={menu}>
         {menu ? 'Close' : 'Sessions'}
       </button>
