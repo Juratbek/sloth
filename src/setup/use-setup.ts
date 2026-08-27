@@ -26,6 +26,9 @@ export interface Draft {
   orderLogin: string;
   maxActive: number;
   maxAlive: number;
+  /** Who hears about a card landing in needs help: `@`-mentioned logins, and an optional webhook URL. */
+  helpLogins: string[];
+  helpWebhook: string;
 }
 
 export const draftFrom = (config: SlothConfig | null | undefined): Draft => ({
@@ -42,6 +45,8 @@ export const draftFrom = (config: SlothConfig | null | undefined): Draft => ({
   orderLogin: config?.orderLogin ?? '',
   maxActive: config?.maxActive ?? 3,
   maxAlive: config?.maxAlive ?? 5,
+  helpLogins: config?.helpLogins ?? [],
+  helpWebhook: config?.helpWebhook ?? '',
 });
 
 /** The saved config, or null when the user has not been through the wizard yet. */

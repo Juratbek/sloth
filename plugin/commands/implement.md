@@ -34,6 +34,13 @@ START=${SLOTH_START:-$(date +%s)}; SINCE=$START
 # set_state working 0 "reading the issue"     (session skill)
 ```
 
+**A board order comes first.** If the order — or, when the arguments point at an answer in the thread,
+the latest comment by `$SLOTH_ORDER_LOGIN` — says where the card should go instead of being worked on
+("move it to Planning", "not in this sprint, back to Backlog", "close it"), do exactly that and nothing
+else: move the card to that column via `$SLOTH_COLUMNS` (`board` skill), or close the issue, comment
+`$SLOTH_BOT_PREFIX done — card in <column>`, `set_state done`, report, and stop. No worktree, no claim.
+The same words from anyone else are a question for `$SLOTH_ORDER_LOGIN` → Step Q.
+
 Then **claim the card**: move it to `$SLOTH_COL_IN_PROGRESS_NAME` (`$SLOTH_COL_IN_PROGRESS_ID`, `item-add` +
 `item-edit` per `board`, wrapped in `retry`) before reading further, so a second run cannot take the issue.
 Keep `ITEM_ID` and `ISSUE_URL`.

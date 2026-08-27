@@ -32,6 +32,7 @@ directory.
 | `SLOTH_REVIEW_ROUNDS` | Max reviewer-agent rounds (4) |
 | `SLOTH_BOT_PREFIX` | First line of every comment Sloth writes (`**Sloth:**`) |
 | `SLOTH_MENTION` | The mention that triggers the server (`@sloth`) |
+| `SLOTH_HELP_MENTIONS` | `@login @login…` of the people to notify when a card is parked — the last line of every needs-help comment (may be empty) |
 
 Board ids are in the **`board`** skill. Missing variables mean the session was launched by hand: fall back
 to sensible defaults (`SLOTH_SESSION_DIR=${SLOTH_SESSION_DIR:-/tmp/sloth-$$}`, a 60-minute budget from now)
@@ -106,7 +107,8 @@ Sloth's, the reviewer loop will not pass, or time is running out.
 
 1. Write **one** comment with **every** open question, numbered, each with the context that makes it
    answerable: what you found, the options you considered, what you would do under each answer. End with
-   done / left, the branch and the PR URL. First line `$SLOTH_BOT_PREFIX`.
+   done / left, the branch and the PR URL. First line `$SLOTH_BOT_PREFIX`; last line `cc $SLOTH_HELP_MENTIONS`
+   when that variable is set — it is how the responsible people get notified — and nothing when it is empty.
 2. Post it, park the card, record the state (`board` skill for `retry` and the ids):
    ```bash
    retry gh issue comment "$SLOTH_ISSUE" --repo "$SLOTH_REPO" --body-file "$SLOTH_SESSION_DIR/question.md"
@@ -134,7 +136,8 @@ Sloth's, the reviewer loop will not pass, or time is running out.
    `set_state working …`, bring the environment back up if you stopped it, and continue from where you
    stopped. Still a gap → ask again the same way.
 6. **`SLOTH_WAIT_HOURS` with no answer** — leave the card parked, tear down, `set_state done Q …`, report.
-   A later answer needs a human to move the card back to `$SLOTH_COL_PICKUP_NAME`.
+   The server keeps watching the parked card: a later human comment in the thread starts a new session
+   on the issue, which re-reads the thread and continues.
 
 ## Comment conventions
 

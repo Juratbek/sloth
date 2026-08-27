@@ -3,9 +3,10 @@ import path from 'node:path';
 import { cfg } from '../config';
 import { moveCard, unassignedIn, wiredPrs } from './board';
 import type { BoardItem } from './board';
-import { comment, run } from './gh';
+import { comment, gh, run } from './gh';
 import { limitExit } from './limits';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
+import { helpMentions } from './notify';
 import { approvedDir, counter, dirAlive, isBlocked, issueAlive, issueDir, reviewDir, runDirs, startedAt, stateOf } from './session-dirs';
 import type { Kind } from './session-dirs';
 import { launch, launchApproved, launchReview } from './spawn';
@@ -48,7 +49,8 @@ async function cleanup(issue: number): Promise<void> {
 /** Hands the issue to a human: one comment, then the needs-help column. */
 export async function park(issue: number, reason: string): Promise<void> {
   const c = cfg();
-  const body = `${c.botPrefix} ${reason} A developer needs to look at it; move the card back to **${c.statusField.columns.pickup.name}** to retry.`;
+  const cc = helpMentions();
+  const body = `${c.botPrefix} ${reason} A developer needs to look at it: answer in this thread and Sloth continues, or move the card back to **${c.statusField.columns.pickup.name}** to start over.${cc ? `\n\ncc ${cc}` : ''}`;
   if (isDry()) {
     log(`dry-run: would park #${issue} — ${reason}`);
     return;
@@ -152,6 +154,60 @@ export async function retryStranded(board: BoardItem[]): Promise<void> {
     }
     if (!(await launch(issue))) break;
     if (!isDry()) write(path.join(issueDir(issue), 'retries'), String(retries + 1));
+  }
+}
+
+interface Answer {
+  id: number;
+  login: string;
+}
+
+/**
+ * The first human comment after Sloth's last comment on the issue — the answer a parked card waits for.
+ * Undefined when Sloth never wrote there (a human parked the card by hand) or nobody replied since.
+ */
+async function answerOn(issue: number): Promise<Answer | undefined> {
+  const c = cfg();
+  const r = await gh([
+    'api', `repos/${c.repo}/issues/${issue}/comments`, '--paginate',
+    '--jq', `.[] | [.id, .user.login, (.body | startswith(${JSON.stringify(c.botPrefix)}))] | @tsv`,
+  ]);
+  if (!r.ok) {
+    log(`#${issue} thread read failed: ${r.err.split('\n')[0]}`);
+    return undefined;
+  }
+  let answer: Answer | undefined;
+  let asked = false;
+  for (const line of r.out.split('\n').filter(Boolean)) {
+    const [id, login, sloth] = line.split('\t');
+    if (sloth === 'true') {
+      asked = true;
+      answer = undefined;
+    } else if (asked) answer ??= { id: Number(id), login };
+  }
+  return answer;
+}
+
+/**
+ * Trigger 6 — parked cards whose thread got an answer. A needs-help card (or a card blocked in place
+ * when no such column is configured) with no live session is relaunched once a human comment is newer
+ * than Sloth's last comment on the issue. Only the thread is consulted, so a card parked before a
+ * reboot, or by a session that has since died, counts the same as one parked a minute ago. A session
+ * that parks again writes a newer Sloth comment, so the card waits for the next answer.
+ */
+export async function answered(board: BoardItem[]): Promise<void> {
+  const col = cfg().statusField.columns;
+  const parked = [
+    ...(col.needsHelp.name ? unassignedIn(board, col.needsHelp.name) : []),
+    ...unassignedIn(board, col.inProgress.name).filter((issue) => isBlocked(issueDir(issue))),
+  ];
+  for (const issue of parked) {
+    if (issueAlive(issue)) continue;
+    const answer = await answerOn(issue);
+    if (!answer) continue;
+    const hint = `Answer from ${answer.login} in the issue thread (comment ${answer.id}): re-read the whole thread and continue where the last session stopped.`;
+    if (!(await launch(issue, hint))) break;
+    if (!isDry()) remove(path.join(issueDir(issue), 'retries'));
   }
 }
 

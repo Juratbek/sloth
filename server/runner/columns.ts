@@ -1,3 +1,4 @@
+import { cfg } from '../config';
 import { graphql, graphqlBody } from './gh';
 import { log } from './log';
 import { DEFAULT_COLUMN_NAMES } from '../config-types';
@@ -22,6 +23,26 @@ export async function fieldOptions(fieldId: string): Promise<FieldOption[]> {
   const data = await graphql(OPTIONS_QUERY, ['-F', `id=${fieldId}`]);
   return (data.node?.options ?? []) as FieldOption[];
 }
+
+let known: ColumnRef[] = [];
+
+/**
+ * Every Status column on the board, in board order — the five Sloth roles and all the others
+ * (Planning, Backlog, Done…), so a session can carry out "move it to Planning". Refreshed by each tick
+ * (1 rate-limit point); a failed read keeps the last list, so a network blip never blanks it.
+ */
+export async function refreshColumns(): Promise<void> {
+  const field = cfg().statusField.id;
+  if (!field) return;
+  try {
+    known = (await fieldOptions(field)).filter((o) => o.id).map(({ id, name }) => ({ id, name }));
+  } catch (e) {
+    log(`column list read failed: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
+  }
+}
+
+/** What the last refresh saw; empty before the first one. */
+export const knownColumns = (): ColumnRef[] => known;
 
 const byName = (options: FieldOption[], name: string) => options.find((o) => o.name.toLowerCase() === name.toLowerCase());
 

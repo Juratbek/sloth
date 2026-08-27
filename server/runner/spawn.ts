@@ -5,8 +5,10 @@ import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { PLUGIN_DIR, cfg } from '../config';
 import { moveCard } from './board';
+import { knownColumns } from './columns';
 import { run } from './gh';
 import { isDry, log, nowSec, remove, write } from './log';
+import { helpMentions } from './notify';
 import { approvedDir, issueDir, reviewDir, slotsFull } from './session-dirs';
 
 const APPEND_PROMPT =
@@ -45,6 +47,7 @@ function sessionEnv(dir: string, target: Target, chrome: boolean): NodeJS.Proces
     SLOTH_COL_CODE_REVIEW_NAME: col.codeReview.name,
     SLOTH_COL_APPROVED_ID: col.approved.id,
     SLOTH_COL_APPROVED_NAME: col.approved.name,
+    SLOTH_COLUMNS: JSON.stringify(knownColumns()),
     SLOTH_RUNNER_ROOT: c.runnerRoot,
     SLOTH_WORKTREES_DIR: c.worktreesDir,
     SLOTH_ORDER_LOGIN: c.orderLogin,
@@ -57,6 +60,7 @@ function sessionEnv(dir: string, target: Target, chrome: boolean): NodeJS.Proces
     SLOTH_REVIEW_ROUNDS: String(c.reviewRounds),
     SLOTH_BOT_PREFIX: c.botPrefix,
     SLOTH_MENTION: c.mention,
+    SLOTH_HELP_MENTIONS: helpMentions(),
   };
 }
 

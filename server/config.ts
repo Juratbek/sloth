@@ -72,6 +72,8 @@ const BLANK: SlothConfig = {
   model: 'opus',
   approvedModel: 'fable',
   chrome: true,
+  helpLogins: [],
+  helpWebhook: '',
 };
 
 /** The commands the Sloth plugin ships, mapped to the GitHub path segment of their target. */

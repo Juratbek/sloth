@@ -23,6 +23,7 @@ Every id comes from the environment the server set for this session — never ha
 | `SLOTH_COL_NEEDS_HELP_ID` / `_NAME` | Parked, waiting for a human (may be empty) |
 | `SLOTH_COL_CODE_REVIEW_ID` / `_NAME` | Handed to a human reviewer |
 | `SLOTH_COL_APPROVED_ID` / `_NAME` | Approved by a human — never move a card here (may be empty) |
+| `SLOTH_COLUMNS` | **Every** Status column on the board, in board order: JSON `[{"id","name"}]` — the five above and all the others (Planning, Backlog, Done…) |
 
 ```bash
 OWNER=${SLOTH_REPO%%/*}; NAME=${SLOTH_REPO##*/}
@@ -88,6 +89,21 @@ retry gh project item-edit --id "$ITEM_ID" --project-id "$SLOTH_PROJECT_ID" \
 
 Swap the last argument for `$SLOTH_COL_NEEDS_HELP_ID` / `$SLOTH_COL_CODE_REVIEW_ID` / `$SLOTH_COL_PICKUP_ID`.
 Keep `ITEM_ID` for the rest of the run; every later move reuses it.
+
+## Move a card to any column by name
+
+A human may ask for a column that is not one of Sloth's five ("move it to Planning", "put it in Backlog").
+Every column is in `$SLOTH_COLUMNS`; match the name case-insensitively and move as above:
+
+```bash
+OPT=$(jq -r --arg n "Planning" '.[] | select(.name | ascii_downcase == ($n | ascii_downcase)) | .id' <<<"$SLOTH_COLUMNS")
+[ -n "$OPT" ] && retry gh project item-edit --id "$ITEM_ID" --project-id "$SLOTH_PROJECT_ID" \
+  --field-id "$SLOTH_STATUS_FIELD_ID" --single-select-option-id "$OPT"
+```
+
+Empty `OPT` → the column does not exist (or `SLOTH_COLUMNS` is empty; then fall back to the field-list
+lookup below with that name). Never create a column; say in the thread which columns exist and stop.
+The only column a session never moves a card **into** on its own is `$SLOTH_COL_APPROVED_NAME`.
 
 ## Re-derive an option id by column name
 

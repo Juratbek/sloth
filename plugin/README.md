@@ -71,6 +71,7 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_COL_NEEDS_HELP_ID` / `_NAME` | Parked, waiting for a human (may be empty) |
 | `SLOTH_COL_CODE_REVIEW_ID` / `_NAME` | Handed to a human reviewer |
 | `SLOTH_COL_APPROVED_ID` / `_NAME` | Approved by a human; the server gives its PR a final `/sloth:review` on Fable (may be empty) |
+| `SLOTH_COLUMNS` | Every Status column on the board as JSON `[{"id","name"}]`, Sloth's and the rest, so a session can move a card anywhere a human asks |
 | `SLOTH_RUNNER_ROOT` | The checkout sessions run from |
 | `SLOTH_WORKTREES_DIR` | Where per-issue worktrees go — `issue-<n>` under it |
 | `SLOTH_ORDER_LOGIN` | The one login whose comments are orders |
@@ -82,6 +83,7 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_REVIEW_ROUNDS` | Max reviewer-agent rounds (4) |
 | `SLOTH_BOT_PREFIX` | First line of every comment Sloth writes (`**Sloth:**`) |
 | `SLOTH_MENTION` | The mention that triggers the server (`@sloth`) |
+| `SLOTH_HELP_MENTIONS` | `@login @login…` to put on the last line of a needs-help comment, so GitHub notifies them (may be empty) |
 
 ## What the session writes back
 
@@ -99,7 +101,8 @@ The **last message of the transcript is the report** — the monitor shows it.
 
 ## Behaviour worth knowing
 
-- One comment per question, numbered, with the context each answer needs.
+- One comment per question, numbered, with the context each answer needs; it ends with `cc $SLOTH_HELP_MENTIONS`
+  when the server configured people to notify.
 - Every comment starts with `$SLOTH_BOT_PREFIX`; the session never writes `$SLOTH_MENTION` itself.
 - Orders from `$SLOTH_ORDER_LOGIN` override everything, in any column, at any step.
 - An open PR on the issue whose branch is `sloth/issue-<n>-*` is resumed, not duplicated.

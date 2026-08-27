@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { DEFAULT_COLUMN_NAMES } from '../../server/config-types';
 import type { ColumnRef, ColumnRole } from '../../server/config-types';
-import { Button, Choice, Error, Field, Loading, Select } from './ui';
+import { Button, Choice, Error, Field, Loading, Select, TextInput } from './ui';
 import type { Draft } from './use-setup';
 import { useProjectFields } from './use-setup';
 
@@ -39,6 +39,8 @@ export default function StepColumns({
     codeReview: draft.codeReview,
     approved: draft.approved,
   });
+  const [helpLogins, setHelpLogins] = useState(draft.helpLogins.join(', '));
+  const [helpWebhook, setHelpWebhook] = useState(draft.helpWebhook);
 
   // Untouched roles fall back to the first column whose name matches; with no match Sloth creates one.
   const value = (role: ColumnRole): ColumnRef => {
@@ -78,6 +80,21 @@ export default function StepColumns({
               </Field>
             ))}
           </div>
+          <div className="space-y-2">
+            <p className="text-sm text-zinc-400">Who should hear about a card landing in “{value('needsHelp').name}”?</p>
+            <Field
+              label="GitHub logins to mention"
+              hint="Mentioned in the comment Sloth writes when it parks a card, so GitHub notifies them. Leave out the login gh is signed in as — GitHub never notifies an account of its own mention."
+            >
+              <TextInput value={helpLogins} onChange={setHelpLogins} placeholder="alice, bob" />
+            </Field>
+            <Field
+              label="Webhook URL"
+              hint="Optional. A Slack or Discord incoming webhook (or your own endpoint) gets a JSON POST with the issue each time a card lands in that column, within one board poll."
+            >
+              <TextInput value={helpWebhook} onChange={setHelpWebhook} placeholder="https://hooks.slack.com/services/…" />
+            </Field>
+          </div>
         </>
       )}
       <div className="flex gap-2">
@@ -93,6 +110,8 @@ export default function StepColumns({
               needsHelp: value('needsHelp'),
               codeReview: value('codeReview'),
               approved: value('approved'),
+              helpLogins: helpLogins.split(/[\s,]+/).map((l) => l.replace(/^@/, '')).filter(Boolean),
+              helpWebhook: helpWebhook.trim(),
             })
           }
         >

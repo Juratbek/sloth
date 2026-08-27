@@ -29,15 +29,17 @@ The short version; the tick-by-tick account is in [docs/how-it-works.md](docs/ho
 | 5 | An unassigned issue in Approved has an open, non-draft wired PR | Runs `/sloth:review <pr> final` on the `fable` model, once per PR head; a pass labels the issue `Fable: approved` |
 
 The board is read every 5 minutes, comments every 2; **Tick now** runs both at once. **Pause**
-stops Sloth from starting anything new (running sessions, inbox deliveries and status replies carry
-on) and survives a restart.
+stops Sloth from starting anything new (running sessions, inbox deliveries, status replies and
+needs-help notifications carry on) and survives a restart.
 
 - An **assignee on a card means a human owns it** — Sloth never touches it. Sloth never assigns
   anyone and never requests a reviewer.
 - Only `orderLogin` gives orders; a comment from that login ending in `?` is a status question.
   Every comment Sloth writes starts with `**Sloth:**`.
 - **Columns** are roles mapped to the board's Status options: *pickup* (Sloth only reads it),
-  *In Progress*, *needs help* (a stuck session parks the card here after asking its questions),
+  *In Progress*, *needs help* (a stuck session parks the card here after asking its questions; an
+  answer in the thread brings it back — `helpLogins` are mentioned in that question and `helpWebhook`
+  is called, see *Configuration*),
   *Code Review* (trigger 4) and *Approved* (trigger 5 — a final review on the Fable model; a GitHub approval does not skip it,
   and a pass labels the issue `Fable: approved`).
   Missing columns are created after the pickup column, without dropping any existing option.
@@ -54,7 +56,7 @@ on) and survives a restart.
 ├── runners/<repo>/                 the checkout the sessions run from
 ├── worktrees/<repo>/issue-42/      one worktree per issue
 ├── sessions/<repo>/                issue-42/, review-91/, approved-91/ — pid, state.json, inbox/, run.log …
-└── state/                          seen/, reviewed/, approved/ dedupe markers; paused, paused_until
+└── state/                          seen/, reviewed/, approved/, notified/ dedupe markers; paused, paused_until
 ```
 
 ## The plugin
@@ -67,7 +69,7 @@ The session protocol (environment variables, `state.json`, the inbox) is in [plu
 ## Configuration
 
 `~/.sloth/config.json` (path overridable with `SLOTH_CONFIG`). The wizard asks about the board, the
-columns, `repo`, `runnerRoot`, `orderLogin` and the caps; the rest defaults:
+columns, who to notify when a card needs help, `repo`, `runnerRoot`, `orderLogin` and the caps; the rest defaults:
 
 | Key | Default | Means |
 |---|---|---|
@@ -79,10 +81,12 @@ columns, `repo`, `runnerRoot`, `orderLogin` and the caps; the rest defaults:
 | `boardSeconds` / `commentSeconds` | `300` / `120` | Poll intervals |
 | `model` | `opus` | The model every session runs on — except trigger 5's |
 | `chrome` | `true` | Start implement sessions with `--chrome`, so a tester subagent can click through the change in your Chrome |
+| `helpLogins` | `[]` | GitHub logins `@`-mentioned in the comment that parks a card in *needs help*, so GitHub notifies them (not the login `gh` writes with — GitHub skips self-mentions) |
+| `helpWebhook` | `""` | URL POSTed once per card that lands in *needs help* (`{text, content, repo, issue, title, url, column}` — Slack and Discord incoming webhooks read it as is) |
 | `approvedModel` | `fable` | The model trigger 5's final reviews run on |
 
-Environment: `SLOTH_CONFIG`, `SLOTH_PORT` (default `4400`), and `SLOTH_DRY_RUN=1` to log what every
-tick *would* do without doing it.
+Environment: `SLOTH_CONFIG`, `SLOTH_PORT` (default `4400`), `SLOTH_HOST` (see *Remote access*), and
+`SLOTH_DRY_RUN=1` to log what every tick *would* do without doing it. A `.env` in the project root works too.
 
 ## UI and API
 
@@ -94,6 +98,29 @@ Read: `GET /api/overview`, `/api/sessions/:id`, `/api/sessions/:id/agents/:agent
 `/api/events` (SSE). Write: `POST /api/tick` (`?dry=1`), `/api/pause`, `/api/resume`, `/api/setup/config`,
 `/api/setup/clone`. Wizard reads: `GET /api/setup/env`, `/api/setup/projects`, `/api/setup/projects/:id/fields`,
 `/api/setup/config`.
+
+## Remote access
+
+Sloth has to run on the machine that owns `claude`, `gh` and the checkouts — it cannot be hosted
+elsewhere — but the UI can be reached from a phone through a tunnel. The API has **no authentication**:
+whoever reaches the URL can tick, pause and rewrite the configuration, so put a login in front of it.
+With your own domain, Cloudflare Tunnel plus Cloudflare Access does both for free:
+
+```bash
+brew install cloudflared && cloudflared tunnel login
+cloudflared tunnel create sloth
+cloudflared tunnel route dns sloth sloth.example.com
+echo SLOTH_HOST=sloth.example.com >> .env      # Vite rejects unknown hostnames without this
+pnpm build && pnpm start                        # preview, not dev: no HMR socket through the tunnel
+cloudflared tunnel run --url http://localhost:4400 sloth
+```
+
+Then, in Zero Trust → Access → Applications, add `sloth.example.com` with a policy allowing your email;
+`cloudflared service install` keeps the tunnel up across reboots. Keep the Mac awake
+(`caffeinate -i pnpm start`) — watching stops when the process stops. Any other HTTP tunnel (jprq, ngrok)
+works the same way with `SLOTH_HOST` set to its hostname, but only ngrok's `--basic-auth` and similar
+give you a login; a bare jprq URL is an open door. Vite listens on `[::1]` — if a tunnel reports
+*connection refused* for `localhost:4400`, give it `http://[::1]:4400`.
 
 ## Conventions
 
