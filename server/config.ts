@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_CONFIG_PATH, expandPath, readConfigFile } from './config-file';
-import type { SlothConfig } from './config-types';
+import { DEFAULT_TUNNEL, type SlothConfig } from './config-types';
 
 const home = os.homedir();
 /** The Sloth checkout itself — where `plugin/` lives. */
@@ -74,6 +74,8 @@ const BLANK: SlothConfig = {
   chrome: true,
   helpLogins: [],
   helpWebhook: '',
+  tunnel: DEFAULT_TUNNEL,
+  publicUrl: '',
 };
 
 /** The commands the Sloth plugin ships, mapped to the GitHub path segment of their target. */

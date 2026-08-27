@@ -59,7 +59,7 @@ export default function MessageItem({
       {message.blocks.map((b, i) => {
         if (b.type === 'text')
           return (
-            <p key={i} className="max-w-4xl text-sm whitespace-pre-wrap text-zinc-200">
+            <p key={i} className="max-w-4xl text-sm break-words whitespace-pre-wrap text-zinc-200">
               {b.text}
             </p>
           );

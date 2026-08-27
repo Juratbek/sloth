@@ -63,7 +63,13 @@ export interface SlothConfig {
   helpLogins: string[];
   /** Optional URL POSTed (Slack / Discord incoming-webhook shape) when a card lands in the needs-help column. */
   helpWebhook: string;
+  /** The argv Sloth runs to reach the UI from outside; `{port}` is the UI's port. The first bare https URL it prints is the address. */
+  tunnel: string[];
+  /** Where the UI is already reachable (your own tunnel or domain). Set, no tunnel is started. */
+  publicUrl: string;
 }
+
+export const DEFAULT_TUNNEL = ['cloudflared', 'tunnel', '--url', 'http://localhost:{port}'];
 
 /** ---- Get-started wizard payloads ---- */
 

@@ -5,6 +5,7 @@ import { CONFIG_PATH, reloadConfig } from './config';
 import { expandPath, normalizeConfig, readConfigFile, writeConfigFile } from './config-file';
 import { watchAll } from './events';
 import { ensureColumns } from './runner/columns';
+import { startTunnel } from './remote';
 import { startLoop } from './runner/loop';
 import type { ColumnRef, ColumnRole, FieldOption, SetupCheck, SetupEnv, SetupFields, SetupProject } from './config-types';
 
@@ -137,6 +138,7 @@ export async function handleSetup(pathname: string, method: string, body: unknow
     reloadConfig();
     watchAll();
     startLoop();
+    startTunnel();
     return { ok: true, path: CONFIG_PATH, config };
   }
   if (pathname === '/api/setup/config') return readConfigFile(CONFIG_PATH);

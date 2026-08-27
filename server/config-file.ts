@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { ColumnRef, SlothConfig } from './config-types';
+import { DEFAULT_TUNNEL, type ColumnRef, type SlothConfig } from './config-types';
 
 const home = os.homedir();
 
@@ -37,11 +37,14 @@ export function logins(v: unknown): string[] {
   return [...new Set(raw.map((l) => l.trim().replace(/^@/, '')).filter(Boolean))];
 }
 
-function webhook(v: unknown): string {
-  const url = text(v) ?? '';
-  if (url && !/^https?:\/\/\S+$/.test(url)) throw new Error('helpWebhook must be an http(s) URL');
-  return url;
+function url(v: unknown, what: string): string {
+  const u = text(v) ?? '';
+  if (u && !/^https?:\/\/\S+$/.test(u)) throw new Error(`${what} must be an http(s) URL`);
+  return u.replace(/\/+$/, '');
 }
+
+const argv = (v: unknown, fallback: string[]): string[] =>
+  Array.isArray(v) && v.length ? v.map(String).filter((a) => a.trim()) : fallback;
 
 function column(v: unknown, what: string): ColumnRef {
   const c = v as ColumnRef | undefined;
@@ -102,6 +105,8 @@ export function normalizeConfig(input: unknown): SlothConfig {
     approvedModel: text(b.approvedModel) ?? 'fable',
     chrome: b.chrome !== false,
     helpLogins: logins(b.helpLogins),
-    helpWebhook: webhook(b.helpWebhook),
+    helpWebhook: url(b.helpWebhook, 'helpWebhook'),
+    tunnel: argv(b.tunnel, DEFAULT_TUNNEL),
+    publicUrl: url(b.publicUrl, 'publicUrl'),
   };
 }

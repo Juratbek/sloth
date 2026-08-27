@@ -65,7 +65,7 @@ export default function Header({ s, config }: { s: SessionDetail; config: Monito
         )}
         <span className="rounded border border-zinc-700 px-1.5 py-0.5 text-[11px] text-zinc-300">{s.status}</span>
         <span className="text-[11px] text-zinc-500">{elapsed(s)}</span>
-        <span className="ml-auto font-mono text-[11px] text-zinc-600">{s.id}</span>
+        <span className="ml-auto hidden font-mono text-[11px] text-zinc-600 sm:inline">{s.id}</span>
       </div>
       <Stats s={s} />
       <p className="truncate font-mono text-xs text-zinc-500">{s.prompt}</p>

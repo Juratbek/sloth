@@ -84,9 +84,11 @@ columns, who to notify when a card needs help, `repo`, `runnerRoot`, `orderLogin
 | `helpLogins` | `[]` | GitHub logins `@`-mentioned in the comment that parks a card in *needs help*, so GitHub notifies them (not the login `gh` writes with — GitHub skips self-mentions) |
 | `helpWebhook` | `""` | URL POSTed once per card that lands in *needs help* (`{text, content, repo, issue, title, url, column}` — Slack and Discord incoming webhooks read it as is) |
 | `approvedModel` | `fable` | The model trigger 5's final reviews run on |
+| `tunnel` | `["cloudflared", "tunnel", "--url", "http://localhost:{port}"]` | The command Sloth runs so the UI is reachable from outside (see *Remote access*); the first bare `https://` URL it prints is the address |
+| `publicUrl` | — | Where the UI is already reachable — your own tunnel or domain. Set, no tunnel is started |
 
-Environment: `SLOTH_CONFIG`, `SLOTH_PORT` (default `4400`), `SLOTH_HOST` (see *Remote access*), and
-`SLOTH_DRY_RUN=1` to log what every tick *would* do without doing it. A `.env` in the project root works too.
+Environment: `SLOTH_CONFIG`, `SLOTH_PORT` (default `4400`), and `SLOTH_DRY_RUN=1` to log what every
+tick *would* do without doing it. A `.env` in the project root works too.
 
 ## UI and API
 
@@ -97,30 +99,28 @@ and an SSE stream. Transcripts are read from `~/.claude/projects/<runner root, n
 Read: `GET /api/overview`, `/api/sessions/:id`, `/api/sessions/:id/agents/:agentId`, `/api/usage?days=N`,
 `/api/events` (SSE). Write: `POST /api/tick` (`?dry=1`), `/api/pause`, `/api/resume`, `/api/setup/config`,
 `/api/setup/clone`. Wizard reads: `GET /api/setup/env`, `/api/setup/projects`, `/api/setup/projects/:id/fields`,
-`/api/setup/config`.
+`/api/setup/config`. `GET /api/remote` (the QR's link and the tunnel tool's state), `POST /api/remote/rotate`
+(a new link) and `POST /api/remote/install` (brew installs the tool). Everything under `/api/setup/` and
+`/api/remote` answers only from the machine Sloth runs on — a phone reads and ticks, it never reconfigures.
 
 ## Remote access
 
-Sloth has to run on the machine that owns `claude`, `gh` and the checkouts — it cannot be hosted
-elsewhere — but the UI can be reached from a phone through a tunnel. The API has **no authentication**:
-whoever reaches the URL can tick, pause and rewrite the configuration, so put a login in front of it.
-With your own domain, Cloudflare Tunnel plus Cloudflare Access does both for free:
+The **▦** button in the header shows a QR code; scanning it opens this Sloth on your phone, from
+anywhere, and the layout fits a phone. Sloth keeps running on your machine — the QR only reaches it.
 
-```bash
-brew install cloudflared && cloudflared tunnel login
-cloudflared tunnel create sloth
-cloudflared tunnel route dns sloth sloth.example.com
-echo SLOTH_HOST=sloth.example.com >> .env      # Vite rejects unknown hostnames without this
-pnpm build && pnpm start                        # preview, not dev: no HMR socket through the tunnel
-cloudflared tunnel run --url http://localhost:4400 sloth
-```
+Behind the code: Sloth starts a tunnel when the server starts (`tunnel`, by default a Cloudflare quick
+tunnel — no account needed; if `cloudflared` is missing the dialog offers to `brew install` it and shows
+the QR once the tunnel is up) and guards everything it serves with one secret kept in
+`state/remote-token`. Requests from the machine itself pass; the QR's link carries the secret and signs
+the phone in with a cookie for a year; anything else gets a 401. The wizard stays on the machine: a phone
+cannot rewrite the config. Only a page open on the machine can
+see the code or mint a new one, and **New link** in the dialog signs every phone out. Treat the code
+like a password: whoever scans it reads every session and can tick and pause.
 
-Then, in Zero Trust → Access → Applications, add `sloth.example.com` with a policy allowing your email;
-`cloudflared service install` keeps the tunnel up across reboots. Keep the Mac awake
-(`caffeinate -i pnpm start`) — watching stops when the process stops. Any other HTTP tunnel (jprq, ngrok)
-works the same way with `SLOTH_HOST` set to its hostname, but only ngrok's `--basic-auth` and similar
-give you a login; a bare jprq URL is an open door. Vite listens on `[::1]` — if a tunnel reports
-*connection refused* for `localhost:4400`, give it `http://[::1]:4400`.
+A quick tunnel gets a new address on every start — the QR follows it. For a stable address run your
+own tunnel (a named `cloudflared` tunnel on your domain, `jprq`, `ngrok`) and set `publicUrl`, or
+put its command in `tunnel` so Sloth starts it — `"tunnel": ["jprq", "http", "{port}"]`, say. Keep the machine awake (`caffeinate -i pnpm start`):
+watching stops when the process stops.
 
 ## Conventions
 
