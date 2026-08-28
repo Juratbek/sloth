@@ -5,9 +5,10 @@ import { broadcast, sse, watchAll } from './events';
 import { startLoop, stopLoop, tick } from './runner/loop';
 import { isPaused, setPaused } from './runner/pause';
 import { closeTunnels, stopPreview } from './runner/preview';
+import { stop as stopRun } from './runner/triggers';
 import { install } from './install';
 import { guard, isLocal, remoteLink, rotateToken, sameOrigin, startTunnel, stopTunnel } from './remote';
-import { agentDetail, overview, sessionDetail } from './sessions';
+import { agentDetail, overview, sessionDetail, watcherOf } from './sessions';
 import { handleSetup } from './setup';
 import { usageSeries } from './usage';
 
@@ -100,6 +101,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     const session = /^\/api\/sessions\/([\w-]+)$/.exec(p);
     const agent = /^\/api\/sessions\/([\w-]+)\/agents\/(\w+)$/.exec(p);
     const preview = /^\/api\/previews\/(\d+)\/stop$/.exec(p);
+    const stopSession = /^\/api\/sessions\/([\w-]+)\/stop$/.exec(p);
     if (p === '/api/tick' && req.method === 'POST') {
       const dryRun = url.searchParams.get('dry') === '1';
       await tick({ board: true, comments: true, dryRun });
@@ -112,6 +114,14 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     } else if (preview && req.method === 'POST') {
       await stopPreview(Number(preview[1]), 'stopped from the monitor');
       body = { ok: true };
+    } else if (stopSession && req.method === 'POST') {
+      // Ends the run behind a transcript; an issue's card is parked so it is not relaunched.
+      const w = watcherOf(stopSession[1]);
+      if (w) {
+        const stopped = await stopRun(w.kind, w.target, 'stopped from the monitor', 'the run for this issue was stopped from the monitor.');
+        broadcast();
+        body = { ok: true, stopped };
+      }
     } else if (p === '/api/overview') body = await overview();
     else if (p === '/api/usage') body = usageSeries(Math.min(31, Number(url.searchParams.get('days')) || 7));
     else if (session) body = sessionDetail(session[1]);
