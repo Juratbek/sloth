@@ -195,6 +195,17 @@ export interface VersionInfo {
   update: UpdateStatus;
 }
 
+/** The launch agent that starts Sloth at login — Settings → Machine shows this. */
+export interface ServiceStatus {
+  /** Only macOS has an implementation; elsewhere the toggle saves and does nothing. */
+  supported: boolean;
+  installed: boolean;
+  label: string;
+  plist: string;
+  /** Why the last change failed — a missing build, mostly. */
+  error?: string;
+}
+
 export interface Overview {
   generatedAt: string;
   config: MonitorConfig;

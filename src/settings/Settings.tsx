@@ -5,12 +5,13 @@ import { Button } from '../setup/ui';
 import { useSaveConfig } from '../setup/use-setup';
 import AboutSection from './AboutSection';
 import BoardSection from './BoardSection';
+import MachineSection from './MachineSection';
 import RepositorySection from './RepositorySection';
 import { Models } from './ModelsSection';
 import { General, Notifications, Remote, Sessions, Team } from './sections';
 import type { SectionProps } from './ui';
 
-type Key = 'general' | 'board' | 'repository' | 'team' | 'notifications' | 'models' | 'sessions' | 'remote' | 'about';
+type Key = 'general' | 'board' | 'repository' | 'team' | 'notifications' | 'models' | 'sessions' | 'remote' | 'machine' | 'about';
 
 const pick = <K extends keyof typeof CONFIG_DEFAULTS>(...keys: K[]) =>
   Object.fromEntries(keys.map((k) => [k, CONFIG_DEFAULTS[k]])) as Pick<typeof CONFIG_DEFAULTS, K>;
@@ -33,6 +34,7 @@ const SECTIONS: { key: Key; label: string; component: ComponentType<SectionProps
   { key: 'models', label: 'Models', component: Models, defaults: () => ({ models: { ...DEFAULT_MODELS } }) },
   { key: 'sessions', label: 'Sessions', component: Sessions, defaults: () => pick('maxActive', 'maxAlive', 'budgetMinutes', 'waitHours', 'reviewRounds', 'maxRetries', 'keepDays') },
   { key: 'remote', label: 'Remote access', component: Remote, defaults: () => pick('tunnel', 'publicUrl') },
+  { key: 'machine', label: 'Machine', component: MachineSection, defaults: () => pick('autostart') },
   { key: 'about', label: 'About', component: AboutSection },
 ];
 

@@ -157,6 +157,7 @@ export function normalizeConfig(input: unknown): SlothConfig {
     commentSeconds: int(b.commentSeconds, d.commentSeconds, 30),
     models: models(b.models, b.model, b.approvedModel),
     chrome: b.chrome !== false,
+    autostart: b.autostart === true,
     previewHours: int(b.previewHours, d.previewHours, 0),
     keepDays: int(b.keepDays, d.keepDays),
     // An explicit "" turns the ranking off, so it has to survive: `text` would hand back the default.

@@ -98,6 +98,8 @@ export interface SlothConfig {
   models: AgentModels;
   /** Pass `--chrome` to implement sessions, so a tester subagent can exercise the change in the user's Chrome. */
   chrome: boolean;
+  /** Start Sloth when this machine is logged into, through a macOS launch agent (`server/service.ts`). */
+  autostart: boolean;
   /**
    * How long a finished implement session's app stays up behind a public link posted on its PR, so a
    * reviewer can try the change without checking it out (see `runner/preview.ts`). `0` turns previews off.
@@ -150,6 +152,7 @@ export const CONFIG_DEFAULTS = {
   commentSeconds: 120,
   models: DEFAULT_MODELS,
   chrome: true,
+  autostart: false,
   previewHours: 24,
   keepDays: 30,
   priorityField: 'Priority',

@@ -115,6 +115,7 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `reviewRounds` / `maxRetries` | `4` / `2` | Reviewer-agent rounds before asking for help; trigger-2 relaunches before parking |
 | `boardSeconds` / `commentSeconds` | `300` / `120` | Poll intervals |
 | `models` | `opus` each, `final: fable` | Which model each agent runs on (Settings → *Models*): `implement` (triggers 1–3), `tester` (the Chrome subagent), `reviewer` (the in-session review loop), `review` (trigger 4), `final` (trigger 5), `status` (mention replies). An older config's `model` / `approvedModel` still load |
+| `autostart` | `false` | Start Sloth at login through a macOS launch agent (Settings → *Machine*; see *Run at login*). Saved but ignored on other platforms |
 | `chrome` | `true` | Start implement sessions with `--chrome`, so a tester subagent can click through the change in your Chrome |
 | `previewHours` | `24` | How long a finished implement session's app stays up behind a public link posted on its PR (see *Previews* above); `0` turns previews off |
 | `priorityField` | `Priority` | A single-select field on the board whose option order ranks the watched column. Missing from the board, or empty here: cards are picked up in board order |
@@ -170,8 +171,18 @@ headers above.
 A quick tunnel gets a new address on every start — the QR follows it. For a stable address run your
 own tunnel (a named `cloudflared` tunnel on your domain, `jprq`, `ngrok`) and set `publicUrl`, or
 put its command in `tunnel` so Sloth starts it — `"tunnel": ["jprq", "http", "{port}"]`, say. Previews always run the
-`tunnel` command, one child per preview, whatever `publicUrl` says — that only names the UI. Keep the machine awake (`caffeinate -i pnpm start`):
-watching stops when the process stops.
+`tunnel` command, one child per preview, whatever `publicUrl` says — that only names the UI.
+
+### Run at login
+
+Watching stops when the process stops, so Sloth has to be running for anything to happen. **Settings →
+Machine → Start at login** (`autostart`) registers a macOS launch agent —
+`~/Library/LaunchAgents/dev.sloth.<repo>.plist`, `caffeinate -i pnpm start` in this checkout — that
+launchd starts at login, restarts if it dies, and that keeps the Mac awake while it runs. It serves the
+built UI, so run `pnpm build` first (the **Update** button does). Turning it off unloads and deletes the
+agent. It takes effect at the next login; to start it now without logging out:
+`launchctl kickstart -k gui/$UID/dev.sloth.<repo>`. Only macOS is supported — elsewhere, run
+`caffeinate -i pnpm start` yourself.
 
 ## Security
 
