@@ -66,6 +66,8 @@ export interface WatcherSession {
   preview?: PreviewState;
   retries: number;
   blocked: boolean;
+  /** The issue a review / approved run was started for — the server writes it into the directory. */
+  issue?: number;
   runLogTail: string;
   inbox: string[];
   updatedAt?: string;
@@ -85,6 +87,20 @@ export interface SessionSummary extends Stats {
   agents: AgentSummary[];
   agentsUsage: Usage;
   watcher?: WatcherSession;
+  /** USD at list price for this run and its subagents; null when one of its models has no known price. */
+  cost: number | null;
+}
+
+/** What one issue has cost so far — every run Sloth started on it, rolled up. */
+export interface IssueCost {
+  issue: number;
+  title?: string;
+  sessions: number;
+  cost: number | null;
+  tokens: { input: number; output: number; cacheRead: number };
+  lastAt?: string;
+  /** The status of the newest run on the issue. */
+  status?: SessionStatus;
 }
 
 export type Block =
@@ -196,6 +212,8 @@ export interface Overview {
   rateLimit?: Record<string, RateBucket>;
   sessions: SessionSummary[];
   orphans: WatcherSession[];
+  /** Per-issue rollup of everything above, dearest first. */
+  issues: IssueCost[];
 }
 
 export interface UsageBucket {

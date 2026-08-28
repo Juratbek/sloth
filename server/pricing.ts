@@ -42,3 +42,15 @@ export function costOf(model: string, u: Rec): number | undefined {
     w1h * CACHE_WRITE_1H;
   return (inputCost * p.input + (u.output_tokens ?? 0) * p.output) / 1e6;
 }
+
+/**
+ * The same list price over a run's summed usage rather than one call's. Claude Code writes 1h caches
+ * and a `ModelUsage` no longer knows the split, so every cache write is priced as one — the same
+ * assumption `costOf` makes for a record without the split, and the one that cannot undercount.
+ */
+export function costOfUsage(model: string, u: { input: number; output: number; cacheRead: number; cacheWrite: number }): number | undefined {
+  const p = priceOf(model);
+  if (!p) return undefined;
+  const input = u.input + u.cacheRead * CACHE_READ + u.cacheWrite * CACHE_WRITE_1H;
+  return (input * p.input + u.output * p.output) / 1e6;
+}

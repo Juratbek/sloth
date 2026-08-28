@@ -130,8 +130,9 @@ tick *would* do without doing it. A `.env` in the project root works too.
 
 ## UI and API
 
-The UI lists sessions (live / needs help / finished) with their transcript, subagents, token spend and
-watcher state, plus a home panel with hourly spend, the queue and the log. It refreshes on a 15s poll
+The UI lists sessions (live / needs help / finished) with their transcript, subagents, token spend, what
+the run cost at list price and watcher state, plus a home panel with hourly spend, **cost by issue** — every
+issue Sloth touched, its runs rolled up into one line, dearest first — the queue and the log. It refreshes on a 15s poll
 and an SSE stream. Transcripts are read from `~/.claude/projects/<runner root, non-alphanumerics as '-'>`.
 
 Read: `GET /api/overview`, `/api/sessions/:id`, `/api/sessions/:id/agents/:agentId`, `/api/usage?days=N`,

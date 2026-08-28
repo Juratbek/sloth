@@ -3,9 +3,11 @@ import path from 'node:path';
 import { cfg } from './config';
 import { add, promptOf, readRecords, summarize, toMessages, zero } from './transcripts';
 import { agentsDirOf, linkAgents, listAgents } from './agents';
+import { costOfUsage } from './pricing';
+import { rollup } from './issue-costs';
 import { remoteStatus } from './remote';
 import { listSessionDirs, rateLimit, titleFor, watcherInfo } from './watcher';
-import type { AgentDetail, Overview, SessionDetail, SessionKind, SessionSummary, WatcherSession } from './types';
+import type { AgentDetail, AgentSummary, ModelUsage, Overview, SessionDetail, SessionKind, SessionSummary, WatcherSession } from './types';
 
 const ID = /^[\w-]+$/;
 const sessionFile = (id: string) => path.join(cfg().transcriptsDir, `${id}.jsonl`);
@@ -20,6 +22,22 @@ function classify(prompt: string): { kind: SessionKind; target?: number } {
   return m ? { kind: m[1], target: Number(m[2]) } : { kind: 'other' };
 }
 
+/**
+ * What a run would have cost on API billing, its subagents included. One model with no list price makes
+ * the whole run unpriced rather than cheap: a number missing a third of the spend is worse than none.
+ * Rows with no tokens at all (`<synthetic>`) are not models anyone was billed for.
+ */
+function costOfRun(byModel: ModelUsage[], agents: AgentSummary[]): number | null {
+  let total = 0;
+  for (const m of [...byModel, ...agents.flatMap((a) => a.byModel)]) {
+    if (m.input + m.output + m.cacheRead + m.cacheWrite === 0) continue;
+    const c = costOfUsage(m.model, m);
+    if (c === undefined) return null;
+    total += c;
+  }
+  return total;
+}
+
 function summary(file: string): SessionSummary {
   const records = readRecords(file);
   const prompt = promptOf(records);
@@ -27,15 +45,17 @@ function summary(file: string): SessionSummary {
   linkAgents(records, agents);
   const agentsUsage = zero();
   for (const a of agents) add(agentsUsage, a.usage);
+  const stats = summarize(records);
   return {
     id: path.basename(file, '.jsonl'),
     prompt,
     ...classify(prompt),
-    ...summarize(records),
+    ...stats,
     status: 'done',
     live: false,
     agents,
     agentsUsage,
+    cost: costOfRun(stats.byModel, agents),
   };
 }
 
@@ -79,6 +99,7 @@ export async function overview(): Promise<Overview> {
     rateLimit: rate,
     sessions,
     orphans,
+    issues: rollup(sessions, (n) => titleFor(n, rate?.core?.remaining)),
   };
 }
 

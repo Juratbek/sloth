@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { costOf, priceOf } from '../server/pricing';
+import { costOf, costOfUsage, priceOf } from '../server/pricing';
 
 describe('priceOf', () => {
   it('knows the families and prefers the specific match', () => {
@@ -30,5 +30,14 @@ describe('costOf', () => {
   });
   it('is undefined for a model with no list price', () => {
     expect(costOf('mystery', { input_tokens: 5 })).toBeUndefined();
+  });
+});
+
+describe('costOfUsage', () => {
+  it('prices a run’s summed usage, cache writes as 1h', () => {
+    const usage = { input: 1_000_000, output: 100_000, cacheRead: 1_000_000, cacheWrite: 200_000 };
+    // opus-5: (1M + 0.1M + 0.4M) * $5 + 0.1M * $25 = 7.5 + 2.5
+    expect(costOfUsage('claude-opus-5', usage)).toBeCloseTo(10, 6);
+    expect(costOfUsage('<synthetic>', usage)).toBeUndefined();
   });
 });

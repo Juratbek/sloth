@@ -163,6 +163,9 @@ export function launchReview(pr: number, issue: number): boolean {
   }
   const model = cfg().models.review;
   log(`review PR #${pr} (issue #${issue}) on ${model}`);
+  // The directory is named after the PR; the issue it belongs to is only known here, and the monitor
+  // needs it to roll this run's cost up under the issue.
+  write(path.join(dir, 'issue'), String(issue));
   start(dir, dir, `/sloth:review ${pr}`, { pr, issue }, path.join(dir, 'run.log'), { model });
   return true;
 }
@@ -183,6 +186,7 @@ export function launchApproved(pr: number, issue: number): boolean {
     return true;
   }
   log(`final review PR #${pr} (issue #${issue}) on ${c.models.final}`);
+  write(path.join(approvedDir(pr), 'issue'), String(issue));
   start(approvedDir(pr), approvedDir(pr), `/sloth:review ${pr} final`, { pr, issue }, path.join(approvedDir(pr), 'run.log'), { model: c.models.final });
   return true;
 }

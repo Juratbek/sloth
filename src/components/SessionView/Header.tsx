@@ -1,7 +1,7 @@
 import type { MonitorConfig, SessionDetail } from '../../../server/types';
 import useStopPreview from '../../hooks/use-preview';
 import useStopSession from '../../hooks/use-stop-session';
-import { STATUS_COLOR, ago, elapsed, githubUrl, k, label, newInput, safeUrl, stepLabel, untilLabel } from '../../lib/format';
+import { STATUS_COLOR, ago, elapsed, githubUrl, k, label, newInput, safeUrl, stepLabel, untilLabel, usd } from '../../lib/format';
 import { ToolChips } from './Usage';
 
 function Stats({ s }: { s: SessionDetail }) {
@@ -10,7 +10,8 @@ function Stats({ s }: { s: SessionDetail }) {
     <div className="space-y-0.5 font-mono text-xs text-zinc-400">
       <p>
         context {k(s.contextTokens)} · new input {k(newInput(s.usage))} · cache reads {k(s.usage.cacheRead)} · out{' '}
-        {k(s.usage.output)} ({k(s.usage.thinking)} thinking) · {s.turns} turns · {s.messages.length} messages
+        {k(s.usage.output)} ({k(s.usage.thinking)} thinking) · {s.turns} turns · {s.messages.length} messages ·{' '}
+        {s.cost === null ? 'cost —' : usd(s.cost)}
         {s.agents.length > 0 &&
           ` · subagents: new ${k(newInput(a))} · cache reads ${k(a.cacheRead)} · out ${k(a.output)} (${s.agents.length})`}
       </p>
