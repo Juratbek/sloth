@@ -111,6 +111,12 @@ export function sessionDetail(id: string): SessionDetail | undefined {
   return { ...s, messages };
 }
 
+/** The session directory a transcript is linked to — what a stop acts on. */
+export function watcherOf(id: string): WatcherSession | undefined {
+  if (!ID.test(id) || !fs.existsSync(sessionFile(id))) return undefined;
+  return listSessions().sessions.find((x) => x.id === id)?.watcher;
+}
+
 export function agentDetail(id: string, agentId: string): AgentDetail | undefined {
   const file = sessionFile(id);
   if (!ID.test(id) || !ID.test(agentId) || !fs.existsSync(file)) return undefined;

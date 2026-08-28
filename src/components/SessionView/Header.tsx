@@ -1,5 +1,6 @@
 import type { MonitorConfig, SessionDetail } from '../../../server/types';
 import useStopPreview from '../../hooks/use-preview';
+import useStopSession from '../../hooks/use-stop-session';
 import { STATUS_COLOR, ago, elapsed, githubUrl, k, label, newInput, safeUrl, stepLabel, untilLabel } from '../../lib/format';
 import { ToolChips } from './Usage';
 
@@ -44,6 +45,29 @@ function PreviewLine({ issue, preview }: { issue: number; preview: NonNullable<S
         {stop.isPending ? 'stopping…' : 'stop'}
       </button>
     </span>
+  );
+}
+
+/** Ends a live run now. Shown only while its process is alive; an issue's card lands in needs-help. */
+function StopButton({ s }: { s: SessionDetail }) {
+  const stop = useStopSession();
+  if (!s.live || !s.watcher) return null;
+  const issue = s.watcher.kind === 'issue';
+  return (
+    <button
+      onClick={() => {
+        if (window.confirm(`Stop ${s.watcher!.name}?${issue ? ' Its card goes to needs-help; a reply on the issue starts it again.' : ''}`)) stop.mutate(s.id);
+      }}
+      disabled={stop.isPending}
+      title={
+        issue
+          ? 'Kills the session and its servers, removes the worktree and parks the card in needs-help. The branch and PR stay.'
+          : 'Kills the review. This PR head is not reviewed again; the next push gets a fresh review.'
+      }
+      className="rounded border border-red-900 px-1.5 py-0.5 text-[11px] text-red-300 hover:bg-red-950/60 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {stop.isPending ? 'stopping…' : 'stop'}
+    </button>
   );
 }
 
@@ -92,6 +116,7 @@ export default function Header({ s, config }: { s: SessionDetail; config: Monito
         )}
         <span className="rounded border border-zinc-700 px-1.5 py-0.5 text-[11px] text-zinc-300">{s.status}</span>
         <span className="text-[11px] text-zinc-500">{elapsed(s)}</span>
+        <StopButton s={s} />
         <span className="ml-auto hidden font-mono text-[11px] text-zinc-600 sm:inline">{s.id}</span>
       </div>
       <Stats s={s} />

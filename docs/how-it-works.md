@@ -77,7 +77,7 @@ Every comment Sloth writes starts with `**Sloth:**`.
   gets it, assigned or not. A rejection sends the card back to *In Progress* still assigned, so the
   owner keeps it. Sloth never assigns anyone.
 - **Sessions have a time budget** (60 minutes). A session that runs 5 minutes over is killed and
-  its card goes to *Sloth needs help*.
+  its card goes to *Sloth needs help*. **Stop** in a running session's header does the same right away.
 - **At most 3 sessions work at once** (and 5 alive, counting the ones waiting for an answer).
   Extra work waits for the next tick.
 - **A crashed session is restarted.** A card in *In Progress* with no session is relaunched, at

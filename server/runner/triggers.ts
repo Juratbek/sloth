@@ -8,7 +8,7 @@ import { limitExit } from './limits';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
 import { helpMentions } from './notify';
 import { cleanup } from './cleanup';
-import { approvedDir, counter, dirAlive, isBlocked, issueAlive, issueDir, reviewDir, runDirs, startedAt, stateOf } from './session-dirs';
+import { approvedDir, counter, dirAlive, dirOf, isBlocked, issueAlive, issueDir, pidAlive, pidOf, reviewDir, runDirs, startedAt, stateOf } from './session-dirs';
 import type { Kind } from './session-dirs';
 import { launch, launchApproved, launchReview } from './spawn';
 
@@ -37,6 +37,41 @@ export async function park(issue: number, reason: string): Promise<void> {
   remove(path.join(issueDir(issue), 'retries'));
 }
 
+/**
+ * Ends one live session. Its whole process group goes — the `claude` run and everything it started —
+ * and the pid is forgotten so nothing reaps it twice. An issue's run is also cleaned up and its card
+ * parked with `why` as the comment: left in In Progress, trigger 2 would only start it again. A review
+ * keeps its "already reviewed this head" marker; the next push gets a fresh review. Returns false
+ * when nothing was running.
+ */
+export async function stop(kind: Kind, target: number, reason: string, why: string): Promise<boolean> {
+  const dir = dirOf(kind, target);
+  const pid = pidOf(dir);
+  if (!pidAlive(pid)) return false;
+  const name = `${kind}-${target}`;
+  if (isDry()) {
+    log(`dry-run: would stop ${name}: ${reason}`);
+    return true;
+  }
+  // Detached, so the run leads its own group: the negative pid takes its subagents and servers with it.
+  for (const t of [-pid!, pid!]) {
+    try {
+      process.kill(t);
+    } catch {
+      /* raced with its own exit */
+    }
+  }
+  remove(path.join(dir, 'pid'));
+  if (kind !== 'issue') {
+    log(`${kind === 'review' ? 'review' : 'final review'} PR #${target} stopped: ${reason}`);
+    return true;
+  }
+  await cleanup(target);
+  log(`#${target} stopped: ${reason}`);
+  await park(target, why);
+  return true;
+}
+
 /** Forgets dead sessions, notices usage-limit exits, kills and cleans up hung ones. */
 export async function reap(): Promise<void> {
   for (const { kind, target, dir } of runDirs()) {
@@ -53,19 +88,7 @@ export async function reap(): Promise<void> {
     }
     const budget = cfg().budgetMinutes * 60;
     if ((stateOf(dir).state ?? 'working') !== 'working' || nowSec() - startedAt(dir) <= budget + KILL_GRACE) continue;
-    try {
-      process.kill(readNumber(pidFile));
-    } catch {
-      /* raced with its own exit */
-    }
-    remove(pidFile);
-    if (kind !== 'issue') {
-      log(`${kind === 'review' ? 'review' : 'final review'} PR #${target} killed: hung past the budget`);
-      continue;
-    }
-    await cleanup(target);
-    log(`#${target} killed: hung past the budget`);
-    await park(target, 'the run for this issue hung past its time budget and was stopped by Sloth.');
+    await stop(kind, target, 'hung past the budget', 'the run for this issue hung past its time budget and was stopped by Sloth.');
   }
 }
 

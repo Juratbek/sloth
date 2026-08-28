@@ -54,7 +54,8 @@ needs-help notifications carry on) and survives a restart.
 - **Sessions** are detached `claude -p … --plugin-dir <sloth>/plugin` runs in the runner checkout.
   They survive a Sloth restart. `maxActive` may work at once, `maxAlive` including the ones waiting
   for an answer; a trigger with no free slot is retried next tick. A session past
-  `budgetMinutes + 5` is killed, cleaned up, and its card parked. A Claude usage
+  `budgetMinutes + 5` is killed, cleaned up, and its card parked; **stop** in a live session's header
+  does the same on demand (a stopped review is not repeated for that PR head). A Claude usage
   limit pauses the watcher for 30 minutes without costing the card its place.
 - **Previews** (`previewHours`, default 24): an implement session that hands its PR to Code Review leaves
   the app it tested running — its own database, seeded, nothing shared — and Sloth puts a tunnel in front
@@ -115,7 +116,7 @@ watcher state, plus a home panel with hourly spend, the queue and the log. It re
 and an SSE stream. Transcripts are read from `~/.claude/projects/<runner root, non-alphanumerics as '-'>`.
 
 Read: `GET /api/overview`, `/api/sessions/:id`, `/api/sessions/:id/agents/:agentId`, `/api/usage?days=N`,
-`/api/events` (SSE). Write: `POST /api/tick` (`?dry=1`), `/api/pause`, `/api/resume`, `/api/previews/:issue/stop` (takes a preview down now), `/api/setup/config`,
+`/api/events` (SSE). Write: `POST /api/tick` (`?dry=1`), `/api/pause`, `/api/resume`, `/api/sessions/:id/stop` (ends the run, parks an issue's card), `/api/previews/:issue/stop` (takes a preview down now), `/api/setup/config`,
 `/api/setup/clone`. Wizard reads: `GET /api/setup/env`, `/api/setup/projects`, `/api/setup/projects/:id/fields`,
 `/api/setup/config`. `GET /api/remote` (the QR's link and the tunnel tool's state), `POST /api/remote/rotate`
 (a new link) and `POST /api/remote/install` (brew installs the tool). Everything under `/api/setup/` and
