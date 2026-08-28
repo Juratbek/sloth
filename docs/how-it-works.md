@@ -113,7 +113,7 @@ Every comment Sloth writes starts with `**Sloth:**`.
 ```
 
 The UI at `http://localhost:4400` shows every session, its full transcript, its token spend, and
-the log. Its home panel opens with a mirror of the board — Sloth's columns in pipeline order, a card per
-issue, and on each card what the run Sloth last made on it is doing — built from the board the last tick
-already read, so it costs GitHub nothing and changes nothing. The ▦ button in its header is a QR code that
-opens the same UI on your phone.
+the log. Its header's **Board** button opens a page of its own — a mirror of the board, Sloth's columns in
+pipeline order over the whole window, a card per issue, and on each card what the run Sloth last made on it
+is doing — built from the board the last tick already read, so it costs GitHub nothing and changes nothing.
+The ▦ button in the header is a QR code that opens the same UI on your phone.

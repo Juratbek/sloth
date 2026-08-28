@@ -71,6 +71,7 @@ export default function TopBar({
   menu,
   onMenu,
   onHome,
+  onBoard,
   onSettings,
   onRemote,
 }: {
@@ -78,6 +79,8 @@ export default function TopBar({
   menu: boolean;
   onMenu: () => void;
   onHome: () => void;
+  /** Opens the board page; it only reads the last tick's board, so a phone gets it too. */
+  onBoard: () => void;
   /** Opens the settings wizard; absent on a phone, where the config is out of reach. */
   onSettings?: () => void;
   /** Opens the QR dialog; absent when the page is not on the machine Sloth runs on, where there is no QR. */
@@ -108,6 +111,13 @@ export default function TopBar({
       </span>
       <TickButton busy={watcher.loop.ticking} />
       <PauseButton paused={watcher.paused} />
+      <button
+        onClick={onBoard}
+        title="The board as the last tick read it, on a page of its own"
+        className="rounded-md border border-zinc-800 px-2 py-0.5 text-xs text-zinc-300 hover:bg-zinc-900"
+      >
+        Board
+      </button>
       {watcher.paused && <Pill value="paused" tone="amber" />}
       {limitPaused && <Pill label="paused until" value={clock(watcher.pausedUntil! * 1000)} tone="amber" />}
       <span className="flex-1" />

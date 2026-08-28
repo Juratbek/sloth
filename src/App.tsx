@@ -5,14 +5,15 @@ import TopBar from './components/TopBar';
 import Sidebar from './components/Sidebar';
 import SessionView from './components/SessionView';
 import WatcherPanel from './components/WatcherPanel';
+import BoardPage from './components/Board';
 import RemoteDialog from './components/RemoteDialog';
 import { isLocalPage } from './hooks/use-remote';
 import Settings from './settings/Settings';
 import Wizard from './setup/Wizard';
 import { useConfig } from './setup/use-setup';
 
-/** The monitor, the settings page, or the step-by-step wizard — one at a time, the whole window. */
-type Page = 'monitor' | 'settings' | 'wizard';
+/** The monitor, the board, the settings page, or the step-by-step wizard — one at a time, the whole window. */
+type Page = 'monitor' | 'board' | 'settings' | 'wizard';
 
 export default function App() {
   useLiveUpdates();
@@ -26,9 +27,11 @@ export default function App() {
   const [remote, setRemote] = useState(false);
   // On a phone the session list and the page take turns; `menu` is which one shows.
   const [menu, setMenu] = useState(false);
+  // Picking a session is also a page change: a card on the board opens its run back on the monitor.
   const show = (id: string | null) => {
     setSelected(id);
     setMenu(false);
+    setPage('monitor');
   };
 
   if (local && config.isPending) return <div className="p-6 text-zinc-500">Loading…</div>;
@@ -39,6 +42,7 @@ export default function App() {
 
   if (error) return <div className="p-6 text-red-400">Monitor API unreachable: {String(error)}</div>;
   if (!data) return <div className="p-6 text-zinc-500">Loading…</div>;
+  if (page === 'board') return <BoardPage board={data.board} onSelect={show} onClose={() => setPage('monitor')} />;
 
   return (
     <div className="flex h-full flex-col">
@@ -47,6 +51,7 @@ export default function App() {
         menu={menu}
         onMenu={() => setMenu(!menu)}
         onHome={() => show(null)}
+        onBoard={() => setPage('board')}
         onSettings={local ? () => setPage('settings') : undefined}
         onRemote={local ? () => setRemote(true) : undefined}
       />
