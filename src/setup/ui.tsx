@@ -64,7 +64,7 @@ export function Field({ label, hint, children }: { label: string; hint?: ReactNo
   );
 }
 
-const inputStyle =
+export const inputStyle =
   'w-full rounded-md border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 text-sm text-zinc-100 outline-none focus:border-zinc-600';
 
 export function TextInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {

@@ -1,25 +1,12 @@
 import { useMemo, useState } from 'react';
 import { DEFAULT_COLUMN_NAMES } from '../../server/config-types';
 import type { ColumnRef, ColumnRole } from '../../server/config-types';
+import { OTHERS, columnFor, pickColumn } from './column-roles';
 import { Button, Choice, Error, Field, Loading, Select, TextInput } from './ui';
 import type { Draft } from './use-setup';
 import { useProjectFields } from './use-setup';
 
 type Picked = Partial<Record<ColumnRole, ColumnRef>>;
-
-const MATCH: Record<ColumnRole, RegExp> = {
-  pickup: /^\s*to[\s_-]?do\s*$/i,
-  inProgress: /in[\s_-]?progress/i,
-  needsHelp: /needs?[\s_-]?help|blocked|question/i,
-  codeReview: /review/i,
-  approved: /approved|accepted/i,
-};
-const OTHERS: { role: ColumnRole; label: string; hint: string }[] = [
-  { role: 'inProgress', label: 'In Progress', hint: 'where a card goes while a session works on it' },
-  { role: 'needsHelp', label: 'Needs help', hint: 'where a blocked session parks its card' },
-  { role: 'codeReview', label: 'Code Review', hint: 'where a card goes once its PR is open' },
-  { role: 'approved', label: 'Approved', hint: 'cards you approve get a final review of their PR' },
-];
 
 export default function StepColumns({
   draft,
@@ -43,13 +30,8 @@ export default function StepColumns({
   const [helpWebhook, setHelpWebhook] = useState(draft.helpWebhook);
 
   // Untouched roles fall back to the first column whose name matches; with no match Sloth creates one.
-  const value = (role: ColumnRole): ColumnRef => {
-    const chosen = picked[role];
-    if (chosen && (!chosen.id || options.some((o) => o.id === chosen.id))) return chosen;
-    return options.find((o) => MATCH[role].test(o.name)) ?? { id: '', name: DEFAULT_COLUMN_NAMES[role] };
-  };
-  const set = (role: ColumnRole, id: string) =>
-    setPicked({ ...picked, [role]: options.find((o) => o.id === id) ?? { id: '', name: DEFAULT_COLUMN_NAMES[role] } });
+  const value = (role: ColumnRole): ColumnRef => columnFor(role, picked[role], options);
+  const set = (role: ColumnRole, id: string) => setPicked({ ...picked, [role]: pickColumn(role, id, options) });
 
   const ready = !!data?.statusField && !!value('pickup').id;
 

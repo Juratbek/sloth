@@ -40,6 +40,29 @@ export interface Roles {
   testers: string[];
 }
 
+/**
+ * Which model each of Sloth's agents runs on — a Claude Code `--model` value: an alias (`opus`, `fable`)
+ * or a full model id. Settings → Models edits it.
+ */
+export interface AgentModels {
+  /** The implement session: claims the card, writes the code, opens the PR (triggers 1–3). */
+  implement: string;
+  /** The tester subagent an implement session spawns to click through the change in Chrome. */
+  tester: string;
+  /** The reviewer subagent an implement session asks before it hands the PR over. */
+  reviewer: string;
+  /** `/sloth:review` of a human's PR in Code Review (trigger 4). */
+  review: string;
+  /** `/sloth:review … final` of an Approved card's PR (trigger 5). */
+  final: string;
+  /** `/sloth:status`: the reply to an @sloth question when no session is running. */
+  status: string;
+}
+export type AgentRole = keyof AgentModels;
+
+export const DEFAULT_MODELS: AgentModels = { implement: 'opus', tester: 'opus', reviewer: 'opus', review: 'opus', final: 'fable', status: 'opus' };
+export const AGENT_ROLES = Object.keys(DEFAULT_MODELS) as AgentRole[];
+
 export interface SlothConfig {
   version: 1;
   repo: string;
@@ -64,9 +87,8 @@ export interface SlothConfig {
   maxRetries: number;
   boardSeconds: number;
   commentSeconds: number;
-  model: string;
-  /** The model the Approved reviews run on; every other session runs on `model`. */
-  approvedModel: string;
+  /** One model per agent; a config from before this had `model` for every session and `approvedModel` for the final review. */
+  models: AgentModels;
   /** Pass `--chrome` to implement sessions, so a tester subagent can exercise the change in the user's Chrome. */
   chrome: boolean;
   /**
@@ -85,6 +107,40 @@ export interface SlothConfig {
 }
 
 export const DEFAULT_TUNNEL = ['cloudflared', 'tunnel', '--url', 'http://localhost:{port}'];
+
+/**
+ * Every value with a default: what a saved config gets when it leaves the key out, and what Settings'
+ * "Restore defaults" puts back. The per-repository directories are `defaultDirs`.
+ */
+export const CONFIG_DEFAULTS = {
+  runnersDir: '~/.sloth/runners',
+  stateDir: '~/.sloth/state',
+  watcherLog: '~/.sloth/watcher.log',
+  mention: '@sloth',
+  botPrefix: '**Sloth:**',
+  maxActive: 3,
+  maxAlive: 5,
+  budgetMinutes: 60,
+  waitHours: 2,
+  reviewRounds: 4,
+  maxRetries: 2,
+  boardSeconds: 300,
+  commentSeconds: 120,
+  models: DEFAULT_MODELS,
+  chrome: true,
+  previewHours: 24,
+  helpLogins: [] as string[],
+  helpWebhook: '',
+  tunnel: DEFAULT_TUNNEL,
+  publicUrl: '',
+} satisfies Partial<SlothConfig>;
+
+/** The directories that are kept apart per repository (`name` is the part after the slash). */
+export const defaultDirs = (name: string) => ({
+  runnerRoot: `~/.sloth/runners/${name}`,
+  worktreesDir: `~/.sloth/worktrees/${name}`,
+  sessionsDir: `~/.sloth/sessions/${name}`,
+});
 
 /** ---- Get-started wizard payloads ---- */
 

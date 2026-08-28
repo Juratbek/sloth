@@ -66,8 +66,9 @@ export default function StepDone({
   return (
     <div className="space-y-4">
       <p className="text-sm text-zinc-400">
-        This is written to ~/.sloth/config.json, and Sloth starts watching the board straight away. You can change any of
-        it later from the gear in the header; the values the wizard does not ask about live in that file.
+        This is written to ~/.sloth/config.json, and Sloth starts watching the board straight away. Every value — including
+        the ones the wizard does not ask about, like which model each agent runs on — can be changed later in Settings, the
+        gear in the header.
       </p>
       <dl className="divide-y divide-zinc-900 rounded-md border border-zinc-800">
         {rows.map(([label, value]) => (

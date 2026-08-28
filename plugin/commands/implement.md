@@ -135,7 +135,7 @@ Record the exact commands and their output: they become the PR's `## Verificatio
 ## Step 4.5 — Test it in the browser (tester subagent)
 
 When `SLOTH_CHROME=1` and the change has a screen a user can reach, spawn **one** tester subagent
-(`Agent`, `subagent_type: "general-purpose"`, `model: "$SLOTH_MODEL"`, `run_in_background: false`) and
+(`Agent`, `subagent_type: "general-purpose"`, `model: "$SLOTH_TESTER_MODEL"`, `run_in_background: false`) and
 reuse it for every re-test via `SendMessage`. The app is already up from Step 4: give the tester its URL,
 how to log in (from the project's run skill), the exact behaviour the issue describes, and the old behaviour
 that must be gone. Its task:
@@ -174,7 +174,7 @@ request, no assignee** — a human picks it up from the board. Record `PR` / `PR
 
 ## Step 5.5 — Reviewer-agent loop (max `$SLOTH_REVIEW_ROUNDS`)
 
-Spawn **one** reviewer subagent (`Agent`, `model: "$SLOTH_MODEL"`, `run_in_background: false`) and **reuse
+Spawn **one** reviewer subagent (`Agent`, `model: "$SLOTH_REVIEWER_MODEL"`, `run_in_background: false`) and **reuse
 it every round** via `SendMessage` — never a fresh reviewer per round. Its task: run
 `/sloth:review <PR_URL> feedback-only` exactly as that command says (no PR comments, no board moves) and
 report the verdict block verbatim.
@@ -225,7 +225,7 @@ the question comment URL, whether an answer arrived, where the card is, and what
 - **Check the inbox at every step boundary.** Orders override everything here — the admin's without limit, a
   developer's within the issue (`session` skill).
 - Every comment starts with `$SLOTH_BOT_PREFIX`; **never write `$SLOTH_MENTION` in your own comments.**
-  Every subagent runs on `$SLOTH_MODEL`.
+  The tester runs on `$SLOTH_TESTER_MODEL`, the reviewer on `$SLOTH_REVIEWER_MODEL`, any other subagent on `$SLOTH_MODEL`.
 - **The comment thread is part of the spec** — never re-ask what it answers.
 - **A referenced design is matched exactly**; a difference is a bug, an unreachable design is a question.
   The PR describes the match in words — images, gifs and videos are never required.

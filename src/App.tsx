@@ -7,8 +7,12 @@ import SessionView from './components/SessionView';
 import WatcherPanel from './components/WatcherPanel';
 import RemoteDialog from './components/RemoteDialog';
 import { isLocalPage } from './hooks/use-remote';
+import Settings from './settings/Settings';
 import Wizard from './setup/Wizard';
 import { useConfig } from './setup/use-setup';
+
+/** The monitor, the settings page, or the step-by-step wizard — one at a time, the whole window. */
+type Page = 'monitor' | 'settings' | 'wizard';
 
 export default function App() {
   useLiveUpdates();
@@ -17,7 +21,7 @@ export default function App() {
   const local = isLocalPage();
   const config = useConfig(local);
   const { data, error } = useOverview();
-  const [settings, setSettings] = useState(false);
+  const [page, setPage] = useState<Page>('monitor');
   const [selected, setSelected] = useState<string | null>(null);
   const [remote, setRemote] = useState(false);
   // On a phone the session list and the page take turns; `menu` is which one shows.
@@ -29,8 +33,9 @@ export default function App() {
 
   if (local && config.isPending) return <div className="p-6 text-zinc-500">Loading…</div>;
   // No config file yet ⇒ the get-started wizard is the whole app.
-  if (local && (!config.data || settings))
-    return <Wizard existing={config.data ?? null} onClose={config.data ? () => setSettings(false) : undefined} />;
+  if (local && !config.data) return <Wizard existing={null} />;
+  if (local && page === 'wizard') return <Wizard existing={config.data!} onClose={() => setPage('settings')} />;
+  if (local && page === 'settings') return <Settings config={config.data!} onClose={() => setPage('monitor')} onWizard={() => setPage('wizard')} />;
 
   if (error) return <div className="p-6 text-red-400">Monitor API unreachable: {String(error)}</div>;
   if (!data) return <div className="p-6 text-zinc-500">Loading…</div>;
@@ -42,7 +47,7 @@ export default function App() {
         menu={menu}
         onMenu={() => setMenu(!menu)}
         onHome={() => show(null)}
-        onSettings={local ? () => setSettings(true) : undefined}
+        onSettings={local ? () => setPage('settings') : undefined}
         onRemote={local ? () => setRemote(true) : undefined}
       />
       <div className="flex min-h-0 flex-1">

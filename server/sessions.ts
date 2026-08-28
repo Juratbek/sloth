@@ -95,7 +95,7 @@ function monitorConfig(): Overview['config'] {
     pickupColumn: c.pickupColumn,
     maxActive: c.maxActive,
     maxAlive: c.maxAlive,
-    model: c.model,
+    models: c.models,
   };
 }
 

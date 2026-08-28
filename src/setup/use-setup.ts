@@ -112,7 +112,7 @@ export function useClone() {
 export function useSaveConfig() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (config: ConfigPayload) => postJson<{ ok: boolean; path: string }>('/api/setup/config', config),
+    mutationFn: (config: ConfigPayload) => postJson<{ ok: boolean; path: string; config: SlothConfig }>('/api/setup/config', config),
     onSuccess: () => queryClient.invalidateQueries(),
   });
 }

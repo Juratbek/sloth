@@ -14,7 +14,9 @@ pnpm dev            # http://localhost:4400 — UI and watcher in one process
 One Sloth watches one board. Everything it owns lives under `~/.sloth/`. Watching stops when the
 process stops — there is no daemon. The first time you open the UI a **Get started** wizard checks
 `claude` and `gh`, lets you pick the board, its columns, the repository and the checkout the sessions
-run from, then writes `~/.sloth/config.json`. The gear in the header re-opens it.
+run from, then writes `~/.sloth/config.json`. The gear in the header opens **Settings**, where every value in
+that file — the board, the team, the caps, which model each agent runs on — can be changed; the wizard can be
+re-run from there.
 
 ## How it works
 
@@ -26,7 +28,7 @@ The short version; the tick-by-tick account is in [docs/how-it-works.md](docs/ho
 | 2 | An unassigned issue sits in In Progress with no live session | Relaunches it, at most `maxRetries` times in a row |
 | 3 | Someone on the team mentions `@sloth` in a comment — on an issue, or on the PR that closes it | Delivers it to the live session; with no session, an order (admin or developer) starts one and anything else gets a status reply, on the thread it was written in. A login with no role is ignored; a PR linked to no issue gets told so |
 | 4 | An unassigned issue in Code Review has an open, non-draft, unapproved wired PR **written by a human** | Runs `/sloth:review <pr>`, once per PR head. Sloth's own PRs were already vetted by their session's reviewer loop |
-| 5 | An issue in Approved — assigned or not — has an open, non-draft wired PR and no `Fable: approved` label | Runs `/sloth:review <pr> final` on the `fable` model, once per PR head; the verdict is posted on the PR either way, and a pass labels the issue `Fable: approved`, which keeps it from being reviewed again |
+| 5 | An issue in Approved — assigned or not — has an open, non-draft wired PR and no `Fable: approved` label | Runs `/sloth:review <pr> final` on the final-review model (`models.final`, `fable` by default), once per PR head; the verdict is posted on the PR either way, and a pass labels the issue `Fable: approved`, which keeps it from being reviewed again |
 
 The board is read every 5 minutes, comments every 2; **Tick now** runs both at once. **Pause**
 stops Sloth from starting anything new (running sessions, inbox deliveries, status replies and
@@ -46,7 +48,7 @@ needs-help notifications carry on) and survives a restart.
   *In Progress*, *needs help* (a stuck session parks the card here after asking its questions; an
   answer in the thread brings it back — `helpLogins` are mentioned in that question and `helpWebhook`
   is called, see *Configuration*),
-  *Code Review* (trigger 4) and *Approved* (trigger 5 — a final review on the Fable model; a GitHub approval does not skip it,
+  *Code Review* (trigger 4) and *Approved* (trigger 5 — a final review on `models.final`, Fable by default; a GitHub approval does not skip it,
   the verdict lands on the PR pass or fail, and a pass labels the issue `Fable: approved`).
   Missing columns are created after the pickup column, without dropping any existing option.
 - **Sessions** are detached `claude -p … --plugin-dir <sloth>/plugin` runs in the runner checkout.
@@ -83,7 +85,8 @@ The session protocol (environment variables, `state.json`, the inbox) is in [plu
 ## Configuration
 
 `~/.sloth/config.json` (path overridable with `SLOTH_CONFIG`). The wizard asks about the board, the
-columns, who to notify when a card needs help, `repo`, `runnerRoot`, the team (`roles`) and the caps; the rest defaults:
+columns, who to notify when a card needs help, `repo`, `runnerRoot`, the team (`roles`) and the caps; **Settings** (the
+gear in the header) edits every key, by section; whatever is left out defaults:
 
 | Key | Default | Means |
 |---|---|---|
@@ -94,12 +97,11 @@ columns, who to notify when a card needs help, `repo`, `runnerRoot`, the team (`
 | `budgetMinutes` / `waitHours` | `60` / `2` | A session's time budget; how long a parked session waits for an answer |
 | `reviewRounds` / `maxRetries` | `4` / `2` | Reviewer-agent rounds before asking for help; trigger-2 relaunches before parking |
 | `boardSeconds` / `commentSeconds` | `300` / `120` | Poll intervals |
-| `model` | `opus` | The model every session runs on — except trigger 5's |
+| `models` | `opus` each, `final: fable` | Which model each agent runs on (Settings → *Models*): `implement` (triggers 1–3), `tester` (the Chrome subagent), `reviewer` (the in-session review loop), `review` (trigger 4), `final` (trigger 5), `status` (mention replies). An older config's `model` / `approvedModel` still load |
 | `chrome` | `true` | Start implement sessions with `--chrome`, so a tester subagent can click through the change in your Chrome |
 | `previewHours` | `24` | How long a finished implement session's app stays up behind a public link posted on its PR (see *Previews* above); `0` turns previews off |
 | `helpLogins` | `[]` | GitHub logins `@`-mentioned in the comment that parks a card in *needs help*, so GitHub notifies them (not the login `gh` writes with — GitHub skips self-mentions) |
 | `helpWebhook` | `""` | URL POSTed once per card that lands in *needs help* (`{text, content, repo, issue, title, url, column}` — Slack and Discord incoming webhooks read it as is) |
-| `approvedModel` | `fable` | The model trigger 5's final reviews run on |
 | `tunnel` | `["cloudflared", "tunnel", "--url", "http://localhost:{port}"]` | The command Sloth runs so the UI is reachable from outside (see *Remote access*); the first bare `https://` URL it prints is the address |
 | `publicUrl` | — | Where the UI is already reachable — your own tunnel or domain. Set, no tunnel is started |
 
