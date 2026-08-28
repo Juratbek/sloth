@@ -5,27 +5,30 @@ import { setDry } from '../server/runner/log';
 import { finalReviews, park, pickup, reap, retryStranded, reviews, stop } from '../server/runner/triggers';
 import { resetSpawn, spawned } from './child-process-mock';
 import { called, onGh, resetGh } from './gh-mock';
-import { COLUMNS, alivePid, configure, exists, makeSession, read, readLog, sessionDir, statePath, wipe } from './harness';
+import { COLUMNS, alivePid, card, configure, exists, makeSession, read, readLog, sessionDir, statePath, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
 
-const card = (number: number, status: string, extra: Partial<{ labels: string[]; assignees: string[] }> = {}) => ({
-  number,
-  title: `Issue ${number}`,
-  status,
-  labels: [],
-  assignees: [],
-  ...extra,
-});
-
-const wired = (prs: Record<number, { pr: number; sha: string; head: string; draft?: boolean; approved?: boolean }[]>) =>
+const wired = (prs: Record<number, { pr: number; sha: string; head: string; draft?: boolean; approved?: boolean; checks?: string }[]>) =>
   onGh(/api graphql .*closedByPullRequestsReferences/, {
     data: {
       repository: Object.fromEntries(
         Object.entries(prs).map(([issue, list]) => [
           `i${issue}`,
-          { closedByPullRequestsReferences: { nodes: list.map((p) => ({ number: p.pr, state: 'OPEN', isDraft: !!p.draft, headRefOid: p.sha, headRefName: p.head, reviewDecision: p.approved ? 'APPROVED' : null })) } },
+          {
+            closedByPullRequestsReferences: {
+              nodes: list.map((p) => ({
+                number: p.pr,
+                state: 'OPEN',
+                isDraft: !!p.draft,
+                headRefOid: p.sha,
+                headRefName: p.head,
+                reviewDecision: p.approved ? 'APPROVED' : null,
+                ...(p.checks ? { commits: { nodes: [{ commit: { statusCheckRollup: { state: p.checks } } }] } } : {}),
+              })),
+            },
+          },
         ]),
       ),
     },
@@ -149,6 +152,25 @@ describe('finalReviews (trigger 5)', () => {
     configure({ statusField: { id: 'PVTSSF_1', columns: { ...COLUMNS, approved: { id: '', name: '' } } } });
     await finalReviews([card(1, 'Approved')]);
     expect(called(/graphql/)).toHaveLength(0);
+  });
+  it('waits out a pending check and leaves a red one to trigger 7', async () => {
+    wired({ 1: [{ pr: 10, sha: 'aaa', head: 'x', checks: 'PENDING' }], 2: [{ pr: 11, sha: 'bbb', head: 'y', checks: 'FAILURE' }] });
+    await finalReviews([card(1, 'Approved'), card(2, 'Approved')]);
+    expect(launches()).toEqual([]);
+    expect(exists(statePath('approved', '10-aaa'))).toBe(false);
+    expect(readLog().join('\n')).toMatch(/final review PR #10 waits for its checks/);
+  });
+  it('reviews a labelled card again when its head moved after the pass', async () => {
+    fs.mkdirSync(statePath('approved'), { recursive: true });
+    fs.writeFileSync(statePath('approved', '10-old'), '');
+    wired({ 1: [{ pr: 10, sha: 'new', head: 'x' }] });
+    const board = [card(1, 'Approved', { labels: ['Fable: approved'] })];
+    await finalReviews(board);
+    expect(called(/issue edit 1 .*--remove-label Fable: approved/)).toHaveLength(1);
+    expect(launches()).toEqual(['/sloth:review 10 final']);
+    resetSpawn();
+    await finalReviews(board);
+    expect(launches()).toEqual([]);
   });
 });
 

@@ -71,6 +71,7 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_COL_NEEDS_HELP_ID` / `_NAME` | Parked, waiting for a human (may be empty) |
 | `SLOTH_COL_CODE_REVIEW_ID` / `_NAME` | Handed to a human reviewer |
 | `SLOTH_COL_APPROVED_ID` / `_NAME` | Approved by a human; the server gives its PR a final `/sloth:review` on the final-review model, Fable by default (may be empty) |
+| `SLOTH_COL_DONE_ID` / `_NAME` | Where a closed issue's card ends up — the server moves it; a session never needs to (may be empty) |
 | `SLOTH_COLUMNS` | Every Status column on the board as JSON `[{"id","name"}]`, Sloth's and the rest, so a session can move a card anywhere a human asks |
 | `SLOTH_RUNNER_ROOT` | The checkout sessions run from |
 | `SLOTH_WORKTREES_DIR` | Where per-issue worktrees go — `issue-<n>` under it |

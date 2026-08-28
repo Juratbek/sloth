@@ -7,7 +7,7 @@ import { useProjectFields, useProjects } from '../setup/use-setup';
 import { Choose, Row } from './ui';
 import type { SectionProps } from './ui';
 
-const ROLES: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved'];
+const ROLES: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved', 'done'];
 const BLANK = { id: '', name: '' };
 
 export default function BoardSection({ draft, patch }: SectionProps) {
@@ -32,7 +32,7 @@ export default function BoardSection({ draft, patch }: SectionProps) {
     if (!p || p.id === draft.project.id) return;
     patch({
       project: { id: p.id, number: p.number, owner: p.owner, title: p.title },
-      statusField: { id: '', columns: { pickup: BLANK, inProgress: BLANK, needsHelp: BLANK, codeReview: BLANK, approved: BLANK } },
+      statusField: { id: '', columns: { pickup: BLANK, inProgress: BLANK, needsHelp: BLANK, codeReview: BLANK, approved: BLANK, done: BLANK } },
     });
   };
   const set = (role: ColumnRole, id: string) =>

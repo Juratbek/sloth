@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setDry } from '../server/runner/log';
 import { notifyParked } from '../server/runner/notify';
-import { COLUMNS, configure, exists, readLog, statePath, wipe } from './harness';
+import { COLUMNS, card, configure, exists, readLog, statePath, wipe } from './harness';
 
-const card = (number: number, status: string, assignees: string[] = []) => ({ number, title: `Issue ${number}`, status, labels: [], assignees });
 const posted: { url: string; body: any }[] = [];
 
 beforeEach(() => {
@@ -20,7 +19,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('notifyParked (trigger 7)', () => {
   it('announces each newly parked card once, and again after it left and came back', async () => {
-    const parked = [card(1, COLUMNS.needsHelp.name), card(2, COLUMNS.needsHelp.name, ['bob'])];
+    const parked = [card(1, COLUMNS.needsHelp.name), card(2, COLUMNS.needsHelp.name, { assignees: ['bob'] })];
     await notifyParked(parked);
     expect(posted.map((p) => p.body.issue)).toEqual([1]);
     expect(posted[0].body).toMatchObject({ text: expect.stringContaining('#1 Issue 1'), repo: 'acme/widgets', column: COLUMNS.needsHelp.name });

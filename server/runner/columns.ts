@@ -11,13 +11,16 @@ const UPDATE_FIELD = `mutation($fieldId: ID!, $options: [ProjectV2SingleSelectFi
   updateProjectV2Field(input: { fieldId: $fieldId, singleSelectOptions: $options }) {
     projectV2Field { ... on ProjectV2SingleSelectField { id options { id name color description } } } } }`;
 
-/** The roles Sloth creates when the board has no column for them, in the order they are inserted. */
+/** The roles Sloth creates when the board has no column for them, in the order they are inserted after the pickup column. */
 const CREATED: { role: ColumnRole; color: string }[] = [
   { role: 'inProgress', color: 'YELLOW' },
   { role: 'needsHelp', color: 'ORANGE' },
   { role: 'codeReview', color: 'PURPLE' },
   { role: 'approved', color: 'GREEN' },
 ];
+/** Done belongs at the end of the board, not next to the flow columns. */
+const CREATED_LAST: { role: ColumnRole; color: string }[] = [{ role: 'done', color: 'GRAY' }];
+const ROLES: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved', 'done'];
 
 export async function fieldOptions(fieldId: string): Promise<FieldOption[]> {
   const data = await graphql(OPTIONS_QUERY, ['-F', `id=${fieldId}`]);
@@ -67,18 +70,21 @@ export async function ensureColumns(fieldId: string, wanted: Record<ColumnRole, 
   const pickup = resolve('pickup');
   if (!pickup) throw new Error(`the watched column "${wanted.pickup.name}" is not on this board`);
 
-  const missing = CREATED.filter(({ role }) => !resolve(role));
-  if (missing.length) {
-    const created: FieldOption[] = missing.map(({ role, color }) => ({ id: '', name: wanted[role].name || DEFAULT_COLUMN_NAMES[role], color }));
+  const create = (list: typeof CREATED): FieldOption[] =>
+    list.filter(({ role }) => !resolve(role)).map(({ role, color }) => ({ id: '', name: wanted[role].name || DEFAULT_COLUMN_NAMES[role], color }));
+  const middle = create(CREATED);
+  const last = create(CREATED_LAST);
+  if (middle.length || last.length) {
+    const created = [...middle, ...last];
     const at = options.findIndex((o) => o.id === pickup.id) + 1;
-    const next = [...options.slice(0, at), ...created, ...options.slice(at)].map(asInput);
+    const next = [...options.slice(0, at), ...middle, ...options.slice(at), ...last].map(asInput);
     log(`creating board columns: ${created.map((c) => c.name).join(', ')}`);
     const data = await graphqlBody(UPDATE_FIELD, { fieldId, options: next });
     options = (data.updateProjectV2Field?.projectV2Field?.options ?? []) as FieldOption[];
   }
 
   const out = {} as ConfigColumns;
-  for (const role of ['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved'] as ColumnRole[]) {
+  for (const role of ROLES) {
     const found = resolve(role);
     if (!found?.id) throw new Error(`could not resolve the ${role} column`);
     out[role] = { id: found.id, name: found.name };

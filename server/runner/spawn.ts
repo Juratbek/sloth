@@ -48,6 +48,8 @@ function sessionEnv(dir: string, target: Target, model: string, chrome: boolean)
     SLOTH_COL_CODE_REVIEW_NAME: col.codeReview.name,
     SLOTH_COL_APPROVED_ID: col.approved.id,
     SLOTH_COL_APPROVED_NAME: col.approved.name,
+    SLOTH_COL_DONE_ID: col.done.id,
+    SLOTH_COL_DONE_NAME: col.done.name,
     SLOTH_COLUMNS: JSON.stringify(knownColumns()),
     SLOTH_RUNNER_ROOT: c.runnerRoot,
     SLOTH_WORKTREES_DIR: c.worktreesDir,

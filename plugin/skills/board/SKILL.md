@@ -23,7 +23,8 @@ Every id comes from the environment the server set for this session — never ha
 | `SLOTH_COL_NEEDS_HELP_ID` / `_NAME` | Parked, waiting for a human (may be empty) |
 | `SLOTH_COL_CODE_REVIEW_ID` / `_NAME` | Handed to a human reviewer |
 | `SLOTH_COL_APPROVED_ID` / `_NAME` | Approved by a human — never move a card here (may be empty) |
-| `SLOTH_COLUMNS` | **Every** Status column on the board, in board order: JSON `[{"id","name"}]` — the five above and all the others (Planning, Backlog, Done…) |
+| `SLOTH_COL_DONE_ID` / `_NAME` | Where a closed issue's card ends up — the server moves it; a session never needs to (may be empty) |
+| `SLOTH_COLUMNS` | **Every** Status column on the board, in board order: JSON `[{"id","name"}]` — the six above and all the others (Planning, Backlog…) |
 
 ```bash
 OWNER=${SLOTH_REPO%%/*}; NAME=${SLOTH_REPO##*/}

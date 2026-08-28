@@ -19,7 +19,7 @@ beforeEach(() => {
 
 describe('fetchBoard', () => {
   it('walks every page and keeps issues only, in board order', async () => {
-    onGh(/api graphql .*cursor=c1/, { data: { node: { items: { pageInfo: { hasNextPage: false }, nodes: [item(3, 'Done')] } } } });
+    onGh(/api graphql .*cursor=c1/, { data: { node: { items: { pageInfo: { hasNextPage: false }, nodes: [item(3, 'Done', { state: 'CLOSED' })] } } } });
     onGh(/api graphql/, {
       data: {
         node: {
@@ -34,6 +34,7 @@ describe('fetchBoard', () => {
     expect(board?.map((i) => i.number)).toEqual([1, 2, 3]);
     expect(board?.[0].assignees).toEqual(['bob']);
     expect(board?.[1].labels).toEqual(['bug']);
+    expect(board?.map((i) => i.closed)).toEqual([false, false, true]);
     expect(unassignedIn(board!, 'Todo')).toEqual([2]);
   });
   it('returns undefined and logs when the read fails', async () => {
@@ -59,18 +60,26 @@ describe('moveCard', () => {
 });
 
 describe('wiredPrs', () => {
-  it('keeps open, non-draft, unapproved PRs by default', async () => {
+  const rollup = (state: string) => ({ commits: { nodes: [{ commit: { statusCheckRollup: { state } } } ] } });
+  it('keeps open, non-draft, unapproved PRs by default, with their checks and mergeability', async () => {
     onGh(/api graphql/, {
       data: {
         repository: {
-          i1: { closedByPullRequestsReferences: { nodes: [{ number: 10, state: 'OPEN', isDraft: false, headRefOid: 'aaa', headRefName: 'sloth/issue-1-x', reviewDecision: null }] } },
+          i1: { closedByPullRequestsReferences: { nodes: [{ number: 10, state: 'OPEN', isDraft: false, headRefOid: 'aaa', headRefName: 'sloth/issue-1-x', reviewDecision: null, mergeable: 'MERGEABLE', ...rollup('FAILURE') }] } },
           i2: { closedByPullRequestsReferences: { nodes: [{ number: 11, state: 'OPEN', isDraft: true, headRefOid: 'bbb', headRefName: 'feat' }, { number: 12, state: 'MERGED', isDraft: false, headRefOid: 'ccc', headRefName: 'old' }] } },
-          i3: { closedByPullRequestsReferences: { nodes: [{ number: 13, state: 'OPEN', isDraft: false, headRefOid: 'ddd', headRefName: 'ok', reviewDecision: 'APPROVED' }] } },
+          i3: { closedByPullRequestsReferences: { nodes: [{ number: 13, state: 'OPEN', isDraft: false, headRefOid: 'ddd', headRefName: 'ok', reviewDecision: 'APPROVED', mergeable: 'CONFLICTING', ...rollup('PENDING') }] } },
         },
       },
     });
-    expect(await wiredPrs([1, 2, 3])).toEqual([{ issue: 1, pr: 10, sha: 'aaa', head: 'sloth/issue-1-x' }]);
-    expect((await wiredPrs([1, 2, 3], { unapprovedOnly: false })).map((p) => p.pr)).toEqual([10, 13]);
+    expect(await wiredPrs([1, 2, 3])).toEqual([
+      { issue: 1, pr: 10, sha: 'aaa', head: 'sloth/issue-1-x', state: 'OPEN', checks: 'FAILURE', mergeable: 'MERGEABLE' },
+    ]);
+    expect((await wiredPrs([1, 2, 3], { unapprovedOnly: false })).map((p) => [p.pr, p.checks, p.mergeable])).toEqual([
+      [10, 'FAILURE', 'MERGEABLE'],
+      [13, 'PENDING', 'CONFLICTING'],
+    ]);
+    // A repository that runs no checks reports no rollup at all — that is not a pending one.
+    expect((await wiredPrs([2], { states: ['MERGED'] })).map((p) => [p.pr, p.state, p.checks])).toEqual([[12, 'MERGED', 'NONE']]);
   });
   it('asks nothing for no issues and survives a failed lookup', async () => {
     expect(await wiredPrs([])).toEqual([]);

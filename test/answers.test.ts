@@ -3,12 +3,11 @@ import { answered } from '../server/runner/answers';
 import { setDry } from '../server/runner/log';
 import { resetSpawn, spawned } from './child-process-mock';
 import { onGh, resetGh } from './gh-mock';
-import { COLUMNS, alivePid, configure, makeSession, wipe } from './harness';
+import { COLUMNS, alivePid, card, configure, makeSession, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
 
-const card = (number: number, status: string) => ({ number, title: '', status, labels: [], assignees: [] });
 const tsv = (rows: [number, string, boolean][]) => rows.map((r) => r.join('\t')).join('\n');
 
 beforeEach(() => {

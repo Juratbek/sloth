@@ -1,6 +1,6 @@
-import type { AgentRole } from '../../server/config-types';
+import type { AgentRole, MergeMethod } from '../../server/config-types';
 import { NumberInput, TextInput } from '../setup/ui';
-import { ListInput, ModelPicker, Row, Toggle } from './ui';
+import { Choose, ListInput, ModelPicker, Row, Toggle } from './ui';
 import type { SectionProps } from './ui';
 
 const LOGINS = /[\s,]+/;
@@ -35,9 +35,27 @@ export function General({ draft, patch }: SectionProps) {
       >
         <NumberInput min={0} value={draft.previewHours} onChange={(previewHours) => patch({ previewHours })} />
       </Row>
+      <Row
+        label="Auto-merge"
+        hint="Merge a PR once its final review passed, its checks are green and it merges cleanly, with this gh pr merge method. Off leaves the merge to a human; the card still reaches Done when the issue closes."
+      >
+        <Choose
+          label="Auto-merge"
+          value={draft.autoMerge}
+          onChange={(autoMerge) => patch({ autoMerge: autoMerge as MergeMethod })}
+          options={MERGE_OPTIONS}
+        />
+      </Row>
     </>
   );
 }
+
+const MERGE_OPTIONS = [
+  { id: '', name: 'Off — a human merges' },
+  { id: 'squash', name: 'Squash and merge' },
+  { id: 'merge', name: 'Merge commit' },
+  { id: 'rebase', name: 'Rebase and merge' },
+];
 
 export function Team({ draft, patch }: SectionProps) {
   const roles = (p: Partial<typeof draft.roles>) => patch({ roles: { ...draft.roles, ...p } });

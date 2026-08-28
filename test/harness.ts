@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { CONFIG_PATH, reloadConfig, type ResolvedConfig } from '../server/config';
+import type { BoardItem } from '../server/runner/board';
 import { writeConfigFile, normalizeConfig } from '../server/config-file';
 import type { SlothConfig } from '../server/config-types';
 
@@ -13,7 +14,19 @@ export const COLUMNS = {
   needsHelp: { id: 'opt-help', name: 'Sloth needs help' },
   codeReview: { id: 'opt-review', name: 'Code Review' },
   approved: { id: 'opt-approved', name: 'Approved' },
+  done: { id: 'opt-done', name: 'Done' },
 };
+
+/** One board card; `extra` overrides any field — an assignee, a label, a closed issue. */
+export const card = (number: number, status: string, extra: Partial<BoardItem> = {}): BoardItem => ({
+  number,
+  title: `Issue ${number}`,
+  status,
+  labels: [],
+  assignees: [],
+  closed: false,
+  ...extra,
+});
 
 /** A complete, valid config under the test home; `overrides` is merged on top before normalizing. */
 export function baseConfig(overrides: Record<string, unknown> = {}): Record<string, unknown> {

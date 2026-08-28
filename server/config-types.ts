@@ -18,6 +18,8 @@ export interface ConfigColumns {
   codeReview: ColumnRef;
   /** Optional: with no Approved column trigger 5 never fires. */
   approved: ColumnRef;
+  /** Optional: where a card goes once its issue is closed (trigger 6); without it the card stays put. */
+  done: ColumnRef;
 }
 export type ColumnRole = keyof ConfigColumns;
 
@@ -28,7 +30,12 @@ export const DEFAULT_COLUMN_NAMES: Record<ColumnRole, string> = {
   needsHelp: 'Sloth needs help',
   codeReview: 'Code Review',
   approved: 'Approved',
+  done: 'Done',
 };
+
+/** How trigger 8 merges a PR that passed the final review; `''` leaves merging to a human. */
+export type MergeMethod = '' | 'squash' | 'merge' | 'rebase';
+export const MERGE_METHODS: MergeMethod[] = ['', 'squash', 'merge', 'rebase'];
 
 /** One admin, any number of developers and testers. A login holds one role: admin wins, then developer. */
 export interface Roles {
@@ -100,6 +107,11 @@ export interface SlothConfig {
   helpLogins: string[];
   /** Optional URL POSTed (Slack / Discord incoming-webhook shape) when a card lands in the needs-help column. */
   helpWebhook: string;
+  /**
+   * Merge a PR once its final review passed, its checks are green and it merges cleanly — with this
+   * `gh pr merge` method. Empty (the default) leaves the merge to a human.
+   */
+  autoMerge: MergeMethod;
   /** The argv Sloth runs to reach the UI from outside; `{port}` is the UI's port. The first bare https URL it prints is the address. */
   tunnel: string[];
   /** Where the UI is already reachable (your own tunnel or domain). Set, no tunnel is started. */
@@ -131,6 +143,7 @@ export const CONFIG_DEFAULTS = {
   previewHours: 24,
   helpLogins: [] as string[],
   helpWebhook: '',
+  autoMerge: '' as MergeMethod,
   tunnel: DEFAULT_TUNNEL,
   publicUrl: '',
 } satisfies Partial<SlothConfig>;

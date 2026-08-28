@@ -50,7 +50,7 @@ const BLANK: SlothConfig = {
   project: { id: '', number: 0, owner: '', title: '' },
   statusField: {
     id: '',
-    columns: { pickup: BLANK_COLUMN, inProgress: BLANK_COLUMN, needsHelp: BLANK_COLUMN, codeReview: BLANK_COLUMN, approved: BLANK_COLUMN },
+    columns: { pickup: BLANK_COLUMN, inProgress: BLANK_COLUMN, needsHelp: BLANK_COLUMN, codeReview: BLANK_COLUMN, approved: BLANK_COLUMN, done: BLANK_COLUMN },
   },
   runnerRoot: process.cwd(),
   worktreesDir: '~/.sloth/worktrees',
