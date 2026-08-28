@@ -3,12 +3,13 @@ import { CONFIG_DEFAULTS, DEFAULT_MODELS, defaultDirs } from '../../server/confi
 import type { SlothConfig } from '../../server/config-types';
 import { Button } from '../setup/ui';
 import { useSaveConfig } from '../setup/use-setup';
+import AboutSection from './AboutSection';
 import BoardSection from './BoardSection';
 import RepositorySection from './RepositorySection';
 import { General, Models, Notifications, Remote, Sessions, Team } from './sections';
 import type { SectionProps } from './ui';
 
-type Key = 'general' | 'board' | 'repository' | 'team' | 'notifications' | 'models' | 'sessions' | 'remote';
+type Key = 'general' | 'board' | 'repository' | 'team' | 'notifications' | 'models' | 'sessions' | 'remote' | 'about';
 
 const pick = <K extends keyof typeof CONFIG_DEFAULTS>(...keys: K[]) =>
   Object.fromEntries(keys.map((k) => [k, CONFIG_DEFAULTS[k]])) as Pick<typeof CONFIG_DEFAULTS, K>;
@@ -31,6 +32,7 @@ const SECTIONS: { key: Key; label: string; component: ComponentType<SectionProps
   { key: 'models', label: 'Models', component: Models, defaults: () => ({ models: { ...DEFAULT_MODELS } }) },
   { key: 'sessions', label: 'Sessions', component: Sessions, defaults: () => pick('maxActive', 'maxAlive', 'budgetMinutes', 'waitHours', 'reviewRounds', 'maxRetries') },
   { key: 'remote', label: 'Remote access', component: Remote, defaults: () => pick('tunnel', 'publicUrl') },
+  { key: 'about', label: 'About', component: AboutSection },
 ];
 
 const navItem = 'rounded-md px-3 py-1.5 text-left text-sm whitespace-nowrap';
