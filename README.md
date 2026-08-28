@@ -55,7 +55,7 @@ needs-help notifications carry on) and survives a restart.
 - **Columns** are roles mapped to the board's Status options: *pickup* (Sloth only reads it),
   *In Progress*, *needs help* (a stuck session parks the card here after asking its questions; an
   answer in the thread brings it back — `helpLogins` are mentioned in that question and `helpWebhook`
-  is called, see *Configuration*),
+  hears about it, along with anything else in `webhookEvents`, see *Configuration*),
   *Code Review* (trigger 4) and *Approved* (trigger 5 — a final review on `models.final`, Fable by default; a GitHub approval does not skip it,
   the verdict lands on the PR pass or fail, and a pass labels the issue `Fable: approved`), and *Done*, where the card
   of a closed issue lands (trigger 6; without the column the card stays where it is).
@@ -122,7 +122,8 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `keepDays` | `30` | How long a finished run is kept. Once an hour Sloth deletes the session directories, worktrees and status-reply markers older than this — never a live, parked or previewing run, and never a transcript (those are Claude Code's, under `~/.claude`). `watcher.log` is rotated to `watcher.log.1` past 5 MB |
 | `helpLogins` | `[]` | GitHub logins `@`-mentioned in the comment that parks a card in *needs help*, so GitHub notifies them (not the login `gh` writes with — GitHub skips self-mentions) |
 | `autoMerge` | `""` | How trigger 8 merges a PR whose final review passed, whose checks are green and which merges cleanly: `squash`, `merge` or `rebase` (the `gh pr merge` methods). Empty leaves merging to a human |
-| `helpWebhook` | `""` | URL POSTed once per card that lands in *needs help* (`{text, content, repo, issue, title, url, column}` — Slack and Discord incoming webhooks read it as is) |
+| `helpWebhook` | `""` | URL POSTed once per event in `webhookEvents` (`{event, text, content, repo, issue, title, url, column, pr?}` — Slack and Discord incoming webhooks read `text` / `content` as is) |
+| `webhookEvents` | `["needsHelp"]` | What `helpWebhook` hears about (Settings → *Notifications*, one toggle each): `needsHelp` (a card is parked), `codeReview` (a PR is ready for a human), `finalPassed` / `finalFailed` (the final review's verdict — the `Fable: approved` label appearing or going), `merged` (Sloth filed a closed issue away), `stopped` (a run was stopped or parked), `usageLimit` (a Claude limit paused the watcher) |
 | `tunnel` | `["cloudflared", "tunnel", "--url", "http://localhost:{port}"]` | The command Sloth runs so the UI is reachable from outside (see *Remote access*); the first bare `https://` URL it prints is the address |
 | `publicUrl` | — | Where the UI is already reachable — your own tunnel or domain. Set, no tunnel is started |
 

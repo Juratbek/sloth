@@ -47,6 +47,11 @@ in that comment, so GitHub tells them; with a webhook configured, Slack (or what
 URL) hears about the card too, within one board poll. Both are set in the wizard's *Columns* step
 (`helpLogins` and `helpWebhook` in `config.json`); with neither, nobody is told.
 
+The webhook can hear about more than this one moment. **Settings → Notifications** has a toggle per
+event: a card reaching *Code Review*, a final review passing or failing, an issue Sloth closed and
+filed away, a run stopped or parked, and a Claude usage limit pausing the watcher. Only the needs-help
+one is on to begin with, so a Sloth that was set up before this keeps saying exactly what it did.
+
 - Anyone on the team — the admin, a developer or a tester — answers in the issue thread, and the
   session continues. A comment from someone with no role is not an answer.
 - No answer within 2 hours? The session stops, the card stays in *Sloth needs help*. Sloth keeps

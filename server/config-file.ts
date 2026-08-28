@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AGENT_ROLES, CONFIG_DEFAULTS, DEFAULT_MODELS, MERGE_METHODS, defaultDirs, type AgentModels, type AgentRole, type ColumnRef, type MergeMethod, type Roles, type SlothConfig } from './config-types';
+import { AGENT_ROLES, CONFIG_DEFAULTS, DEFAULT_MODELS, MERGE_METHODS, WEBHOOK_EVENTS, defaultDirs, type AgentModels, type AgentRole, type ColumnRef, type MergeMethod, type Roles, type SlothConfig, type WebhookEvent } from './config-types';
 import { sameLogin } from './roles';
 
 const home = os.homedir();
@@ -93,6 +93,13 @@ function mergeMethod(v: unknown): MergeMethod {
   return m as MergeMethod;
 }
 
+/** The events a saved config asks for; anything unknown is dropped, and an explicit empty list is kept. */
+function webhookEvents(v: unknown, fallback: WebhookEvent[]): WebhookEvent[] {
+  if (!Array.isArray(v)) return fallback;
+  const known = WEBHOOK_EVENTS as readonly string[];
+  return [...new Set(v.map(String).filter((e): e is WebhookEvent => known.includes(e)))];
+}
+
 const argv = (v: unknown, fallback: string[]): string[] =>
   Array.isArray(v) && v.length ? v.map(String).filter((a) => a.trim()) : fallback;
 
@@ -164,6 +171,7 @@ export function normalizeConfig(input: unknown): SlothConfig {
     priorityField: typeof b.priorityField === 'string' ? b.priorityField.trim() : d.priorityField,
     helpLogins: logins(b.helpLogins),
     helpWebhook: url(b.helpWebhook, 'helpWebhook'),
+    webhookEvents: webhookEvents(b.webhookEvents, d.webhookEvents),
     autoMerge: mergeMethod(b.autoMerge),
     tunnel: argv(b.tunnel, d.tunnel),
     publicUrl: url(b.publicUrl, 'publicUrl'),

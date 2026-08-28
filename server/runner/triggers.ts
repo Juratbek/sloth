@@ -7,7 +7,7 @@ import { comment } from './gh';
 import { limitExit } from './limits';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
 import { APPROVED_LABEL, MARKERS, OWN_BRANCH, markerFiles, statePath, unapprove } from './markers';
-import { helpMentions } from './notify';
+import { helpMentions, notify } from './notify';
 import { cleanup } from './cleanup';
 import { approvedDir, counter, dirAlive, dirOf, isBlocked, issueAlive, issueDir, pidAlive, pidOf, reviewDir, runDirs, startedAt, stateOf } from './session-dirs';
 import type { Kind } from './session-dirs';
@@ -18,7 +18,11 @@ const LIMIT_PAUSE = 30 * 60; // how long the whole watcher sleeps after a usage-
 
 export const pausedUntil = () => readNumber(statePath('paused_until'));
 
-/** Hands the issue to a human: one comment, then the needs-help column. */
+/**
+ * Hands the issue to a human: one comment, then the needs-help column. Every way a run ends badly comes
+ * through here — the budget, a stop from the monitor, too many relaunches, a PR closed unmerged — so this
+ * is where the `stopped` webhook event is raised.
+ */
 export async function park(issue: number, reason: string): Promise<void> {
   const c = cfg();
   const cc = helpMentions();
@@ -35,6 +39,7 @@ export async function park(issue: number, reason: string): Promise<void> {
     log(`#${issue} parked in place (no needs-help column configured)`);
   }
   remove(path.join(issueDir(issue), 'retries'));
+  await notify('stopped', { issue, text: `Sloth stopped work on #${issue}: ${reason}` });
 }
 
 /**
@@ -97,6 +102,10 @@ export async function reap(): Promise<void> {
       if (!limitExit(readFile(path.join(dir, 'run.log')))) continue;
       log(`${name} stopped on a usage limit — pausing ${LIMIT_PAUSE / 60} min, card untouched`);
       write(statePath('paused_until'), String(nowSec() + LIMIT_PAUSE));
+      await notify('usageLimit', {
+        issue: kind === 'issue' ? target : undefined,
+        text: `${name} stopped on a Claude usage limit — Sloth waits ${LIMIT_PAUSE / 60} minutes, the card keeps its place`,
+      });
       if (kind !== 'issue') for (const f of markerFiles(kind, target)) remove(statePath(MARKERS[kind], f));
       continue;
     }

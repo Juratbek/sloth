@@ -5,7 +5,7 @@ import { refreshColumns } from './columns';
 import { comments } from './comments';
 import { autoMerge, failedChecks, finished } from './lifecycle';
 import { isDry, log, nowSec, setDry } from './log';
-import { notifyParked } from './notify';
+import { boardEvents } from './notify-events';
 import { isPaused } from './pause';
 import { previews } from './preview';
 import { prune } from './retention';
@@ -57,10 +57,10 @@ async function runTick({ board = false, comments: wantComments = false, dryRun =
     await prune();
     const items = await fetchBoard();
     if (!items) return;
-    // A parked card is announced even while paused: sessions keep running, so they keep parking.
-    await notifyParked(items);
     // Filing a closed issue away is bookkeeping on work that is already over, not new work.
     await finished(items);
+    // The webhook hears about all of it even while paused: sessions keep running, so they keep parking.
+    await boardEvents(items);
     if (userPaused) return;
     await failedChecks(items);
     await reviews(items);

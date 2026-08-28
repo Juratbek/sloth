@@ -37,6 +37,13 @@ export const DEFAULT_COLUMN_NAMES: Record<ColumnRole, string> = {
 export type MergeMethod = '' | 'squash' | 'merge' | 'rebase';
 export const MERGE_METHODS: MergeMethod[] = ['', 'squash', 'merge', 'rebase'];
 
+/**
+ * What the `helpWebhook` hears about. `needsHelp` is the one Sloth has always sent, and the only one a
+ * config that predates the rest gets: an existing setup keeps behaving exactly as it did.
+ */
+export const WEBHOOK_EVENTS = ['needsHelp', 'codeReview', 'finalPassed', 'finalFailed', 'merged', 'stopped', 'usageLimit'] as const;
+export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
+
 /** One admin, any number of developers and testers. A login holds one role: admin wins, then developer. */
 export interface Roles {
   /** Orders anything — work, board moves, closing issues. Empty means nobody can. */
@@ -117,8 +124,10 @@ export interface SlothConfig {
   priorityField: string;
   /** GitHub logins `@`-mentioned in the comment Sloth writes when it parks a card in the needs-help column. */
   helpLogins: string[];
-  /** Optional URL POSTed (Slack / Discord incoming-webhook shape) when a card lands in the needs-help column. */
+  /** Optional URL POSTed (Slack / Discord incoming-webhook shape) when one of `webhookEvents` happens. */
   helpWebhook: string;
+  /** Which events reach `helpWebhook`; empty means none, and the URL is never called. */
+  webhookEvents: WebhookEvent[];
   /**
    * Merge a PR once its final review passed, its checks are green and it merges cleanly — with this
    * `gh pr merge` method. Empty (the default) leaves the merge to a human.
@@ -158,6 +167,7 @@ export const CONFIG_DEFAULTS = {
   priorityField: 'Priority',
   helpLogins: [] as string[],
   helpWebhook: '',
+  webhookEvents: ['needsHelp'] as WebhookEvent[],
   autoMerge: '' as MergeMethod,
   tunnel: DEFAULT_TUNNEL,
   publicUrl: '',

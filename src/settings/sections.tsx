@@ -87,27 +87,6 @@ export function Team({ draft, patch }: SectionProps) {
   );
 }
 
-export function Notifications({ draft, patch }: SectionProps) {
-  const column = draft.statusField.columns.needsHelp.name || 'needs help';
-  return (
-    <>
-      <Row
-        label="Logins to mention"
-        hint={`Mentioned in the comment Sloth writes when it parks a card in “${column}”, so GitHub notifies them. Leave out the login gh is signed in as — GitHub never notifies an account of its own mention.`}
-      >
-        <ListInput value={draft.helpLogins} onChange={(helpLogins) => patch({ helpLogins })} split={LOGINS} join=", " placeholder="alice, bob" />
-      </Row>
-      <Row
-        label="Webhook URL"
-        hint={`Optional. A Slack or Discord incoming webhook (or your own endpoint) gets a JSON POST with the issue each time a card lands in “${column}”, within one board poll.`}
-        wide
-      >
-        <TextInput value={draft.helpWebhook} onChange={(helpWebhook) => patch({ helpWebhook })} placeholder="https://hooks.slack.com/services/…" />
-      </Row>
-    </>
-  );
-}
-
 export function Sessions({ draft, patch }: SectionProps) {
   return (
     <>

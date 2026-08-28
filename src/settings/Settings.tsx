@@ -6,9 +6,10 @@ import { useSaveConfig } from '../setup/use-setup';
 import AboutSection from './AboutSection';
 import BoardSection from './BoardSection';
 import MachineSection from './MachineSection';
+import NotificationsSection from './NotificationsSection';
 import RepositorySection from './RepositorySection';
 import { Models } from './ModelsSection';
-import { General, Notifications, Remote, Sessions, Team } from './sections';
+import { General, Remote, Sessions, Team } from './sections';
 import type { SectionProps } from './ui';
 
 type Key = 'general' | 'board' | 'repository' | 'team' | 'notifications' | 'models' | 'sessions' | 'remote' | 'machine' | 'about';
@@ -30,7 +31,7 @@ const SECTIONS: { key: Key; label: string; component: ComponentType<SectionProps
     },
   },
   { key: 'team', label: 'Team', component: Team },
-  { key: 'notifications', label: 'Notifications', component: Notifications, defaults: () => pick('helpLogins', 'helpWebhook') },
+  { key: 'notifications', label: 'Notifications', component: NotificationsSection, defaults: () => pick('helpLogins', 'helpWebhook', 'webhookEvents') },
   { key: 'models', label: 'Models', component: Models, defaults: () => ({ models: { ...DEFAULT_MODELS } }) },
   { key: 'sessions', label: 'Sessions', component: Sessions, defaults: () => pick('maxActive', 'maxAlive', 'budgetMinutes', 'waitHours', 'reviewRounds', 'maxRetries', 'keepDays') },
   { key: 'remote', label: 'Remote access', component: Remote, defaults: () => pick('tunnel', 'publicUrl') },
