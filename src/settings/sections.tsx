@@ -168,6 +168,12 @@ export function Sessions({ draft, patch }: SectionProps) {
       <Row label="Max retries" hint="How many times in a row an In Progress card whose session died is relaunched before it is parked.">
         <NumberInput min={0} value={draft.maxRetries} onChange={(maxRetries) => patch({ maxRetries })} />
       </Row>
+      <Row
+        label="Keep days"
+        hint="Finished runs older than this are deleted — their session directory, worktree and status replies. Transcripts belong to Claude Code and are left alone."
+      >
+        <NumberInput value={draft.keepDays} onChange={(keepDays) => patch({ keepDays })} />
+      </Row>
     </>
   );
 }

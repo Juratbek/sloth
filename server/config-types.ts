@@ -103,6 +103,11 @@ export interface SlothConfig {
    * reviewer can try the change without checking it out (see `runner/preview.ts`). `0` turns previews off.
    */
   previewHours: number;
+  /**
+   * How long a finished run is kept: its session directory, its worktree and the markers of the status
+   * replies it prompted. The transcripts belong to Claude Code and are never touched.
+   */
+  keepDays: number;
   /** GitHub logins `@`-mentioned in the comment Sloth writes when it parks a card in the needs-help column. */
   helpLogins: string[];
   /** Optional URL POSTed (Slack / Discord incoming-webhook shape) when a card lands in the needs-help column. */
@@ -141,6 +146,7 @@ export const CONFIG_DEFAULTS = {
   models: DEFAULT_MODELS,
   chrome: true,
   previewHours: 24,
+  keepDays: 30,
   helpLogins: [] as string[],
   helpWebhook: '',
   autoMerge: '' as MergeMethod,

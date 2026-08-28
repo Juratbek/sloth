@@ -30,7 +30,7 @@ const SECTIONS: { key: Key; label: string; component: ComponentType<SectionProps
   { key: 'team', label: 'Team', component: Team },
   { key: 'notifications', label: 'Notifications', component: Notifications, defaults: () => pick('helpLogins', 'helpWebhook') },
   { key: 'models', label: 'Models', component: Models, defaults: () => ({ models: { ...DEFAULT_MODELS } }) },
-  { key: 'sessions', label: 'Sessions', component: Sessions, defaults: () => pick('maxActive', 'maxAlive', 'budgetMinutes', 'waitHours', 'reviewRounds', 'maxRetries') },
+  { key: 'sessions', label: 'Sessions', component: Sessions, defaults: () => pick('maxActive', 'maxAlive', 'budgetMinutes', 'waitHours', 'reviewRounds', 'maxRetries', 'keepDays') },
   { key: 'remote', label: 'Remote access', component: Remote, defaults: () => pick('tunnel', 'publicUrl') },
   { key: 'about', label: 'About', component: AboutSection },
 ];

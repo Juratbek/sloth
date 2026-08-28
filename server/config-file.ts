@@ -158,6 +158,7 @@ export function normalizeConfig(input: unknown): SlothConfig {
     models: models(b.models, b.model, b.approvedModel),
     chrome: b.chrome !== false,
     previewHours: int(b.previewHours, d.previewHours, 0),
+    keepDays: int(b.keepDays, d.keepDays),
     helpLogins: logins(b.helpLogins),
     helpWebhook: url(b.helpWebhook, 'helpWebhook'),
     autoMerge: mergeMethod(b.autoMerge),

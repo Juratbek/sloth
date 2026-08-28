@@ -8,6 +8,7 @@ import { isDry, log, nowSec, setDry } from './log';
 import { notifyParked } from './notify';
 import { isPaused } from './pause';
 import { previews } from './preview';
+import { prune } from './retention';
 import { answered } from './answers';
 import { finalReviews, pausedUntil, pickup, reap, retryStranded, reviews } from './triggers';
 import type { LoopStatus } from '../types';
@@ -52,6 +53,8 @@ async function runTick({ board = false, comments: wantComments = false, dryRun =
     }
     if (!board) return;
     state.lastBoard = Date.now();
+    // Housekeeping on work that is long over — it costs nothing and skips itself for an hour.
+    await prune();
     const items = await fetchBoard();
     if (!items) return;
     // A parked card is announced even while paused: sessions keep running, so they keep parking.
