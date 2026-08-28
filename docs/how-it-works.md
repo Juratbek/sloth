@@ -46,9 +46,11 @@ URL) hears about the card too, within one board poll. Both are set in the wizard
 
 ## Talking to Sloth
 
-Write `@sloth` in an issue comment. Sloth listens to the team from the wizard's *Team* step — one
-**admin**, any number of **developers** and **testers** — and ignores everyone else: no reply, and
-their comments never count as answers.
+Write `@sloth` in a comment on the issue, or on the pull request that closes it (`Closes #n`, or a
+`sloth/issue-n-…` branch) — a PR comment counts as said on its issue, and Sloth answers on the PR. A PR
+linked to no issue gets a one-line reply saying so. Sloth listens to the team from the wizard's *Team*
+step — one **admin**, any number of **developers** and **testers** — and ignores everyone else: no
+reply, and their comments never count as answers.
 
 - If a session is working on that issue, it reads your comment at its next step.
 - The **admin**'s comment, when it is not a question, is an **order** without limits: Sloth starts a

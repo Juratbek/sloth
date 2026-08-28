@@ -24,9 +24,11 @@ the repo's rules, its skills, its docs. This command only says *when* to consult
 `$ARGUMENTS` holds, in any order:
 
 - **Issue (required)** — a number or an issue URL → `ISSUE` (bare number; `$SLOTH_ISSUE` when set). Missing → stop and report.
-- **Order (optional)** — text introduced by `Order from <login> (<role>, issue comment <id>)`, forwarded by the
-  server; `<role>` is `admin` or `developer`. It overrides the default "implement the issue" scope ("address the
-  review comments", "start over with approach X", "stop") — within the limits of the role, below.
+- **Order (optional)** — text introduced by `Order from <login> (<role>, issue comment <id>)` or
+  `Order from <login> (<role>, PR #<n> comment <id>)`, forwarded by the server; `<role>` is `admin` or
+  `developer`. It overrides the default "implement the issue" scope ("address the review comments", "start
+  over with approach X", "stop") — within the limits of the role, below. An order given on the PR is
+  acknowledged and answered on that PR; everything else about the run still goes on the issue.
 - **Extra instructions (optional)** — remaining free text; fold it into the work.
 
 ```bash

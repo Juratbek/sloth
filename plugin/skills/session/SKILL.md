@@ -19,7 +19,7 @@ directory.
 | Variable | Holds |
 |---|---|
 | `SLOTH_SESSION_DIR` | This run's directory (already exists) |
-| `SLOTH_ISSUE` / `SLOTH_PR` | The target — issue number, or PR number for a review run |
+| `SLOTH_ISSUE` / `SLOTH_PR` | The target — issue number, or PR number for a review run; a status reply gets both when the question was asked on the issue's PR |
 | `SLOTH_REPO` | `owner/repo` |
 | `SLOTH_RUNNER_ROOT` | The checkout sessions run from; `cwd` is inside it |
 | `SLOTH_WORKTREES_DIR` | Where per-issue worktrees are created |
@@ -74,8 +74,10 @@ Other files the server understands, all inside `$SLOTH_SESSION_DIR`:
 
 The server drops each `$SLOTH_MENTION` comment from someone with a role into
 `$SLOTH_SESSION_DIR/inbox/<commentId>.md`: `author:`, `role:` (`admin` | `developer` | `tester`) and
-`comment:` header lines, then the body. **Check the inbox at every step boundary**
-(`ls "$SLOTH_SESSION_DIR/inbox"`) and every minute while waiting. Handle a file, then delete it.
+`comment:` header lines — plus `pr: <number>` when it was written on the issue's PR instead of the issue —
+then the body. **Check the inbox at every step boundary** (`ls "$SLOTH_SESSION_DIR/inbox"`) and every
+minute while waiting. Handle a file, then delete it. A comment from a PR is handled exactly like one from
+the issue; only the reply goes where it was written (`gh pr comment <pr>` instead of `gh issue comment`).
 
 - `role: admin`, unless the body ends with `?` — an **order** without limits. Follow it, even when it
   changes the scope ("address the review comments" → do that; "stop" → clean up and report; "move it to

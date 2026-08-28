@@ -24,7 +24,7 @@ The short version; the tick-by-tick account is in [docs/how-it-works.md](docs/ho
 |---|---|---|
 | 1 | An unassigned issue sits in the watched column | Moves it to In Progress and starts `/sloth:implement <n>` |
 | 2 | An unassigned issue sits in In Progress with no live session | Relaunches it, at most `maxRetries` times in a row |
-| 3 | Someone on the team mentions `@sloth` in a comment | Delivers it to the live session; with no session, an order (admin or developer) starts one and anything else gets a status reply. A login with no role is ignored |
+| 3 | Someone on the team mentions `@sloth` in a comment — on an issue, or on the PR that closes it | Delivers it to the live session; with no session, an order (admin or developer) starts one and anything else gets a status reply, on the thread it was written in. A login with no role is ignored; a PR linked to no issue gets told so |
 | 4 | An unassigned issue in Code Review has an open, non-draft, unapproved wired PR **written by a human** | Runs `/sloth:review <pr>`, once per PR head. Sloth's own PRs were already vetted by their session's reviewer loop |
 | 5 | An issue in Approved — assigned or not — has an open, non-draft wired PR and no `Fable: approved` label | Runs `/sloth:review <pr> final` on the `fable` model, once per PR head; the verdict is posted on the PR either way, and a pass labels the issue `Fable: approved`, which keeps it from being reviewed again |
 

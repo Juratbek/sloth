@@ -1,15 +1,16 @@
 ---
-description: Answer an "@sloth" status question on an issue — what Sloth did, where the branch and PR are, why it is waiting — as one issue comment
+description: Answer an "@sloth" status question on an issue or its PR — what Sloth did, where the branch and PR are, why it is waiting — as one comment where it was asked
 argument-hint: <issue-number> <comment-id>
 allowed-tools: Bash, Read, Write, Grep, Glob, Skill
 ---
 
-# Answer a status question on an issue
+# Answer a status question on an issue or its PR
 
-`$ARGUMENTS` is `<ISSUE> <COMMENT_ID>`: someone mentioned `$SLOTH_MENTION` on issue `ISSUE` in comment
-`COMMENT_ID`, and **no Sloth session is running** for that issue — the server only calls this command in
-that case. Answer in **one** comment on the issue. Never change code, never move a card, never open or edit
-a PR.
+`$ARGUMENTS` is `<ISSUE> <COMMENT_ID>`: someone mentioned `$SLOTH_MENTION` in comment `COMMENT_ID` — on
+issue `ISSUE`, or, when `$SLOTH_PR` is set, on that PR (which closes the issue) — and **no Sloth session is
+running** for the issue; the server only calls this command in that case. Answer in **one** comment on the
+thread the question was asked on: the PR when `$SLOTH_PR` is set, else the issue. Never change code, never
+move a card, never open or edit a PR.
 
 If `$ARGUMENTS` contains `--help-check`, this is the server's load check: print the command's contract (what
 it answers, which environment variables it needs) and stop, without calling `gh` or writing anything.
@@ -20,11 +21,15 @@ Comment conventions come from the **`session`** skill; the board queries from th
 
 ```bash
 ISSUE=${SLOTH_ISSUE:-<from $ARGUMENTS>}; OWNER=${SLOTH_REPO%%/*}; NAME=${SLOTH_REPO##*/}
+THREAD=${SLOTH_PR:-$ISSUE}     # where the question was asked and where the answer goes
 
 gh issue view "$ISSUE" --repo "$SLOTH_REPO" --json title,state,labels,assignees,url
 gh api "repos/$SLOTH_REPO/issues/comments/<COMMENT_ID>" --jq '{author: .user.login, body: .body}'
 gh issue view "$ISSUE" --repo "$SLOTH_REPO" --json comments \
   --jq '.comments[-8:][] | "\(.author.login) (\(.createdAt)):\n\(.body)\n---"'
+# asked on the PR: its own conversation too
+[ -n "$SLOTH_PR" ] && gh api "repos/$SLOTH_REPO/issues/$SLOTH_PR/comments" --paginate \
+  --jq '.[-8:][] | "\(.user.login) (\(.created_at)):\n\(.body)\n---"'
 
 # wired PRs
 gh api graphql -f query="{ repository(owner: \"$OWNER\", name: \"$NAME\") { issue(number: $ISSUE) {
@@ -47,7 +52,8 @@ guessing what happened.
 
 ## Reply
 
-Post one comment: `gh issue comment "$ISSUE" --repo "$SLOTH_REPO" --body-file <file>`.
+Post one comment on `$THREAD`: `gh api "repos/$SLOTH_REPO/issues/$THREAD/comments" -F body=@<file>` (the
+endpoint takes an issue or a PR number alike).
 
 - First line: `$SLOTH_BOT_PREFIX` — Sloth writes with a human's account, so every comment identifies itself.
 - Then 2–6 short lines answering what was asked:
