@@ -3,6 +3,7 @@ import path from 'node:path';
 import { cfg } from '../config';
 import { gh } from './gh';
 import { isDry, log } from './log';
+import { APPROVED_LABEL } from '../board-types';
 import type { Kind } from './session-dirs';
 
 /**
@@ -29,7 +30,7 @@ export function markerFiles(kind: Exclude<Kind, 'issue'>, pr: number): string[] 
 export const OWN_BRANCH = /^sloth\/issue-\d+/;
 
 /** The label `/sloth:review <pr> final` puts on a wired issue whose PR passed; a failing final review removes it. */
-export const APPROVED_LABEL = 'Fable: approved';
+export { APPROVED_LABEL };
 
 /** Takes the pass back: the head that earned it is gone, or its checks turned red after it. */
 export async function unapprove(issue: number, why: string): Promise<void> {

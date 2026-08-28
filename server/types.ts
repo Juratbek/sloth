@@ -1,3 +1,4 @@
+import type { BoardView } from './board-types';
 import type { AgentModels } from './config-types';
 import type { RemoteStatus } from './machine-types';
 
@@ -172,9 +173,13 @@ export interface Overview {
   orphans: WatcherSession[];
   /** Per-issue rollup of everything above, dearest first. */
   issues: IssueCost[];
+  /** The board as the last tick read it, joined to the runs above; undefined until a tick has read it. */
+  board?: BoardView;
 }
 
 /** Remote access, updates and the launch agent — what the machine itself reports (`machine-types.ts`). */
 export type { InstallStatus, RemoteLink, RemoteStatus, ServiceStatus, UpdateStatus, VersionInfo } from './machine-types';
+/** The home panel's mirror of the GitHub board (`board-types.ts`). */
+export type { BoardCard, BoardColumn, BoardView } from './board-types';
 /** The spend series behind the usage chart (`usage-types.ts`). */
 export type { ModelCost, UsageBucket, UsageSeries } from './usage-types';

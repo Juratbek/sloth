@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { Overview } from '../../server/types';
 import useFollowBottom from '../hooks/use-follow-bottom';
+import Board from './Board';
 import IssuesTable from './IssuesTable';
 import UsageChart from './UsageChart';
 
@@ -16,13 +17,15 @@ function queued(logTail: string[]): string[] {
   return [...pending];
 }
 
-export default function WatcherPanel({ overview }: { overview: Overview }) {
+export default function WatcherPanel({ overview, onSelect }: { overview: Overview; onSelect: (id: string) => void }) {
   const { watcher } = overview;
   const pending = useMemo(() => queued(watcher.logTail), [watcher.logTail]);
   const { ref: logRef } = useFollowBottom<HTMLPreElement>(true, watcher.logTail.length);
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden p-4">
+      <Board board={overview.board} onSelect={onSelect} />
+
       <div className="shrink-0">
         <UsageChart />
       </div>

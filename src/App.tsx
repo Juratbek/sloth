@@ -53,7 +53,7 @@ export default function App() {
       <div className="flex min-h-0 flex-1">
         <Sidebar open={menu} sessions={data.sessions} selected={selected} onSelect={show} />
         <main className={`${menu ? 'hidden' : 'flex'} min-h-0 min-w-0 flex-1 flex-col md:flex`}>
-          {selected ? <SessionView key={selected} id={selected} config={data.config} /> : <WatcherPanel overview={data} />}
+          {selected ? <SessionView key={selected} id={selected} config={data.config} /> : <WatcherPanel overview={data} onSelect={show} />}
         </main>
       </div>
       {remote && <RemoteDialog onClose={() => setRemote(false)} />}

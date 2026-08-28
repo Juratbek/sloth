@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_CONFIG_PATH, expandPath, readConfigFile } from './config-file';
 import { CONFIG_DEFAULTS, type SlothConfig } from './config-types';
+import { clearSnapshot } from './runner/board-snapshot';
 
 const home = os.homedir();
 /** The Sloth checkout itself — where `plugin/` lives. */
@@ -93,5 +94,7 @@ let cached: ResolvedConfig | undefined;
 export const cfg = (): ResolvedConfig => (cached ??= resolve());
 export const reloadConfig = () => {
   cached = undefined;
+  // The wizard may have pointed Sloth at another board; the old board's cards are not this one's.
+  clearSnapshot();
   return cfg();
 };
