@@ -153,6 +153,30 @@ export interface RemoteLink extends RemoteStatus {
   install: InstallStatus;
 }
 
+/** The update the settings page started: which step it is on, the last lines it printed, how it ended. */
+export interface UpdateStatus {
+  running: boolean;
+  step?: 'pull' | 'install' | 'build' | 'restart';
+  output: string;
+  error?: string;
+  /** The new process is starting; the page reloads once it answers. */
+  restarting: boolean;
+}
+/** What Sloth this is: the version in package.json, the commit of the checkout, and how far behind the remote it is. */
+export interface VersionInfo {
+  version: string;
+  commit?: string;
+  date?: string;
+  branch?: string;
+  /** Tracked files changed in the checkout — a pull may refuse. */
+  dirty: boolean;
+  /** Commits on origin/<branch> this checkout lacks; unknown until a check ran. */
+  behind?: number;
+  checkedAt?: string;
+  checkError?: string;
+  update: UpdateStatus;
+}
+
 export interface Overview {
   generatedAt: string;
   config: MonitorConfig;

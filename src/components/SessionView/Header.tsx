@@ -48,25 +48,30 @@ function PreviewLine({ issue, preview }: { issue: number; preview: NonNullable<S
   );
 }
 
-/** Ends a live run now. Shown only while its process is alive; an issue's card lands in needs-help. */
+/** Ends a run: a live one is killed (an issue's card lands in needs-help); a parked one whose process is gone leaves needs-help. */
 function StopButton({ s }: { s: SessionDetail }) {
   const stop = useStopSession();
-  if (!s.live || !s.watcher) return null;
-  const issue = s.watcher.kind === 'issue';
+  const w = s.watcher;
+  if (!w || !(s.live || s.status === 'parked')) return null;
+  const issue = w.kind === 'issue';
+  const text = s.live
+    ? issue
+      ? { ask: `Stop ${w.name}? Its card goes to needs-help; a reply on the issue starts it again.`, hint: 'Kills the session and its servers, removes the worktree and parks the card in needs-help. The branch and PR stay.' }
+      : { ask: `Stop ${w.name}?`, hint: 'Kills the review. This PR head is not reviewed again; the next push gets a fresh review.' }
+    : {
+        ask: `End the parked run ${w.name}? It leaves Needs help; the card stays parked until someone answers on the issue.`,
+        hint: 'Ends the parked run: its servers, database and worktree go and it leaves Needs help. The card stays where it is; an answer on the issue starts a new run.',
+      };
   return (
     <button
       onClick={() => {
-        if (window.confirm(`Stop ${s.watcher!.name}?${issue ? ' Its card goes to needs-help; a reply on the issue starts it again.' : ''}`)) stop.mutate(s.id);
+        if (window.confirm(text.ask)) stop.mutate(s.id);
       }}
       disabled={stop.isPending}
-      title={
-        issue
-          ? 'Kills the session and its servers, removes the worktree and parks the card in needs-help. The branch and PR stay.'
-          : 'Kills the review. This PR head is not reviewed again; the next push gets a fresh review.'
-      }
+      title={text.hint}
       className="rounded border border-red-900 px-1.5 py-0.5 text-[11px] text-red-300 hover:bg-red-950/60 disabled:cursor-not-allowed disabled:opacity-50"
     >
-      {stop.isPending ? 'stopping…' : 'stop'}
+      {stop.isPending ? 'stopping…' : s.live ? 'stop' : 'end'}
     </button>
   );
 }

@@ -10,6 +10,7 @@ import { install } from './install';
 import { guard, isLocal, remoteLink, rotateToken, sameOrigin, startTunnel, stopTunnel } from './remote';
 import { agentDetail, overview, sessionDetail, watcherOf } from './sessions';
 import { handleSetup } from './setup';
+import { check, update, versionInfo } from './update';
 import { usageSeries } from './usage';
 
 const MAX_BODY = 1 << 20; // 1 MiB — a config payload is a few KB; anything larger is rejected
@@ -75,7 +76,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
   }
   let body: unknown;
   const mutating = (req.method ?? 'GET') !== 'GET';
-  const sensitive = p.startsWith('/api/setup/') || p.startsWith('/api/remote');
+  const sensitive = p.startsWith('/api/setup/') || p.startsWith('/api/remote') || p.startsWith('/api/update');
   // CSRF guard: a cross-site page (even one open on the machine itself) must not be able to drive a
   // POST or reach the sensitive endpoints. `sameOrigin` fails closed on a cross-site fetch.
   if ((mutating || sensitive) && !sameOrigin(req)) {
@@ -96,6 +97,12 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     // Once the tool is there the tunnel starts on its own and the QR follows.
     else if (p === '/api/remote/install' && req.method === 'POST') install(cfg().tunnel[0], () => startTunnel());
     return json(res, remoteLink());
+  }
+  if (p.startsWith('/api/update')) {
+    // Sloth's own version and update: fetch to see what is new, pull-install-build-restart to get it.
+    if (p === '/api/update/check' && req.method === 'POST') await check();
+    else if (p === '/api/update/run' && req.method === 'POST') update();
+    return json(res, await versionInfo());
   }
   try {
     const session = /^\/api\/sessions\/([\w-]+)$/.exec(p);

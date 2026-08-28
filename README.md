@@ -16,7 +16,9 @@ process stops — there is no daemon. The first time you open the UI a **Get sta
 `claude` and `gh`, lets you pick the board, its columns, the repository and the checkout the sessions
 run from, then writes `~/.sloth/config.json`. The gear in the header opens **Settings**, where every value in
 that file — the board, the team, the caps, which model each agent runs on — can be changed; the wizard can be
-re-run from there.
+re-run from there. Its **About** section shows the version and commit Sloth runs, how far behind `origin` it is,
+and an **Update** button: `git pull --ff-only`, `pnpm install`, `pnpm build`, then Sloth restarts itself with the
+same command line (running sessions are not touched; a `caffeinate` or `pnpm` wrapper exits with the old process).
 
 ## How it works
 
@@ -55,7 +57,8 @@ needs-help notifications carry on) and survives a restart.
   They survive a Sloth restart. `maxActive` may work at once, `maxAlive` including the ones waiting
   for an answer; a trigger with no free slot is retried next tick. A session past
   `budgetMinutes + 5` is killed, cleaned up, and its card parked; **stop** in a live session's header
-  does the same on demand (a stopped review is not repeated for that PR head). A Claude usage
+  does the same on demand (a stopped review is not repeated for that PR head), and **end** on a parked
+  session whose process is gone cleans it up and takes it off the needs-help list — the card stays put. A Claude usage
   limit pauses the watcher for 30 minutes without costing the card its place.
 - **Previews** (`previewHours`, default 24): an implement session that hands its PR to Code Review leaves
   the app it tested running — its own database, seeded, nothing shared — and Sloth puts a tunnel in front
@@ -119,8 +122,10 @@ Read: `GET /api/overview`, `/api/sessions/:id`, `/api/sessions/:id/agents/:agent
 `/api/events` (SSE). Write: `POST /api/tick` (`?dry=1`), `/api/pause`, `/api/resume`, `/api/sessions/:id/stop` (ends the run, parks an issue's card), `/api/previews/:issue/stop` (takes a preview down now), `/api/setup/config`,
 `/api/setup/clone`. Wizard reads: `GET /api/setup/env`, `/api/setup/projects`, `/api/setup/projects/:id/fields`,
 `/api/setup/config`. `GET /api/remote` (the QR's link and the tunnel tool's state), `POST /api/remote/rotate`
-(a new link) and `POST /api/remote/install` (brew installs the tool). Everything under `/api/setup/` and
-`/api/remote` answers only from the machine Sloth runs on — a phone reads and ticks, it never reconfigures.
+(a new link) and `POST /api/remote/install` (brew installs the tool). `GET /api/update` (version, commit, commits
+behind), `POST /api/update/check` (fetches), `POST /api/update/run` (pull, install, build, restart). Everything under
+`/api/setup/`, `/api/remote` and `/api/update` answers only from the machine Sloth runs on — a phone reads and
+ticks, it never reconfigures or updates.
 
 ## Remote access
 

@@ -38,17 +38,31 @@ export async function park(issue: number, reason: string): Promise<void> {
 }
 
 /**
- * Ends one live session. Its whole process group goes — the `claude` run and everything it started —
- * and the pid is forgotten so nothing reaps it twice. An issue's run is also cleaned up and its card
- * parked with `why` as the comment: left in In Progress, trigger 2 would only start it again. A review
- * keeps its "already reviewed this head" marker; the next push gets a fresh review. Returns false
- * when nothing was running.
+ * Ends one session. A live one loses its whole process group — the `claude` run and everything it
+ * started — and its pid is forgotten so nothing reaps it twice; an issue's run is then cleaned up and
+ * its card parked with `why` as the comment (left in In Progress, trigger 2 would only start it again),
+ * a review keeps its "already reviewed this head" marker so the next push gets a fresh one. A parked
+ * issue run whose process is already gone is ended too: cleaned up and marked done, so it leaves the
+ * needs-help list; its card stays where it is, and an answer on the issue starts a new run as before.
+ * Returns false when there was nothing to end.
  */
 export async function stop(kind: Kind, target: number, reason: string, why: string): Promise<boolean> {
   const dir = dirOf(kind, target);
   const pid = pidOf(dir);
-  if (!pidAlive(pid)) return false;
   const name = `${kind}-${target}`;
+  if (!pidAlive(pid)) {
+    const state = stateOf(dir);
+    if (kind !== 'issue' || state.state !== 'waiting') return false;
+    if (isDry()) {
+      log(`dry-run: would end parked ${name}: ${reason}`);
+      return true;
+    }
+    remove(path.join(dir, 'pid'));
+    await cleanup(target);
+    write(path.join(dir, 'state.json'), JSON.stringify({ ...state, state: 'done', since: nowSec(), note: `parked run ended: ${reason}` }));
+    log(`#${target} parked run ended: ${reason}`);
+    return true;
+  }
   if (isDry()) {
     log(`dry-run: would stop ${name}: ${reason}`);
     return true;
