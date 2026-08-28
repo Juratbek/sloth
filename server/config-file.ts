@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { DEFAULT_TUNNEL, type ColumnRef, type Roles, type SlothConfig } from './config-types';
+import { AGENT_ROLES, CONFIG_DEFAULTS, DEFAULT_MODELS, defaultDirs, type AgentModels, type AgentRole, type ColumnRef, type Roles, type SlothConfig } from './config-types';
 import { sameLogin } from './roles';
 
 const home = os.homedir();
@@ -67,6 +67,25 @@ function url(v: unknown, what: string): string {
   return u.replace(/\/+$/, '');
 }
 
+/** A Claude Code `--model` value: an alias or a model id — one word, it goes straight into argv. */
+function model(v: unknown, what: string): string | undefined {
+  const m = text(v);
+  if (m && /\s/.test(m)) throw new Error(`${what} must be a single model name or id`);
+  return m;
+}
+
+/**
+ * One model per agent. A config from before per-agent models had `model` for every session and
+ * `approvedModel` for the final review; those still load as they used to run.
+ */
+function models(v: unknown, legacyModel: unknown, legacyApproved: unknown): AgentModels {
+  const m = (v ?? {}) as Record<string, unknown>;
+  const every = model(legacyModel, 'model');
+  const pick = (role: AgentRole) =>
+    model(m[role], `models.${role}`) ?? (role === 'final' ? model(legacyApproved, 'approvedModel') : every) ?? DEFAULT_MODELS[role];
+  return Object.fromEntries(AGENT_ROLES.map((role) => [role, pick(role)])) as unknown as AgentModels;
+}
+
 const argv = (v: unknown, fallback: string[]): string[] =>
   Array.isArray(v) && v.length ? v.map(String).filter((a) => a.trim()) : fallback;
 
@@ -87,6 +106,8 @@ export function normalizeConfig(input: unknown): SlothConfig {
   const repo = repoSlug(b.repo);
   const name = repo.split('/')[1];
   const columns = (b.statusField?.columns ?? {}) as Record<string, unknown>;
+  const d = CONFIG_DEFAULTS;
+  const dirs = defaultDirs(name);
   return {
     version: 1,
     repo,
@@ -108,30 +129,29 @@ export function normalizeConfig(input: unknown): SlothConfig {
         approved: optional(columns.approved, 'approved'),
       },
     },
-    runnerRoot: expandPath(text(b.runnerRoot) ?? `~/.sloth/runners/${name}`),
-    runnersDir: text(b.runnersDir) ?? '~/.sloth/runners',
-    worktreesDir: text(b.worktreesDir) ?? `~/.sloth/worktrees/${name}`,
-    sessionsDir: text(b.sessionsDir) ?? `~/.sloth/sessions/${name}`,
-    stateDir: text(b.stateDir) ?? '~/.sloth/state',
-    watcherLog: text(b.watcherLog) ?? '~/.sloth/watcher.log',
+    runnerRoot: expandPath(text(b.runnerRoot) ?? dirs.runnerRoot),
+    runnersDir: text(b.runnersDir) ?? d.runnersDir,
+    worktreesDir: text(b.worktreesDir) ?? dirs.worktreesDir,
+    sessionsDir: text(b.sessionsDir) ?? dirs.sessionsDir,
+    stateDir: text(b.stateDir) ?? d.stateDir,
+    watcherLog: text(b.watcherLog) ?? d.watcherLog,
     roles: roles(b.roles, b.orderLogin),
-    mention: text(b.mention) ?? '@sloth',
-    botPrefix: text(b.botPrefix) ?? '**Sloth:**',
-    maxActive: int(b.maxActive, 3),
-    maxAlive: int(b.maxAlive, 5),
-    budgetMinutes: int(b.budgetMinutes, 60),
-    waitHours: int(b.waitHours, 2),
-    reviewRounds: int(b.reviewRounds, 4),
-    maxRetries: int(b.maxRetries, 2, 0),
-    boardSeconds: int(b.boardSeconds, 300, 30),
-    commentSeconds: int(b.commentSeconds, 120, 30),
-    model: text(b.model) ?? 'opus',
-    approvedModel: text(b.approvedModel) ?? 'fable',
+    mention: text(b.mention) ?? d.mention,
+    botPrefix: text(b.botPrefix) ?? d.botPrefix,
+    maxActive: int(b.maxActive, d.maxActive),
+    maxAlive: int(b.maxAlive, d.maxAlive),
+    budgetMinutes: int(b.budgetMinutes, d.budgetMinutes),
+    waitHours: int(b.waitHours, d.waitHours),
+    reviewRounds: int(b.reviewRounds, d.reviewRounds),
+    maxRetries: int(b.maxRetries, d.maxRetries, 0),
+    boardSeconds: int(b.boardSeconds, d.boardSeconds, 30),
+    commentSeconds: int(b.commentSeconds, d.commentSeconds, 30),
+    models: models(b.models, b.model, b.approvedModel),
     chrome: b.chrome !== false,
-    previewHours: int(b.previewHours, 24, 0),
+    previewHours: int(b.previewHours, d.previewHours, 0),
     helpLogins: logins(b.helpLogins),
     helpWebhook: url(b.helpWebhook, 'helpWebhook'),
-    tunnel: argv(b.tunnel, DEFAULT_TUNNEL),
+    tunnel: argv(b.tunnel, d.tunnel),
     publicUrl: url(b.publicUrl, 'publicUrl'),
   };
 }

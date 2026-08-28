@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_CONFIG_PATH, expandPath, readConfigFile } from './config-file';
-import { DEFAULT_TUNNEL, type SlothConfig } from './config-types';
+import { CONFIG_DEFAULTS, type SlothConfig } from './config-types';
 
 const home = os.homedir();
 /** The Sloth checkout itself — where `plugin/` lives. */
@@ -53,30 +53,10 @@ const BLANK: SlothConfig = {
     columns: { pickup: BLANK_COLUMN, inProgress: BLANK_COLUMN, needsHelp: BLANK_COLUMN, codeReview: BLANK_COLUMN, approved: BLANK_COLUMN },
   },
   runnerRoot: process.cwd(),
-  runnersDir: '~/.sloth/runners',
   worktreesDir: '~/.sloth/worktrees',
   sessionsDir: '~/.sloth/sessions',
-  stateDir: '~/.sloth/state',
-  watcherLog: '~/.sloth/watcher.log',
   roles: { admin: '', developers: [], testers: [] },
-  mention: '@sloth',
-  botPrefix: '**Sloth:**',
-  maxActive: 3,
-  maxAlive: 5,
-  budgetMinutes: 60,
-  waitHours: 2,
-  reviewRounds: 4,
-  maxRetries: 2,
-  boardSeconds: 300,
-  commentSeconds: 120,
-  model: 'opus',
-  approvedModel: 'fable',
-  chrome: true,
-  previewHours: 24,
-  helpLogins: [],
-  helpWebhook: '',
-  tunnel: DEFAULT_TUNNEL,
-  publicUrl: '',
+  ...CONFIG_DEFAULTS,
 };
 
 /** The commands the Sloth plugin ships, mapped to the GitHub path segment of their target. */

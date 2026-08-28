@@ -23,7 +23,7 @@ interface Target {
   pr?: number;
 }
 
-function sessionEnv(dir: string, target: Target, chrome: boolean): NodeJS.ProcessEnv {
+function sessionEnv(dir: string, target: Target, model: string, chrome: boolean): NodeJS.ProcessEnv {
   const c = cfg();
   const col = c.statusField.columns;
   const start = nowSec();
@@ -54,7 +54,9 @@ function sessionEnv(dir: string, target: Target, chrome: boolean): NodeJS.Proces
     SLOTH_ADMIN_LOGIN: c.roles.admin,
     SLOTH_DEVELOPER_LOGINS: c.roles.developers.join(' '),
     SLOTH_TESTER_LOGINS: c.roles.testers.join(' '),
-    SLOTH_MODEL: c.model,
+    SLOTH_MODEL: model,
+    SLOTH_TESTER_MODEL: c.models.tester,
+    SLOTH_REVIEWER_MODEL: c.models.reviewer,
     SLOTH_CHROME: chrome ? '1' : '0',
     SLOTH_PREVIEW_HOURS: String(c.previewHours),
     SLOTH_START: String(start),
@@ -91,17 +93,17 @@ export function ensureTrust(root: string): void {
 /**
  * Starts a detached `claude -p` run that survives a Sloth restart. `bookDir` holds Sloth's own pid /
  * session_id files; `sessionDir` is what the session itself works in (they differ only for a status
- * reply, which reads the issue's previous run directory but must not overwrite its pid). `model`
- * defaults to the configured one; trigger 5 runs on `approvedModel`. `chrome` attaches the Claude in
- * Chrome extension — only implement sessions need a browser, and its tools cost context.
+ * reply, which reads the issue's previous run directory but must not overwrite its pid). `model` is
+ * the one configured for the agent (`models` in the config). `chrome` attaches the Claude in Chrome
+ * extension — only implement sessions need a browser, and its tools cost context.
  */
 interface StartOptions {
-  model?: string;
+  model: string;
   chrome?: boolean;
 }
-function start(bookDir: string, sessionDir: string, prompt: string, target: Target, logFile: string, options: StartOptions = {}): void {
+function start(bookDir: string, sessionDir: string, prompt: string, target: Target, logFile: string, options: StartOptions): void {
   const c = cfg();
-  const { model = c.model, chrome = false } = options;
+  const { model, chrome = false } = options;
   // A status reply borrows the issue's directory read-only — it must not conjure one that never ran.
   if (bookDir === sessionDir) fs.mkdirSync(path.join(sessionDir, 'inbox'), { recursive: true });
   fs.mkdirSync(bookDir, { recursive: true });
@@ -114,7 +116,7 @@ function start(bookDir: string, sessionDir: string, prompt: string, target: Targ
     'claude',
     ['-p', prompt, '--plugin-dir', PLUGIN_DIR, '--session-id', sessionId, '--model', model,
       chrome ? '--chrome' : '--no-chrome', '--dangerously-skip-permissions', '--append-system-prompt', APPEND_PROMPT],
-    { cwd: c.runnerRoot, detached: true, stdio: ['ignore', fd, fd], env: sessionEnv(sessionDir, target, chrome) },
+    { cwd: c.runnerRoot, detached: true, stdio: ['ignore', fd, fd], env: sessionEnv(sessionDir, target, model, chrome) },
   );
   fs.closeSync(fd);
   if (child.pid) write(path.join(bookDir, 'pid'), String(child.pid));
@@ -140,8 +142,9 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
   for (const f of fs.readdirSync(path.join(dir, 'inbox'))) remove(path.join(dir, 'inbox', f));
   await moveCard(issue, cfg().statusField.columns.inProgress.id);
   await run('git', ['-C', cfg().runnerRoot, 'fetch', '-q', 'origin'], 120_000);
-  log(`launch #${issue}${order ? ` (${order.slice(0, 120)})` : ''}`);
-  start(dir, dir, `/sloth:implement ${issue}${order ? ` ${order}` : ''}`, { issue }, path.join(dir, 'run.log'), { chrome: cfg().chrome });
+  const { models, chrome } = cfg();
+  log(`launch #${issue} on ${models.implement}${order ? ` (${order.slice(0, 120)})` : ''}`);
+  start(dir, dir, `/sloth:implement ${issue}${order ? ` ${order}` : ''}`, { issue }, path.join(dir, 'run.log'), { model: models.implement, chrome });
   return true;
 }
 
@@ -156,13 +159,14 @@ export function launchReview(pr: number, issue: number): boolean {
     log(`dry-run: would review PR #${pr} (issue #${issue})`);
     return true;
   }
-  log(`review PR #${pr} (issue #${issue})`);
-  start(dir, dir, `/sloth:review ${pr}`, { pr, issue }, path.join(dir, 'run.log'));
+  const model = cfg().models.review;
+  log(`review PR #${pr} (issue #${issue}) on ${model}`);
+  start(dir, dir, `/sloth:review ${pr}`, { pr, issue }, path.join(dir, 'run.log'), { model });
   return true;
 }
 
 /**
- * Trigger 5: the final review of one PR version — the same `/sloth:review`, on `approvedModel`, in
+ * Trigger 5: the final review of one PR version — the same `/sloth:review`, on `models.final`, in
  * `final` mode: the verdict is always posted on the PR; a pass labels the wired issue `Fable: approved`,
  * a fail removes that label.
  */
@@ -173,11 +177,11 @@ export function launchApproved(pr: number, issue: number): boolean {
     return false;
   }
   if (isDry()) {
-    log(`dry-run: would run final review PR #${pr} (issue #${issue}) on ${c.approvedModel}`);
+    log(`dry-run: would run final review PR #${pr} (issue #${issue}) on ${c.models.final}`);
     return true;
   }
-  log(`final review PR #${pr} (issue #${issue}) on ${c.approvedModel}`);
-  start(approvedDir(pr), approvedDir(pr), `/sloth:review ${pr} final`, { pr, issue }, path.join(approvedDir(pr), 'run.log'), { model: c.approvedModel });
+  log(`final review PR #${pr} (issue #${issue}) on ${c.models.final}`);
+  start(approvedDir(pr), approvedDir(pr), `/sloth:review ${pr} final`, { pr, issue }, path.join(approvedDir(pr), 'run.log'), { model: c.models.final });
   return true;
 }
 
@@ -194,6 +198,6 @@ export function statusReply(issue: number, commentId: string, pr?: number): bool
   }
   const bookDir = path.join(cfg().stateDir, 'status', `${issue}-${commentId}`);
   log(`#${issue} status reply for comment ${commentId} on ${on}`);
-  start(bookDir, issueDir(issue), `/sloth:status ${issue} ${commentId}`, { issue, pr }, path.join(cfg().stateDir, 'status.log'));
+  start(bookDir, issueDir(issue), `/sloth:status ${issue} ${commentId}`, { issue, pr }, path.join(cfg().stateDir, 'status.log'), { model: cfg().models.status });
   return true;
 }

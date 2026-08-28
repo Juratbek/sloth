@@ -70,14 +70,16 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_COL_IN_PROGRESS_ID` / `_NAME` | Claimed / being worked on |
 | `SLOTH_COL_NEEDS_HELP_ID` / `_NAME` | Parked, waiting for a human (may be empty) |
 | `SLOTH_COL_CODE_REVIEW_ID` / `_NAME` | Handed to a human reviewer |
-| `SLOTH_COL_APPROVED_ID` / `_NAME` | Approved by a human; the server gives its PR a final `/sloth:review` on Fable (may be empty) |
+| `SLOTH_COL_APPROVED_ID` / `_NAME` | Approved by a human; the server gives its PR a final `/sloth:review` on the final-review model, Fable by default (may be empty) |
 | `SLOTH_COLUMNS` | Every Status column on the board as JSON `[{"id","name"}]`, Sloth's and the rest, so a session can move a card anywhere a human asks |
 | `SLOTH_RUNNER_ROOT` | The checkout sessions run from |
 | `SLOTH_WORKTREES_DIR` | Where per-issue worktrees go — `issue-<n>` under it |
 | `SLOTH_ADMIN_LOGIN` | The admin — the one login whose orders have no limit (may be empty: nobody is admin) |
 | `SLOTH_DEVELOPER_LOGINS` | Space-separated logins whose orders are followed within the issue they are on (may be empty) |
 | `SLOTH_TESTER_LOGINS` | Space-separated logins that answer questions and ask for status, never order (may be empty) |
-| `SLOTH_MODEL` | The model subagents run on (`opus`) |
+| `SLOTH_MODEL` | The model this session runs on; a subagent with no model of its own runs on it too |
+| `SLOTH_TESTER_MODEL` | The model the browser tester subagent runs on (`opus`) |
+| `SLOTH_REVIEWER_MODEL` | The model the reviewer subagent runs on (`opus`) |
 | `SLOTH_CHROME` | `1` when the session was started with `--chrome`; implement then tests the change in the browser |
 | `SLOTH_PREVIEW_HOURS` | How long a finished implement run's app stays up behind a public link on its PR; `0` means previews are off, always tear down |
 | `SLOTH_START`, `SLOTH_DEADLINE` | Epoch seconds: run start, hard deadline |

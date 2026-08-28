@@ -103,7 +103,7 @@ const APPROVED_LABEL = 'Fable: approved';
 
 /**
  * Trigger 5 — Approved cards whose wired PR is open get one final review per PR head, with
- * `/sloth:review <pr> final` on `approvedModel`; a pass labels the issue `Fable: approved`, and a card
+ * `/sloth:review <pr> final` on `models.final`; a pass labels the issue `Fable: approved`, and a card
  * carrying that label is done — it is not reviewed again until the label goes (a failing review removes
  * it; a human can too). Neither a GitHub approval nor an assignee excludes the PR: the column is the
  * signal. A rejected assigned card goes back to In Progress with its assignee intact, so the human keeps

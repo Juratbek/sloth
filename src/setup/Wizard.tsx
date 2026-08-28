@@ -19,12 +19,14 @@ const LABELS: Record<StepKey, string> = {
   team: 'Team',
   done: 'Done',
 };
-const FIRST_RUN: StepKey[] = ['env', 'project', 'columns', 'runner', 'team', 'done'];
-/** Settings only re-opens the questions that change over the life of a board. */
-const SETTINGS: StepKey[] = ['project', 'columns', 'team', 'done'];
+const STEPS: StepKey[] = ['env', 'project', 'columns', 'runner', 'team', 'done'];
 
+/**
+ * The step-by-step setup: the whole app on the first run (no config yet), and re-runnable from Settings,
+ * prefilled with `existing`. Settings is where single values get changed; the wizard is the guided walk.
+ */
 export default function Wizard({ existing, onClose }: { existing: SlothConfig | null; onClose?: () => void }) {
-  const steps = existing ? SETTINGS : FIRST_RUN;
+  const steps = STEPS;
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<Draft>(() => draftFrom(existing));
   const key = steps[step];
@@ -38,7 +40,7 @@ export default function Wizard({ existing, onClose }: { existing: SlothConfig | 
     <div className="flex h-full flex-col overflow-y-auto">
       <header className="flex items-center gap-3 border-b border-zinc-800 px-4 py-2">
         <span className="text-sm font-semibold text-zinc-100">Sloth</span>
-        <span className="text-xs text-zinc-500">{existing ? 'Settings' : 'Get started'}</span>
+        <span className="text-xs text-zinc-500">{existing ? 'Setup wizard' : 'Get started'}</span>
         <span className="flex-1" />
         {onClose && (
           <button onClick={onClose} className="text-xs text-zinc-500 hover:text-zinc-200">

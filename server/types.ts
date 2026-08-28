@@ -1,3 +1,5 @@
+import type { AgentModels } from './config-types';
+
 export interface Usage {
   input: number;
   output: number;
@@ -119,7 +121,7 @@ export interface MonitorConfig {
   pickupColumn: string;
   maxActive: number;
   maxAlive: number;
-  model: string;
+  models: AgentModels;
 }
 
 /** What the in-process board loop is doing, for the header pills. */
