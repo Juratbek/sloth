@@ -65,6 +65,8 @@ export default function Settings({ config, onClose, onWizard }: { config: SlothC
   const section = SECTIONS.find((s) => s.key === key)!;
   const Section = section.component;
   const patch = (p: Partial<SlothConfig>) => setDraft((d) => ({ ...d, ...p }));
+  // The guard is on Settings' own buttons only. The browser's back button changes the URL through
+  // `popstate`, which is not worth fighting: going back leaves the draft behind without asking.
   const leave = (go: () => void) => (dirty ? setLeaving(() => go) : go());
   const discard = () => {
     setDraft(baseline);

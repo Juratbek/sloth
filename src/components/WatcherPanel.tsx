@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import type { Overview } from '../../server/types';
 import useFollowBottom from '../hooks/use-follow-bottom';
-import Board from './Board';
 import IssuesTable from './IssuesTable';
 import UsageChart from './UsageChart';
 
@@ -24,8 +23,6 @@ export default function WatcherPanel({ overview, onSelect }: { overview: Overvie
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden p-4">
-      <Board board={overview.board} onSelect={onSelect} />
-
       <div className="shrink-0">
         <UsageChart />
       </div>

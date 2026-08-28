@@ -137,15 +137,24 @@ the run cost at list price and watcher state, plus a home panel with hourly spen
 issue Sloth touched, its runs rolled up into one line, dearest first — the queue and the log. It refreshes on a 15s poll
 and an SSE stream. Transcripts are read from `~/.claude/projects/<runner root, non-alphanumerics as '-'>`.
 
-At the top of the home panel is the **board**: Sloth's columns in pipeline order — pickup, In Progress,
-needs help, Code Review, Approved, Done — whatever order the GitHub board puts them in, with a card per
-issue. A card is two lines: the number and title, a state dot with what Sloth's newest run on that issue
-is doing, and then only what applies — what the issue has cost, its PR, a live preview link, retries, the
-human who owns it, a `Fable: approved` badge, how long a parked card has been waiting. Clicking a card
-opens that run. It is a **mirror**: the view is built from the board the last tick already read (no extra
-GitHub call, and `board as of 14:02` says how fresh it is), Done shows the last 7 days, every other Status
-column is one `elsewhere · 14` chip, and nothing on it writes back — no dragging, no buttons. On a phone
-the columns take turns behind a switcher; the header's small button hides the whole block and remembers that.
+The header's **Board** button opens the board on a page of its own — the whole window, since half a screen
+was not enough to see a pipeline in. It shows Sloth's columns in pipeline order — pickup, In Progress,
+needs help, Code Review, Approved, Done — whatever order the GitHub board puts them in, each column
+full-height and scrolling on its own, with a card per issue. A card is two lines: the number and title, a
+state dot with what Sloth's newest run on that issue is doing, and then only what applies — what the issue
+has cost, its PR, a live preview link, retries, the human who owns it, a `Fable: approved` badge, how long a
+parked card has been waiting. Clicking a card goes back to the monitor with that run open. It is a
+**mirror**: the view is built from the board the last tick already read (no extra GitHub call, and
+`as of 14:02` says how fresh it is), Done shows the last 7 days, every other Status column is one
+`elsewhere · 14` chip, and nothing on it writes back — no dragging, no buttons. On a phone the columns take
+turns behind a switcher, the active one filling the page; **← Back** returns to the monitor.
+
+The page you are on is in the URL, so a refresh lands where you were and a view can be linked to:
+`/` the home panel, `/sessions/<id>` one session, `/board` the board, `/settings` and `/setup` the settings
+page and the wizard (both only from the machine Sloth runs on — on a phone they fall back to `/`). Anything
+else is the home panel. Back and forward work. A remote link keeps its path through the sign-in redirect
+(`server/remote.ts` drops only the `code`), so `https://…/board?code=…` opens a phone straight on the board;
+the QR itself always points at `/`.
 
 Read: `GET /api/overview`, `/api/sessions/:id`, `/api/sessions/:id/agents/:agentId`, `/api/usage?days=N`,
 `/api/events` (SSE). Write: `POST /api/tick` (`?dry=1`), `/api/pause`, `/api/resume`, `/api/sessions/:id/stop` (ends the run, parks an issue's card), `/api/previews/:issue/stop` (takes a preview down now), `/api/setup/config`,
