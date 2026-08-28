@@ -26,7 +26,7 @@ The short version; the tick-by-tick account is in [docs/how-it-works.md](docs/ho
 
 | # | When | What Sloth does |
 |---|---|---|
-| 1 | An unassigned issue sits in the watched column | Moves it to In Progress and starts `/sloth:implement <n>` |
+| 1 | An unassigned issue sits in the watched column | Moves it to In Progress and starts `/sloth:implement <n>`, most important card first (`priorityField`) |
 | 2 | An unassigned issue sits in In Progress with no live session | Relaunches it, at most `maxRetries` times in a row |
 | 3 | Someone on the team mentions `@sloth` in a comment — on an issue, or on the PR that closes it | Delivers it to the live session; with no session, an order (admin or developer) starts one and anything else gets a status reply, on the thread it was written in. A login with no role is ignored; a PR linked to no issue gets told so |
 | 4 | An unassigned issue in Code Review has an open, non-draft, unapproved wired PR **written by a human** | Runs `/sloth:review <pr>`, once per PR head. Sloth's own PRs were already vetted by their session's reviewer loop |
@@ -43,6 +43,9 @@ needs-help notifications carry on) and survives a restart.
   final review in Approved (trigger 5): an assigned card is reviewed too, and a rejection sends it back
   to In Progress still assigned, so the owner keeps it. Sloth never assigns anyone and
   never requests a reviewer.
+- **Priority**: the watched column is worked in the order of the board's `Priority` field — its options top
+  to bottom, first option first — and cards with no priority set come after the ranked ones, in board order.
+  Point `priorityField` at another single-select field, or empty it to take cards in plain board order.
 - **Roles** (`roles` in the config, the wizard's *Team* step): one **admin** orders Sloth anything —
   work, a move to any column, closing an issue. **Developers** order work within an issue — how to do
   it, address the review comments, start over, stop; an order that reaches beyond the issue becomes a
@@ -109,6 +112,7 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `models` | `opus` each, `final: fable` | Which model each agent runs on (Settings → *Models*): `implement` (triggers 1–3), `tester` (the Chrome subagent), `reviewer` (the in-session review loop), `review` (trigger 4), `final` (trigger 5), `status` (mention replies). An older config's `model` / `approvedModel` still load |
 | `chrome` | `true` | Start implement sessions with `--chrome`, so a tester subagent can click through the change in your Chrome |
 | `previewHours` | `24` | How long a finished implement session's app stays up behind a public link posted on its PR (see *Previews* above); `0` turns previews off |
+| `priorityField` | `Priority` | A single-select field on the board whose option order ranks the watched column. Missing from the board, or empty here: cards are picked up in board order |
 | `keepDays` | `30` | How long a finished run is kept. Once an hour Sloth deletes the session directories, worktrees and status-reply markers older than this — never a live, parked or previewing run, and never a transcript (those are Claude Code's, under `~/.claude`). `watcher.log` is rotated to `watcher.log.1` past 5 MB |
 | `helpLogins` | `[]` | GitHub logins `@`-mentioned in the comment that parks a card in *needs help*, so GitHub notifies them (not the login `gh` writes with — GitHub skips self-mentions) |
 | `autoMerge` | `""` | How trigger 8 merges a PR whose final review passed, whose checks are green and which merges cleanly: `squash`, `merge` or `rebase` (the `gh pr merge` methods). Empty leaves merging to a human |

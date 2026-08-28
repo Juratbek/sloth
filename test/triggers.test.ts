@@ -55,6 +55,10 @@ describe('pickup (trigger 1)', () => {
     expect(exists(sessionDir('issue', 5), 'pid')).toBe(true);
     expect(exists(sessionDir('issue', 5), 'session_id')).toBe(true);
   });
+  it('takes the highest priority first, unprioritised cards last', async () => {
+    await pickup([card(5, 'Todo'), card(6, 'Todo', { priority: 2 }), card(7, 'Todo', { priority: 0 })]);
+    expect(launches()).toEqual(['/sloth:implement 7', '/sloth:implement 6', '/sloth:implement 5']);
+  });
   it('stops at the session caps and skips a card whose session is alive', async () => {
     makeSession('issue', 1, { pid: alivePid(), 'state.json': { state: 'working' } });
     makeSession('issue', 2, { pid: alivePid(), 'state.json': { state: 'working' } });

@@ -108,6 +108,11 @@ export interface SlothConfig {
    * replies it prompted. The transcripts belong to Claude Code and are never touched.
    */
   keepDays: number;
+  /**
+   * A single-select field on the board whose option order ranks the watched column: cards are picked up
+   * first option first. Empty means board order.
+   */
+  priorityField: string;
   /** GitHub logins `@`-mentioned in the comment Sloth writes when it parks a card in the needs-help column. */
   helpLogins: string[];
   /** Optional URL POSTed (Slack / Discord incoming-webhook shape) when a card lands in the needs-help column. */
@@ -147,6 +152,7 @@ export const CONFIG_DEFAULTS = {
   chrome: true,
   previewHours: 24,
   keepDays: 30,
+  priorityField: 'Priority',
   helpLogins: [] as string[],
   helpWebhook: '',
   autoMerge: '' as MergeMethod,

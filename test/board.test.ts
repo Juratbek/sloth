@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchBoard, moveCard, unassignedIn, wiredPrs } from '../server/runner/board';
+import { fetchBoard, moveCard, pickupOrder, unassignedIn, wiredPrs } from '../server/runner/board';
 import { setDry } from '../server/runner/log';
 import { called, onGh, resetGh } from './gh-mock';
 import { configure, readLog } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 
-const item = (number: number, status: string, extra: Record<string, unknown> = {}) => ({
+const item = (number: number, status: string, extra: Record<string, unknown> = {}, priority?: unknown) => ({
   fieldValueByName: { name: status },
+  ...(priority ? { priority } : {}),
   content: { __typename: 'Issue', number, title: `Issue ${number}`, labels: { nodes: [] }, assignees: { nodes: [] }, ...extra },
 });
 
@@ -36,6 +37,36 @@ describe('fetchBoard', () => {
     expect(board?.[1].labels).toEqual(['bug']);
     expect(board?.map((i) => i.closed)).toEqual([false, false, true]);
     expect(unassignedIn(board!, 'Todo')).toEqual([2]);
+  });
+  it('ranks a card by the position of its option in the priority field', async () => {
+    const options = { options: [{ id: 'p-high' }, { id: 'p-med' }, { id: 'p-low' }] };
+    onGh(/api graphql/, {
+      data: {
+        node: {
+          items: {
+            pageInfo: { hasNextPage: false },
+            nodes: [
+              item(1, 'Todo', {}, { optionId: 'p-low', field: options }),
+              item(2, 'Todo'),
+              item(3, 'Todo', {}, { optionId: 'p-high', field: options }),
+              item(4, 'Todo', {}, { optionId: 'gone', field: options }),
+              item(5, 'Todo', { assignees: { nodes: [{ login: 'bob' }] } }, { optionId: 'p-high', field: options }),
+            ],
+          },
+        },
+      },
+    });
+    const board = (await fetchBoard())!;
+    expect(board.map((i) => i.priority)).toEqual([2, undefined, 0, undefined, 0]);
+    expect(called(/-F priority=Priority/)).toHaveLength(1);
+    // Ranked first, board order within a rank, unranked last — and never a card a human owns.
+    expect(pickupOrder(board, 'Todo')).toEqual([3, 1, 2, 4]);
+  });
+  it('asks for no priority value when the field is turned off', async () => {
+    configure({ priorityField: '' });
+    onGh(/api graphql/, { data: { node: { items: { pageInfo: { hasNextPage: false }, nodes: [item(1, 'Todo')] } } } });
+    expect((await fetchBoard())?.[0].priority).toBeUndefined();
+    expect(called(/priority/)).toHaveLength(0);
   });
   it('returns undefined and logs when the read fails', async () => {
     onGh(/api graphql/, { ok: false, out: '', err: 'HTTP 502\nmore' });

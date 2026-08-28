@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
-import { moveCard, unassignedIn, wiredPrs } from './board';
+import { moveCard, pickupOrder, unassignedIn, wiredPrs } from './board';
 import type { BoardItem } from './board';
 import { comment } from './gh';
 import { limitExit } from './limits';
@@ -165,9 +165,9 @@ export async function retryStranded(board: BoardItem[]): Promise<void> {
   }
 }
 
-/** Trigger 1 — the watched column, in board order. A fresh pickup resets the retry counter. */
+/** Trigger 1 — the watched column, in the board's priority order. A fresh pickup resets the retry counter. */
 export async function pickup(board: BoardItem[]): Promise<void> {
-  for (const issue of unassignedIn(board, cfg().statusField.columns.pickup.name)) {
+  for (const issue of pickupOrder(board, cfg().statusField.columns.pickup.name)) {
     if (issueAlive(issue)) continue;
     if (!(await launch(issue))) break;
     if (!isDry()) remove(path.join(issueDir(issue), 'retries'));

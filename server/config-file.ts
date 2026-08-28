@@ -159,6 +159,8 @@ export function normalizeConfig(input: unknown): SlothConfig {
     chrome: b.chrome !== false,
     previewHours: int(b.previewHours, d.previewHours, 0),
     keepDays: int(b.keepDays, d.keepDays),
+    // An explicit "" turns the ranking off, so it has to survive: `text` would hand back the default.
+    priorityField: typeof b.priorityField === 'string' ? b.priorityField.trim() : d.priorityField,
     helpLogins: logins(b.helpLogins),
     helpWebhook: url(b.helpWebhook, 'helpWebhook'),
     autoMerge: mergeMethod(b.autoMerge),

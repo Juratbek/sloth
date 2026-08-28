@@ -6,7 +6,8 @@ import { useSaveConfig } from '../setup/use-setup';
 import AboutSection from './AboutSection';
 import BoardSection from './BoardSection';
 import RepositorySection from './RepositorySection';
-import { General, Models, Notifications, Remote, Sessions, Team } from './sections';
+import { Models } from './ModelsSection';
+import { General, Notifications, Remote, Sessions, Team } from './sections';
 import type { SectionProps } from './ui';
 
 type Key = 'general' | 'board' | 'repository' | 'team' | 'notifications' | 'models' | 'sessions' | 'remote' | 'about';
@@ -16,7 +17,7 @@ const pick = <K extends keyof typeof CONFIG_DEFAULTS>(...keys: K[]) =>
 
 /** The sections, in nav order. `defaults` is what Restore defaults puts back; a section without one has nothing to restore. */
 const SECTIONS: { key: Key; label: string; component: ComponentType<SectionProps>; defaults?: (c: SlothConfig) => Partial<SlothConfig> }[] = [
-  { key: 'general', label: 'General', component: General, defaults: () => pick('mention', 'botPrefix', 'boardSeconds', 'commentSeconds', 'chrome', 'previewHours', 'autoMerge') },
+  { key: 'general', label: 'General', component: General, defaults: () => pick('mention', 'botPrefix', 'boardSeconds', 'commentSeconds', 'chrome', 'previewHours', 'priorityField', 'autoMerge') },
   { key: 'board', label: 'Board', component: BoardSection },
   {
     key: 'repository',
