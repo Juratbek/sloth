@@ -54,6 +54,14 @@ needs-help notifications carry on) and survives a restart.
   for an answer; a trigger with no free slot is retried next tick. A session past
   `budgetMinutes + 5` is killed, cleaned up, and its card parked. A Claude usage
   limit pauses the watcher for 30 minutes without costing the card its place.
+- **Previews** (`previewHours`, default 24): an implement session that hands its PR to Code Review leaves
+  the app it tested running — its own database, seeded, nothing shared — and Sloth puts a tunnel in front
+  of it and posts the link on the PR, with how to sign in. The reviewer tries the change in a browser
+  without checking anything out. The environment comes down after `previewHours`, when the PR closes,
+  when its servers die, when a new session starts on the issue, or with **stop** next to the link in the
+  session's header; a Sloth restart re-opens the tunnel and rewrites the comment with the new address.
+  The project's run skill decides whether a run can be previewed: the whole app has to answer on one
+  local port (see [plugin/README.md](plugin/README.md)), and the link is public to whoever holds it.
 
 ```
 ~/.sloth/
@@ -61,7 +69,7 @@ needs-help notifications carry on) and survives a restart.
 ├── watcher.log                     one line per event — the log the UI tails
 ├── runners/<repo>/                 the checkout the sessions run from
 ├── worktrees/<repo>/issue-42/      one worktree per issue
-├── sessions/<repo>/                issue-42/, review-91/, approved-91/ — pid, state.json, inbox/, run.log …
+├── sessions/<repo>/                issue-42/, review-91/, approved-91/ — pid, state.json, inbox/, run.log, preview.json …
 └── state/                          seen/, reviewed/, approved/, notified/ dedupe markers; paused, paused_until
 ```
 
@@ -88,6 +96,7 @@ columns, who to notify when a card needs help, `repo`, `runnerRoot`, the team (`
 | `boardSeconds` / `commentSeconds` | `300` / `120` | Poll intervals |
 | `model` | `opus` | The model every session runs on — except trigger 5's |
 | `chrome` | `true` | Start implement sessions with `--chrome`, so a tester subagent can click through the change in your Chrome |
+| `previewHours` | `24` | How long a finished implement session's app stays up behind a public link posted on its PR (see *Previews* above); `0` turns previews off |
 | `helpLogins` | `[]` | GitHub logins `@`-mentioned in the comment that parks a card in *needs help*, so GitHub notifies them (not the login `gh` writes with — GitHub skips self-mentions) |
 | `helpWebhook` | `""` | URL POSTed once per card that lands in *needs help* (`{text, content, repo, issue, title, url, column}` — Slack and Discord incoming webhooks read it as is) |
 | `approvedModel` | `fable` | The model trigger 5's final reviews run on |
@@ -104,7 +113,7 @@ watcher state, plus a home panel with hourly spend, the queue and the log. It re
 and an SSE stream. Transcripts are read from `~/.claude/projects/<runner root, non-alphanumerics as '-'>`.
 
 Read: `GET /api/overview`, `/api/sessions/:id`, `/api/sessions/:id/agents/:agentId`, `/api/usage?days=N`,
-`/api/events` (SSE). Write: `POST /api/tick` (`?dry=1`), `/api/pause`, `/api/resume`, `/api/setup/config`,
+`/api/events` (SSE). Write: `POST /api/tick` (`?dry=1`), `/api/pause`, `/api/resume`, `/api/previews/:issue/stop` (takes a preview down now), `/api/setup/config`,
 `/api/setup/clone`. Wizard reads: `GET /api/setup/env`, `/api/setup/projects`, `/api/setup/projects/:id/fields`,
 `/api/setup/config`. `GET /api/remote` (the QR's link and the tunnel tool's state), `POST /api/remote/rotate`
 (a new link) and `POST /api/remote/install` (brew installs the tool). Everything under `/api/setup/` and
@@ -135,7 +144,8 @@ headers above.
 
 A quick tunnel gets a new address on every start — the QR follows it. For a stable address run your
 own tunnel (a named `cloudflared` tunnel on your domain, `jprq`, `ngrok`) and set `publicUrl`, or
-put its command in `tunnel` so Sloth starts it — `"tunnel": ["jprq", "http", "{port}"]`, say. Keep the machine awake (`caffeinate -i pnpm start`):
+put its command in `tunnel` so Sloth starts it — `"tunnel": ["jprq", "http", "{port}"]`, say. Previews always run the
+`tunnel` command, one child per preview, whatever `publicUrl` says — that only names the UI. Keep the machine awake (`caffeinate -i pnpm start`):
 watching stops when the process stops.
 
 ## Security
@@ -155,7 +165,10 @@ Sloth runs `claude … --dangerously-skip-permissions` in `runnerRoot` with **yo
   `GITHUB_TOKEN` rather than your personal `gh` login, so a prompt-injected run cannot reach beyond the
   one repo.
 
-The remote-access guard (above) protects the monitor; it does not sandbox the sessions.
+The remote-access guard (above) protects the monitor; it does not sandbox the sessions. A **preview link**
+has no guard at all beyond its unguessable address: whoever holds it uses the app with the sign-in notes
+in the PR comment. It reaches only that run's throwaway database — never share it beyond the PR's readers,
+and keep real credentials out of the project's run skill.
 
 ## Conventions
 

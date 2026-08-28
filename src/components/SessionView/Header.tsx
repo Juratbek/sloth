@@ -1,5 +1,6 @@
 import type { MonitorConfig, SessionDetail } from '../../../server/types';
-import { STATUS_COLOR, ago, elapsed, githubUrl, k, label, newInput, safeUrl, stepLabel } from '../../lib/format';
+import useStopPreview from '../../hooks/use-preview';
+import { STATUS_COLOR, ago, elapsed, githubUrl, k, label, newInput, safeUrl, stepLabel, untilLabel } from '../../lib/format';
 import { ToolChips } from './Usage';
 
 function Stats({ s }: { s: SessionDetail }) {
@@ -18,6 +19,31 @@ function Stats({ s }: { s: SessionDetail }) {
         </p>
       )}
     </div>
+  );
+}
+
+/** The finished run's app, live behind a tunnel: the link, when it goes, and a way to take it down now. */
+function PreviewLine({ issue, preview }: { issue: number; preview: NonNullable<SessionDetail['watcher']>['preview'] }) {
+  const stop = useStopPreview();
+  if (!preview) return null;
+  return (
+    <span className="flex items-center gap-2">
+      {safeUrl(preview.url) ? (
+        <a href={safeUrl(preview.url)} target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline">
+          preview
+        </a>
+      ) : (
+        <span className="text-zinc-500">preview starting…</span>
+      )}
+      <span className="text-[11px] text-zinc-500">{untilLabel(preview.expiresAt)}</span>
+      <button
+        onClick={() => stop.mutate(issue)}
+        disabled={stop.isPending}
+        className="rounded border border-zinc-800 px-1.5 py-0.5 text-[11px] text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 disabled:opacity-50"
+      >
+        {stop.isPending ? 'stopping…' : 'stop'}
+      </button>
+    </span>
   );
 }
 
@@ -41,6 +67,7 @@ function WatcherLine({ s }: { s: SessionDetail }) {
           </a>
         )}
         {st?.servers && <span className="text-[11px] text-zinc-500">servers: {st.servers}</span>}
+        <PreviewLine issue={w.target} preview={w.preview} />
         {w.retries > 0 && <span className="text-amber-400">retries {w.retries}</span>}
         {w.blocked && <span className="text-red-400">blocked</span>}
         {w.inbox.length > 0 && <span className="text-sky-400">inbox {w.inbox.length}</span>}

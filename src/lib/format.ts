@@ -30,6 +30,14 @@ export function dayLabel(iso: string) {
 }
 
 export const ago = (iso?: string) => (iso ? duration((Date.now() - Date.parse(iso)) / 1000) : '—');
+/** "until 14:05" for something that ends later today, "until Aug 29, 14:05" otherwise; "expiring" once it passed. */
+export function untilLabel(epochSec: number): string {
+  const at = new Date(epochSec * 1000);
+  if (at.getTime() <= Date.now()) return 'expiring';
+  const time = at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const sameDay = at.toDateString() === new Date().toDateString();
+  return `until ${sameDay ? time : `${at.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`}`;
+}
 
 export function elapsed(s: { startedAt?: string; lastAt?: string; live: boolean }) {
   if (!s.startedAt) return '—';

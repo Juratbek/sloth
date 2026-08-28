@@ -31,7 +31,7 @@ const FORWARD_HEADERS = [
   'cf-connecting-ip', 'cf-ray', 'x-original-host',
 ];
 /** A tunnel's address is the first bare `https://host` it prints — doc links carry a path and are skipped. */
-const URL_RE = /https:\/\/[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?::\d+)?(?![\w./-])/i;
+export const TUNNEL_URL_RE = /https:\/\/[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?::\d+)?(?![\w./-])/i;
 const FIRST_RETRY_MS = 5_000;
 const CODE_TTL_MS = 5 * 60_000; // a QR code is good for a few minutes, then a fresh one is minted
 
@@ -182,7 +182,7 @@ function launch(argv: string[]) {
   const proc = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   child = proc;
   const seen = (chunk: Buffer) => {
-    const m = URL_RE.exec(chunk.toString());
+    const m = TUNNEL_URL_RE.exec(chunk.toString());
     if (!m || status.url) return;
     status = { url: m[0] };
     delay = FIRST_RETRY_MS;

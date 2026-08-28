@@ -29,6 +29,8 @@ export interface Draft {
   testers: string[];
   maxActive: number;
   maxAlive: number;
+  /** How long a finished session's app stays reachable behind a link on its PR; 0 = no previews. */
+  previewHours: number;
   /** Who hears about a card landing in needs help: `@`-mentioned logins, and an optional webhook URL. */
   helpLogins: string[];
   helpWebhook: string;
@@ -50,6 +52,7 @@ export const draftFrom = (config: SlothConfig | null | undefined): Draft => ({
   testers: config?.roles.testers ?? [],
   maxActive: config?.maxActive ?? 3,
   maxAlive: config?.maxAlive ?? 5,
+  previewHours: config?.previewHours ?? 24,
   helpLogins: config?.helpLogins ?? [],
   helpWebhook: config?.helpWebhook ?? '',
 });

@@ -9,6 +9,7 @@ import { knownColumns } from './columns';
 import { run } from './gh';
 import { isDry, log, nowSec, remove, write } from './log';
 import { helpMentions } from './notify';
+import { stopPreview } from './preview';
 import { approvedDir, issueDir, reviewDir, slotsFull } from './session-dirs';
 
 const APPEND_PROMPT =
@@ -55,6 +56,7 @@ function sessionEnv(dir: string, target: Target, chrome: boolean): NodeJS.Proces
     SLOTH_TESTER_LOGINS: c.roles.testers.join(' '),
     SLOTH_MODEL: c.model,
     SLOTH_CHROME: chrome ? '1' : '0',
+    SLOTH_PREVIEW_HOURS: String(c.previewHours),
     SLOTH_START: String(start),
     SLOTH_DEADLINE: String(start + c.budgetMinutes * 60),
     SLOTH_BUDGET_MIN: String(c.budgetMinutes),
@@ -130,6 +132,8 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
     log(`dry-run: would launch #${issue}${order ? ` (${order.slice(0, 120)})` : ''}`);
     return true;
   }
+  // One environment per issue: a preview of the previous run makes way for the new one.
+  await stopPreview(issue, 'a new session starts on the issue');
   fs.mkdirSync(path.join(dir, 'inbox'), { recursive: true });
   remove(path.join(dir, 'state.json'));
   remove(path.join(dir, 'blocked'));

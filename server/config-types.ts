@@ -69,6 +69,11 @@ export interface SlothConfig {
   approvedModel: string;
   /** Pass `--chrome` to implement sessions, so a tester subagent can exercise the change in the user's Chrome. */
   chrome: boolean;
+  /**
+   * How long a finished implement session's app stays up behind a public link posted on its PR, so a
+   * reviewer can try the change without checking it out (see `runner/preview.ts`). `0` turns previews off.
+   */
+  previewHours: number;
   /** GitHub logins `@`-mentioned in the comment Sloth writes when it parks a card in the needs-help column. */
   helpLogins: string[];
   /** Optional URL POSTed (Slack / Discord incoming-webhook shape) when a card lands in the needs-help column. */

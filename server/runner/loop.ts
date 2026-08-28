@@ -6,6 +6,7 @@ import { comments } from './comments';
 import { isDry, log, nowSec, setDry } from './log';
 import { notifyParked } from './notify';
 import { isPaused } from './pause';
+import { previews } from './preview';
 import { answered } from './answers';
 import { finalReviews, pausedUntil, pickup, reap, retryStranded, reviews } from './triggers';
 import type { LoopStatus } from '../types';
@@ -33,6 +34,8 @@ async function runTick({ board = false, comments: wantComments = false, dryRun =
   state.ticking = true;
   try {
     await reap();
+    // Previews are finished work, not new work: they run even while paused.
+    await previews();
     await refreshColumns();
     const paused = pausedUntil();
     if (nowSec() < paused) {

@@ -23,6 +23,7 @@ function payload(draft: Draft, existing: SlothConfig | null): ConfigPayload {
     roles: { admin: draft.admin, developers: draft.developers, testers: draft.testers },
     maxActive: draft.maxActive,
     maxAlive: draft.maxAlive,
+    previewHours: draft.previewHours,
     helpLogins: draft.helpLogins,
     helpWebhook: draft.helpWebhook,
   };
@@ -59,6 +60,7 @@ export default function StepDone({
     ['Testers', people(config.roles.testers)],
     ['Needs help → notify', [...(config.helpLogins ?? []).map((l) => `@${l}`), config.helpWebhook && 'webhook'].filter(Boolean).join(' · ') || 'nobody'],
     ['Caps', `${config.maxActive} active · ${config.maxAlive} alive`],
+    ['Previews', config.previewHours ? `${config.previewHours} h behind a link on the PR` : 'off'],
   ];
 
   return (

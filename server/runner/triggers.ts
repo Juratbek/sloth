@@ -3,10 +3,11 @@ import path from 'node:path';
 import { cfg } from '../config';
 import { moveCard, unassignedIn, wiredPrs } from './board';
 import type { BoardItem } from './board';
-import { comment, run } from './gh';
+import { comment } from './gh';
 import { limitExit } from './limits';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
 import { helpMentions } from './notify';
+import { cleanup } from './cleanup';
 import { approvedDir, counter, dirAlive, isBlocked, issueAlive, issueDir, reviewDir, runDirs, startedAt, stateOf } from './session-dirs';
 import type { Kind } from './session-dirs';
 import { launch, launchApproved, launchReview } from './spawn';
@@ -16,35 +17,6 @@ const LIMIT_PAUSE = 30 * 60; // how long the whole watcher sleeps after a usage-
 
 const statePath = (...parts: string[]) => path.join(cfg().stateDir, ...parts);
 export const pausedUntil = () => readNumber(statePath('paused_until'));
-
-/** What the session's own cleanup step would have done, for a run that never got there. */
-async function cleanup(issue: number): Promise<void> {
-  const dir = issueDir(issue);
-  for (const name of ['dev.pid', 'redis.pid']) {
-    const file = path.join(dir, name);
-    // One pid per line — a project skill may have started several servers.
-    for (const line of (readFile(file) ?? '').split('\n')) {
-      const pid = Number(line.trim());
-      if (!pid) continue;
-      try {
-        process.kill(pid);
-      } catch {
-        /* already gone */
-      }
-    }
-    remove(file);
-  }
-  const db = readFile(path.join(dir, 'demo.db'))?.trim();
-  if (db) {
-    await run('dropdb', ['--if-exists', db], 60_000);
-    remove(path.join(dir, 'demo.db'));
-  }
-  const worktree = path.join(cfg().worktreesDir, `issue-${issue}`);
-  if (fs.existsSync(worktree)) {
-    await run('git', ['-C', cfg().runnerRoot, 'worktree', 'remove', worktree, '--force'], 120_000);
-    await run('git', ['-C', cfg().runnerRoot, 'worktree', 'prune'], 60_000);
-  }
-}
 
 /** Hands the issue to a human: one comment, then the needs-help column. */
 export async function park(issue: number, reason: string): Promise<void> {
