@@ -180,32 +180,5 @@ export const defaultDirs = (name: string) => ({
   sessionsDir: `~/.sloth/sessions/${name}`,
 });
 
-/** ---- Get-started wizard payloads ---- */
-
-export interface SetupCheck {
-  ok: boolean;
-  version?: string;
-  login?: string;
-  error?: string;
-}
-export interface SetupEnv {
-  claude: SetupCheck;
-  gh: SetupCheck;
-  ghAuth: SetupCheck;
-}
-export interface SetupProject {
-  id: string;
-  number: number;
-  title: string;
-  url: string;
-  owner: string;
-  items: number;
-}
-export interface FieldOption extends ColumnRef {
-  color?: string;
-  description?: string;
-}
-export interface SetupFields {
-  statusField?: { id: string; name: string; options: FieldOption[] };
-  repositories: string[];
-}
+/** The payloads the get-started wizard exchanges with `/api/setup/*` (`setup-types.ts`). */
+export type { FieldOption, SetupCheck, SetupEnv, SetupFields, SetupProject } from './setup-types';
