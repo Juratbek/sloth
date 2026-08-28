@@ -25,6 +25,7 @@ export default function StepColumns({
     needsHelp: draft.needsHelp,
     codeReview: draft.codeReview,
     approved: draft.approved,
+    done: draft.done,
   });
   const [helpLogins, setHelpLogins] = useState(draft.helpLogins.join(', '));
   const [helpWebhook, setHelpWebhook] = useState(draft.helpWebhook);
@@ -92,6 +93,7 @@ export default function StepColumns({
               needsHelp: value('needsHelp'),
               codeReview: value('codeReview'),
               approved: value('approved'),
+              done: value('done'),
               helpLogins: helpLogins.split(/[\s,]+/).map((l) => l.replace(/^@/, '')).filter(Boolean),
               helpWebhook: helpWebhook.trim(),
             })

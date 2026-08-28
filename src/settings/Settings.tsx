@@ -5,18 +5,21 @@ import { Button } from '../setup/ui';
 import { useSaveConfig } from '../setup/use-setup';
 import AboutSection from './AboutSection';
 import BoardSection from './BoardSection';
+import MachineSection from './MachineSection';
+import NotificationsSection from './NotificationsSection';
 import RepositorySection from './RepositorySection';
-import { General, Models, Notifications, Remote, Sessions, Team } from './sections';
+import { Models } from './ModelsSection';
+import { General, Remote, Sessions, Team } from './sections';
 import type { SectionProps } from './ui';
 
-type Key = 'general' | 'board' | 'repository' | 'team' | 'notifications' | 'models' | 'sessions' | 'remote' | 'about';
+type Key = 'general' | 'board' | 'repository' | 'team' | 'notifications' | 'models' | 'sessions' | 'remote' | 'machine' | 'about';
 
 const pick = <K extends keyof typeof CONFIG_DEFAULTS>(...keys: K[]) =>
   Object.fromEntries(keys.map((k) => [k, CONFIG_DEFAULTS[k]])) as Pick<typeof CONFIG_DEFAULTS, K>;
 
 /** The sections, in nav order. `defaults` is what Restore defaults puts back; a section without one has nothing to restore. */
 const SECTIONS: { key: Key; label: string; component: ComponentType<SectionProps>; defaults?: (c: SlothConfig) => Partial<SlothConfig> }[] = [
-  { key: 'general', label: 'General', component: General, defaults: () => pick('mention', 'botPrefix', 'boardSeconds', 'commentSeconds', 'chrome', 'previewHours') },
+  { key: 'general', label: 'General', component: General, defaults: () => pick('mention', 'botPrefix', 'boardSeconds', 'commentSeconds', 'chrome', 'previewHours', 'priorityField', 'autoMerge') },
   { key: 'board', label: 'Board', component: BoardSection },
   {
     key: 'repository',
@@ -28,10 +31,11 @@ const SECTIONS: { key: Key; label: string; component: ComponentType<SectionProps
     },
   },
   { key: 'team', label: 'Team', component: Team },
-  { key: 'notifications', label: 'Notifications', component: Notifications, defaults: () => pick('helpLogins', 'helpWebhook') },
+  { key: 'notifications', label: 'Notifications', component: NotificationsSection, defaults: () => pick('helpLogins', 'helpWebhook', 'webhookEvents') },
   { key: 'models', label: 'Models', component: Models, defaults: () => ({ models: { ...DEFAULT_MODELS } }) },
-  { key: 'sessions', label: 'Sessions', component: Sessions, defaults: () => pick('maxActive', 'maxAlive', 'budgetMinutes', 'waitHours', 'reviewRounds', 'maxRetries') },
+  { key: 'sessions', label: 'Sessions', component: Sessions, defaults: () => pick('maxActive', 'maxAlive', 'budgetMinutes', 'waitHours', 'reviewRounds', 'maxRetries', 'keepDays') },
   { key: 'remote', label: 'Remote access', component: Remote, defaults: () => pick('tunnel', 'publicUrl') },
+  { key: 'machine', label: 'Machine', component: MachineSection, defaults: () => pick('autostart') },
   { key: 'about', label: 'About', component: AboutSection },
 ];
 

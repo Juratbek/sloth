@@ -1,6 +1,6 @@
-import type { AgentRole } from '../../server/config-types';
+import type { MergeMethod } from '../../server/config-types';
 import { NumberInput, TextInput } from '../setup/ui';
-import { ListInput, ModelPicker, Row, Toggle } from './ui';
+import { Choose, ListInput, Row, Toggle } from './ui';
 import type { SectionProps } from './ui';
 
 const LOGINS = /[\s,]+/;
@@ -35,9 +35,33 @@ export function General({ draft, patch }: SectionProps) {
       >
         <NumberInput min={0} value={draft.previewHours} onChange={(previewHours) => patch({ previewHours })} />
       </Row>
+      <Row
+        label="Priority field"
+        hint="A single-select field on the board; cards are picked up from the watched column in its option order — first option first — and unprioritised cards last. Leave empty to pick up in board order."
+      >
+        <TextInput value={draft.priorityField} onChange={(priorityField) => patch({ priorityField })} />
+      </Row>
+      <Row
+        label="Auto-merge"
+        hint="Merge a PR once its final review passed, its checks are green and it merges cleanly, with this gh pr merge method. Off leaves the merge to a human; the card still reaches Done when the issue closes."
+      >
+        <Choose
+          label="Auto-merge"
+          value={draft.autoMerge}
+          onChange={(autoMerge) => patch({ autoMerge: autoMerge as MergeMethod })}
+          options={MERGE_OPTIONS}
+        />
+      </Row>
     </>
   );
 }
+
+const MERGE_OPTIONS = [
+  { id: '', name: 'Off — a human merges' },
+  { id: 'squash', name: 'Squash and merge' },
+  { id: 'merge', name: 'Merge commit' },
+  { id: 'rebase', name: 'Rebase and merge' },
+];
 
 export function Team({ draft, patch }: SectionProps) {
   const roles = (p: Partial<typeof draft.roles>) => patch({ roles: { ...draft.roles, ...p } });
@@ -59,69 +83,6 @@ export function Team({ draft, patch }: SectionProps) {
       <Row label="Testers" hint="Answer the questions a parked card asks and ask for status; they cannot give orders.">
         <ListInput value={draft.roles.testers} onChange={(testers) => roles({ testers })} split={LOGINS} join=", " placeholder="carol, dave" />
       </Row>
-    </>
-  );
-}
-
-export function Notifications({ draft, patch }: SectionProps) {
-  const column = draft.statusField.columns.needsHelp.name || 'needs help';
-  return (
-    <>
-      <Row
-        label="Logins to mention"
-        hint={`Mentioned in the comment Sloth writes when it parks a card in “${column}”, so GitHub notifies them. Leave out the login gh is signed in as — GitHub never notifies an account of its own mention.`}
-      >
-        <ListInput value={draft.helpLogins} onChange={(helpLogins) => patch({ helpLogins })} split={LOGINS} join=", " placeholder="alice, bob" />
-      </Row>
-      <Row
-        label="Webhook URL"
-        hint={`Optional. A Slack or Discord incoming webhook (or your own endpoint) gets a JSON POST with the issue each time a card lands in “${column}”, within one board poll.`}
-        wide
-      >
-        <TextInput value={draft.helpWebhook} onChange={(helpWebhook) => patch({ helpWebhook })} placeholder="https://hooks.slack.com/services/…" />
-      </Row>
-    </>
-  );
-}
-
-/** Sloth's agents, in the order a card meets them. */
-const AGENTS: { role: AgentRole; label: string; hint: string }[] = [
-  {
-    role: 'implement',
-    label: 'Implement',
-    hint: 'The session that claims a card, writes the code in its own worktree, verifies it and opens the PR — a pickup, a relaunch or an order.',
-  },
-  {
-    role: 'tester',
-    label: 'Browser tester',
-    hint: 'The subagent an implement session spawns to click through the change in your Chrome. Only used while Test in Chrome is on.',
-  },
-  {
-    role: 'reviewer',
-    label: 'Reviewer loop',
-    hint: 'The subagent that reviews the PR inside the implement session, for up to the configured review rounds, before the card reaches Code Review.',
-  },
-  { role: 'review', label: 'PR review', hint: "Reviews a human's PR in Code Review, once per PR head, and comments on it." },
-  {
-    role: 'final',
-    label: 'Final review',
-    hint: "The last review before merge, of an Approved card's PR. Its verdict lands on the PR and a pass labels the issue.",
-  },
-  { role: 'status', label: 'Mentions', hint: 'Answers a mention on an issue or PR when no session is running on it — where is it, why is it waiting.' },
-];
-
-export function Models({ draft, patch }: SectionProps) {
-  return (
-    <>
-      <p className="py-3 text-xs text-zinc-500">
-        Which model each of Sloth's agents runs on: a Claude Code alias or a full model id, passed as <code>--model</code>. A change
-        applies to sessions started after the save; running ones keep theirs.
-      </p>
-      {AGENTS.map(({ role, label, hint }) => (
-        <Row key={role} label={label} hint={hint}>
-          <ModelPicker label={`${label} model`} value={draft.models[role]} onChange={(m) => patch({ models: { ...draft.models, [role]: m } })} />
-        </Row>
-      ))}
     </>
   );
 }
@@ -149,6 +110,12 @@ export function Sessions({ draft, patch }: SectionProps) {
       </Row>
       <Row label="Max retries" hint="How many times in a row an In Progress card whose session died is relaunched before it is parked.">
         <NumberInput min={0} value={draft.maxRetries} onChange={(maxRetries) => patch({ maxRetries })} />
+      </Row>
+      <Row
+        label="Keep days"
+        hint="Finished runs older than this are deleted — their session directory, worktree and status replies. Transcripts belong to Claude Code and are left alone."
+      >
+        <NumberInput value={draft.keepDays} onChange={(keepDays) => patch({ keepDays })} />
       </Row>
     </>
   );

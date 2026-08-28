@@ -26,11 +26,14 @@ The short version; the tick-by-tick account is in [docs/how-it-works.md](docs/ho
 
 | # | When | What Sloth does |
 |---|---|---|
-| 1 | An unassigned issue sits in the watched column | Moves it to In Progress and starts `/sloth:implement <n>` |
+| 1 | An unassigned issue sits in the watched column | Moves it to In Progress and starts `/sloth:implement <n>`, most important card first (`priorityField`) |
 | 2 | An unassigned issue sits in In Progress with no live session | Relaunches it, at most `maxRetries` times in a row |
 | 3 | Someone on the team mentions `@sloth` in a comment — on an issue, or on the PR that closes it | Delivers it to the live session; with no session, an order (admin or developer) starts one and anything else gets a status reply, on the thread it was written in. A login with no role is ignored; a PR linked to no issue gets told so |
 | 4 | An unassigned issue in Code Review has an open, non-draft, unapproved wired PR **written by a human** | Runs `/sloth:review <pr>`, once per PR head. Sloth's own PRs were already vetted by their session's reviewer loop |
-| 5 | An issue in Approved — assigned or not — has an open, non-draft wired PR and no `Fable: approved` label | Runs `/sloth:review <pr> final` on the final-review model (`models.final`, `fable` by default), once per PR head; the verdict is posted on the PR either way, and a pass labels the issue `Fable: approved`, which keeps it from being reviewed again |
+| 5 | An issue in Approved — assigned or not — has an open, non-draft wired PR and no `Fable: approved` label for its current head | Runs `/sloth:review <pr> final` on the final-review model (`models.final`, `fable` by default), once per PR head; the verdict is posted on the PR either way, and a pass labels the issue `Fable: approved`, which keeps that head from being reviewed again. Pending checks wait a tick; red ones are row 7's |
+| 6 | An issue Sloth was working on is **closed** | Moves the card to Done, takes its preview, servers, database and worktree down, and deletes the `sloth/issue-<n>-…` branch of the PR that closed it. A PR closed *without* being merged parks its still-open issue instead |
+| 7 | The checks on a PR **Sloth wrote** are red, its card unassigned in Code Review or Approved | Sends the session back to the branch to make them pass — once per commit, keeping the PR. A human's PR is left to its author |
+| 8 | A PR that passed its final review is green and merges cleanly | Merges it with the `autoMerge` method. Off by default: merging stays a human's call until you ask for it |
 
 The board is read every 5 minutes, comments every 2; **Tick now** runs both at once. **Pause**
 stops Sloth from starting anything new (running sessions, inbox deliveries, status replies and
@@ -40,6 +43,9 @@ needs-help notifications carry on) and survives a restart.
   final review in Approved (trigger 5): an assigned card is reviewed too, and a rejection sends it back
   to In Progress still assigned, so the owner keeps it. Sloth never assigns anyone and
   never requests a reviewer.
+- **Priority**: the watched column is worked in the order of the board's `Priority` field — its options top
+  to bottom, first option first — and cards with no priority set come after the ranked ones, in board order.
+  Point `priorityField` at another single-select field, or empty it to take cards in plain board order.
 - **Roles** (`roles` in the config, the wizard's *Team* step): one **admin** orders Sloth anything —
   work, a move to any column, closing an issue. **Developers** order work within an issue — how to do
   it, address the review comments, start over, stop; an order that reaches beyond the issue becomes a
@@ -49,10 +55,11 @@ needs-help notifications carry on) and survives a restart.
 - **Columns** are roles mapped to the board's Status options: *pickup* (Sloth only reads it),
   *In Progress*, *needs help* (a stuck session parks the card here after asking its questions; an
   answer in the thread brings it back — `helpLogins` are mentioned in that question and `helpWebhook`
-  is called, see *Configuration*),
+  hears about it, along with anything else in `webhookEvents`, see *Configuration*),
   *Code Review* (trigger 4) and *Approved* (trigger 5 — a final review on `models.final`, Fable by default; a GitHub approval does not skip it,
-  the verdict lands on the PR pass or fail, and a pass labels the issue `Fable: approved`).
-  Missing columns are created after the pickup column, without dropping any existing option.
+  the verdict lands on the PR pass or fail, and a pass labels the issue `Fable: approved`), and *Done*, where the card
+  of a closed issue lands (trigger 6; without the column the card stays where it is).
+  Missing columns are created after the pickup column — Done at the end of the board — without dropping any existing option.
 - **Sessions** are detached `claude -p … --plugin-dir <sloth>/plugin` runs in the runner checkout.
   They survive a Sloth restart. `maxActive` may work at once, `maxAlive` including the ones waiting
   for an answer; a trigger with no free slot is retried next tick. A session past
@@ -67,16 +74,22 @@ needs-help notifications carry on) and survives a restart.
   when its servers die, when a new session starts on the issue, or with **stop** next to the link in the
   session's header; a Sloth restart re-opens the tunnel and rewrites the comment with the new address.
   The project's run skill decides whether a run can be previewed: the whole app has to answer on one
-  local port (see [plugin/README.md](plugin/README.md)), and the link is public to whoever holds it.
+  local port (see [plugin/README.md](plugin/README.md)). The tunnel points at a small local **guard**, not
+  at the app: only a request carrying the preview's key (24 random bytes, in the posted link as
+  `?sloth_key=…`) is forwarded. Opening the link trades the key for an `HttpOnly` cookie and redirects to
+  the clean URL — so the key leaves the address bar and the app's logs — and anything else gets a 401 page.
+  Websockets (HMR, live reload) are proxied too. The key lives in the preview's state file, so a Sloth
+  restart keeps the link that was posted working.
 
 ```
 ~/.sloth/
 ├── config.json                     the whole configuration
-├── watcher.log                     one line per event — the log the UI tails
+├── watcher.log                     one line per event — the log the UI tails (rotated to .1 past 5 MB)
 ├── runners/<repo>/                 the checkout the sessions run from
 ├── worktrees/<repo>/issue-42/      one worktree per issue
 ├── sessions/<repo>/                issue-42/, review-91/, approved-91/ — pid, state.json, inbox/, run.log, preview.json …
-└── state/                          seen/, reviewed/, approved/, notified/ dedupe markers; paused, paused_until
+└── state/                          seen/, reviewed/, approved/, notified/, finished/, closed/, checks/, merged/,
+                                    merge-failed/ dedupe markers; paused, paused_until, pruned_at
 ```
 
 ## The plugin
@@ -102,10 +115,15 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `reviewRounds` / `maxRetries` | `4` / `2` | Reviewer-agent rounds before asking for help; trigger-2 relaunches before parking |
 | `boardSeconds` / `commentSeconds` | `300` / `120` | Poll intervals |
 | `models` | `opus` each, `final: fable` | Which model each agent runs on (Settings → *Models*): `implement` (triggers 1–3), `tester` (the Chrome subagent), `reviewer` (the in-session review loop), `review` (trigger 4), `final` (trigger 5), `status` (mention replies). An older config's `model` / `approvedModel` still load |
+| `autostart` | `false` | Start Sloth at login through a macOS launch agent (Settings → *Machine*; see *Run at login*). Saved but ignored on other platforms |
 | `chrome` | `true` | Start implement sessions with `--chrome`, so a tester subagent can click through the change in your Chrome |
 | `previewHours` | `24` | How long a finished implement session's app stays up behind a public link posted on its PR (see *Previews* above); `0` turns previews off |
+| `priorityField` | `Priority` | A single-select field on the board whose option order ranks the watched column. Missing from the board, or empty here: cards are picked up in board order |
+| `keepDays` | `30` | How long a finished run is kept. Once an hour Sloth deletes the session directories, worktrees and status-reply markers older than this — never a live, parked or previewing run, and never a transcript (those are Claude Code's, under `~/.claude`). `watcher.log` is rotated to `watcher.log.1` past 5 MB |
 | `helpLogins` | `[]` | GitHub logins `@`-mentioned in the comment that parks a card in *needs help*, so GitHub notifies them (not the login `gh` writes with — GitHub skips self-mentions) |
-| `helpWebhook` | `""` | URL POSTed once per card that lands in *needs help* (`{text, content, repo, issue, title, url, column}` — Slack and Discord incoming webhooks read it as is) |
+| `autoMerge` | `""` | How trigger 8 merges a PR whose final review passed, whose checks are green and which merges cleanly: `squash`, `merge` or `rebase` (the `gh pr merge` methods). Empty leaves merging to a human |
+| `helpWebhook` | `""` | URL POSTed once per event in `webhookEvents` (`{event, text, content, repo, issue, title, url, column, pr?}` — Slack and Discord incoming webhooks read `text` / `content` as is) |
+| `webhookEvents` | `["needsHelp"]` | What `helpWebhook` hears about (Settings → *Notifications*, one toggle each): `needsHelp` (a card is parked), `codeReview` (a PR is ready for a human), `finalPassed` / `finalFailed` (the final review's verdict — the `Fable: approved` label appearing or going), `merged` (Sloth filed a closed issue away), `stopped` (a run was stopped or parked), `usageLimit` (a Claude limit paused the watcher) |
 | `tunnel` | `["cloudflared", "tunnel", "--url", "http://localhost:{port}"]` | The command Sloth runs so the UI is reachable from outside (see *Remote access*); the first bare `https://` URL it prints is the address |
 | `publicUrl` | — | Where the UI is already reachable — your own tunnel or domain. Set, no tunnel is started |
 
@@ -114,8 +132,9 @@ tick *would* do without doing it. A `.env` in the project root works too.
 
 ## UI and API
 
-The UI lists sessions (live / needs help / finished) with their transcript, subagents, token spend and
-watcher state, plus a home panel with hourly spend, the queue and the log. It refreshes on a 15s poll
+The UI lists sessions (live / needs help / finished) with their transcript, subagents, token spend, what
+the run cost at list price and watcher state, plus a home panel with hourly spend, **cost by issue** — every
+issue Sloth touched, its runs rolled up into one line, dearest first — the queue and the log. It refreshes on a 15s poll
 and an SSE stream. Transcripts are read from `~/.claude/projects/<runner root, non-alphanumerics as '-'>`.
 
 Read: `GET /api/overview`, `/api/sessions/:id`, `/api/sessions/:id/agents/:agentId`, `/api/usage?days=N`,
@@ -153,8 +172,18 @@ headers above.
 A quick tunnel gets a new address on every start — the QR follows it. For a stable address run your
 own tunnel (a named `cloudflared` tunnel on your domain, `jprq`, `ngrok`) and set `publicUrl`, or
 put its command in `tunnel` so Sloth starts it — `"tunnel": ["jprq", "http", "{port}"]`, say. Previews always run the
-`tunnel` command, one child per preview, whatever `publicUrl` says — that only names the UI. Keep the machine awake (`caffeinate -i pnpm start`):
-watching stops when the process stops.
+`tunnel` command, one child per preview, whatever `publicUrl` says — that only names the UI.
+
+### Run at login
+
+Watching stops when the process stops, so Sloth has to be running for anything to happen. **Settings →
+Machine → Start at login** (`autostart`) registers a macOS launch agent —
+`~/Library/LaunchAgents/dev.sloth.<repo>.plist`, `caffeinate -i pnpm start` in this checkout — that
+launchd starts at login, restarts if it dies, and that keeps the Mac awake while it runs. It serves the
+built UI, so run `pnpm build` first (the **Update** button does). Turning it off unloads and deletes the
+agent. It takes effect at the next login; to start it now without logging out:
+`launchctl kickstart -k gui/$UID/dev.sloth.<repo>`. Only macOS is supported — elsewhere, run
+`caffeinate -i pnpm start` yourself.
 
 ## Security
 
@@ -174,12 +203,15 @@ Sloth runs `claude … --dangerously-skip-permissions` in `runnerRoot` with **yo
   one repo.
 
 The remote-access guard (above) protects the monitor; it does not sandbox the sessions. A **preview link**
-has no guard at all beyond its unguessable address: whoever holds it uses the app with the sign-in notes
-in the PR comment. It reaches only that run's throwaway database — never share it beyond the PR's readers,
-and keep real credentials out of the project's run skill.
+is guarded by its key, not by who you are: whoever holds the link uses the app with the sign-in notes in
+the PR comment, and the cookie it leaves keeps that browser in for as long as the preview lives. It reaches
+only that run's throwaway database — never share it beyond the PR's readers, and keep real credentials out
+of the project's run skill. A preview whose key somehow got out comes down with **stop** next to the link
+in the session's header; the next one gets a fresh key.
 
 ## Conventions
 
 Source files stay under 200 lines. Every shell-out is `execFile` / `spawn` with an argv array — no
 shell strings. `useEffect` only lives in a dedicated hook that subscribes to something outside React.
-`pnpm lint` (tsc) and `pnpm build`. MIT licensed.
+`pnpm lint` (tsc), `pnpm test` (vitest — `test/`, every `gh` call mocked, a throwaway `$HOME`, never the real
+board) and `pnpm build`; CI runs all three on every PR. MIT licensed.

@@ -27,8 +27,16 @@ board. When it finds work, it starts a Claude Code session to do it. That is all
    always leaves its verdict as a comment on the PR.
    If it finds problems, the comment says what and the card goes back to *In Progress*. If not, the
    comment says the PR passed, the card stays in *Approved*, the issue gets the label `Fable: approved`,
-   and the PR is ready to merge. A labelled card is not reviewed again — remove the label to ask for
-   another look.
+   and the PR is ready to merge. That head is not reviewed again — a push to the branch after the pass
+   takes the label away and asks for a fresh look, and so does a check that turns red: the session that
+   wrote the PR is sent back to make the checks pass and pushes to the same branch.
+7. **The PR is merged.** By you, or by Sloth when you asked it to: set *Auto-merge* in Settings
+   (`autoMerge` — `squash`, `merge` or `rebase`) and a PR that passed its final review on the head that is
+   on the branch now, whose checks are green and which merges cleanly, is merged for you. It is off by
+   default. Merging closes the issue, and a closed issue is the end of the card: Sloth moves it to *Done*,
+   takes the preview, the servers, the database and the worktree down and deletes the branch. A PR closed
+   without being merged does the opposite — the issue is still open, so the card goes to *Sloth needs help*
+   with a comment saying its PR was closed.
 
 ## When the session gets stuck
 
@@ -38,6 +46,11 @@ it does not guess. It writes **one comment** on the issue with its questions, mo
 in that comment, so GitHub tells them; with a webhook configured, Slack (or whatever is behind the
 URL) hears about the card too, within one board poll. Both are set in the wizard's *Columns* step
 (`helpLogins` and `helpWebhook` in `config.json`); with neither, nobody is told.
+
+The webhook can hear about more than this one moment. **Settings → Notifications** has a toggle per
+event: a card reaching *Code Review*, a final review passing or failing, an issue Sloth closed and
+filed away, a run stopped or parked, and a Claude usage limit pausing the watcher. Only the needs-help
+one is on to begin with, so a Sloth that was set up before this keeps saying exactly what it did.
 
 - Anyone on the team — the admin, a developer or a tester — answers in the issue thread, and the
   session continues. A comment from someone with no role is not an answer.
@@ -95,7 +108,8 @@ Every comment Sloth writes starts with `**Sloth:**`.
 ├── runners/<repo>/      the checkout sessions start from
 ├── worktrees/<repo>/    one worktree per issue
 ├── sessions/<repo>/     one folder per session: its log, its state, its inbox
-└── state/               markers so nothing is done twice; the pause; the remote-access secret
+└── state/               markers so nothing is done twice (reviewed, approved, finished, closed, checks,
+                         merged); the pause; the remote-access secret
 ```
 
 The UI at `http://localhost:4400` shows every session, its full transcript, its token spend, and

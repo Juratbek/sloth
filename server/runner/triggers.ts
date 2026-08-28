@@ -1,12 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
-import { moveCard, unassignedIn, wiredPrs } from './board';
+import { moveCard, pickupOrder, unassignedIn, wiredPrs } from './board';
 import type { BoardItem } from './board';
 import { comment } from './gh';
 import { limitExit } from './limits';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
-import { helpMentions } from './notify';
+import { APPROVED_LABEL, MARKERS, OWN_BRANCH, markerFiles, statePath, unapprove } from './markers';
+import { helpMentions, notify } from './notify';
 import { cleanup } from './cleanup';
 import { approvedDir, counter, dirAlive, dirOf, isBlocked, issueAlive, issueDir, pidAlive, pidOf, reviewDir, runDirs, startedAt, stateOf } from './session-dirs';
 import type { Kind } from './session-dirs';
@@ -15,10 +16,13 @@ import { launch, launchApproved, launchReview } from './spawn';
 const KILL_GRACE = 5 * 60; // extra time before Sloth kills a session that is past its budget
 const LIMIT_PAUSE = 30 * 60; // how long the whole watcher sleeps after a usage-limit exit
 
-const statePath = (...parts: string[]) => path.join(cfg().stateDir, ...parts);
 export const pausedUntil = () => readNumber(statePath('paused_until'));
 
-/** Hands the issue to a human: one comment, then the needs-help column. */
+/**
+ * Hands the issue to a human: one comment, then the needs-help column. Every way a run ends badly comes
+ * through here — the budget, a stop from the monitor, too many relaunches, a PR closed unmerged — so this
+ * is where the `stopped` webhook event is raised.
+ */
 export async function park(issue: number, reason: string): Promise<void> {
   const c = cfg();
   const cc = helpMentions();
@@ -35,6 +39,7 @@ export async function park(issue: number, reason: string): Promise<void> {
     log(`#${issue} parked in place (no needs-help column configured)`);
   }
   remove(path.join(issueDir(issue), 'retries'));
+  await notify('stopped', { issue, text: `Sloth stopped work on #${issue}: ${reason}` });
 }
 
 /**
@@ -97,6 +102,10 @@ export async function reap(): Promise<void> {
       if (!limitExit(readFile(path.join(dir, 'run.log')))) continue;
       log(`${name} stopped on a usage limit — pausing ${LIMIT_PAUSE / 60} min, card untouched`);
       write(statePath('paused_until'), String(nowSec() + LIMIT_PAUSE));
+      await notify('usageLimit', {
+        issue: kind === 'issue' ? target : undefined,
+        text: `${name} stopped on a Claude usage limit — Sloth waits ${LIMIT_PAUSE / 60} minutes, the card keeps its place`,
+      });
       if (kind !== 'issue') for (const f of markerFiles(kind, target)) remove(statePath(MARKERS[kind], f));
       continue;
     }
@@ -105,20 +114,6 @@ export async function reap(): Promise<void> {
     await stop(kind, target, 'hung past the budget', 'the run for this issue hung past its time budget and was stopped by Sloth.');
   }
 }
-
-/** Where each review kind keeps its `<pr>-<sha>` "already reviewed this head" markers. */
-const MARKERS: Record<Exclude<Kind, 'issue'>, string> = { review: 'reviewed', approved: 'approved' };
-
-function markerFiles(kind: Exclude<Kind, 'issue'>, pr: number): string[] {
-  try {
-    return fs.readdirSync(statePath(MARKERS[kind])).filter((f) => f.startsWith(`${pr}-`));
-  } catch {
-    return [];
-  }
-}
-
-/** The branches `/sloth:implement` pushes to — its reviewer loop already vetted that head before the hand-off. */
-const OWN_BRANCH = /^sloth\/issue-\d+/;
 
 /**
  * Trigger 4 — Code Review cards whose wired PR is open and unapproved get one review per PR head.
@@ -135,24 +130,32 @@ export async function reviews(board: BoardItem[]): Promise<void> {
   }
 }
 
-/** The label `/sloth:review <pr> final` puts on a wired issue whose PR passed; a failing final review removes it. */
-const APPROVED_LABEL = 'Fable: approved';
-
 /**
  * Trigger 5 — Approved cards whose wired PR is open get one final review per PR head, with
  * `/sloth:review <pr> final` on `models.final`; a pass labels the issue `Fable: approved`, and a card
- * carrying that label is done — it is not reviewed again until the label goes (a failing review removes
- * it; a human can too). Neither a GitHub approval nor an assignee excludes the PR: the column is the
- * signal. A rejected assigned card goes back to In Progress with its assignee intact, so the human keeps
- * it (trigger 2 skips it). No Approved column configured → nothing to do.
+ * carrying that label is done — the marker of that head keeps it from being reviewed again. Neither a
+ * GitHub approval nor an assignee excludes the PR: the column is the signal. A rejected assigned card goes
+ * back to In Progress with its assignee intact, so the human keeps it (trigger 2 skips it). A labelled card
+ * whose *current* head has no marker was pushed to after the pass, so the label no longer describes what is
+ * on the branch: it goes, and the new head is reviewed like any other. Checks decide the rest — a pending
+ * rollup is worth waiting one tick for, and a red one belongs to trigger 7, which sends the session back to
+ * fix it. No Approved column configured → nothing to do.
  */
 export async function finalReviews(board: BoardItem[]): Promise<void> {
   const column = cfg().statusField.columns.approved;
   if (!column.id) return;
-  const issues = board.filter((i) => i.status === column.name && !i.labels.includes(APPROVED_LABEL)).map((i) => i.number);
-  for (const { issue, pr, sha } of await wiredPrs(issues, { unapprovedOnly: false })) {
+  const cards = board.filter((i) => i.status === column.name);
+  for (const { issue, pr, sha, checks } of await wiredPrs(cards.map((i) => i.number), { unapprovedOnly: false })) {
     const marker = statePath(MARKERS.approved, `${pr}-${sha}`);
     if (fs.existsSync(marker) || dirAlive(approvedDir(pr))) continue;
+    if (checks === 'PENDING') {
+      log(`final review PR #${pr} waits for its checks`);
+      continue;
+    }
+    if (checks === 'FAILURE') continue;
+    if (cards.find((i) => i.number === issue)?.labels.includes(APPROVED_LABEL)) {
+      await unapprove(issue, `PR #${pr} was pushed to after its final review passed`);
+    }
     if (launchApproved(pr, issue) && !isDry()) write(marker, '');
   }
 }
@@ -171,9 +174,9 @@ export async function retryStranded(board: BoardItem[]): Promise<void> {
   }
 }
 
-/** Trigger 1 — the watched column, in board order. A fresh pickup resets the retry counter. */
+/** Trigger 1 — the watched column, in the board's priority order. A fresh pickup resets the retry counter. */
 export async function pickup(board: BoardItem[]): Promise<void> {
-  for (const issue of unassignedIn(board, cfg().statusField.columns.pickup.name)) {
+  for (const issue of pickupOrder(board, cfg().statusField.columns.pickup.name)) {
     if (issueAlive(issue)) continue;
     if (!(await launch(issue))) break;
     if (!isDry()) remove(path.join(issueDir(issue), 'retries'));

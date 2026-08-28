@@ -69,6 +69,8 @@ ambiguous.
    bug.
 3. **Scope** — changes unrelated to the wired issue: drive-by refactors, formatting churn in untouched code,
    features nobody asked for. A small refactor that directly enables the fix is fine, not "unnecessary".
+4. **Checks** — `gh pr checks <N> --repo "$SLOTH_REPO"`; a failing required check is a bug: "OK to merge" is
+   no. Say which check failed and why in the review body; a check still running is not a failure.
 
 ## 4. Comment on the PR — whenever "OK to merge" is no, and always in final mode
 

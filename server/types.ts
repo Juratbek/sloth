@@ -1,4 +1,5 @@
 import type { AgentModels } from './config-types';
+import type { RemoteStatus } from './machine-types';
 
 export interface Usage {
   input: number;
@@ -49,6 +50,8 @@ export interface PreviewState {
   pr?: number;
   /** The public address, once the tunnel printed it. */
   url?: string;
+  /** The key the guard in front of the app wants (see `runner/preview-proxy.ts`); it is in the posted link. */
+  key: string;
   commentId?: number;
   startedAt: number;
   expiresAt: number;
@@ -64,6 +67,8 @@ export interface WatcherSession {
   preview?: PreviewState;
   retries: number;
   blocked: boolean;
+  /** The issue a review / approved run was started for — the server writes it into the directory. */
+  issue?: number;
   runLogTail: string;
   inbox: string[];
   updatedAt?: string;
@@ -83,6 +88,20 @@ export interface SessionSummary extends Stats {
   agents: AgentSummary[];
   agentsUsage: Usage;
   watcher?: WatcherSession;
+  /** USD at list price for this run and its subagents; null when one of its models has no known price. */
+  cost: number | null;
+}
+
+/** What one issue has cost so far — every run Sloth started on it, rolled up. */
+export interface IssueCost {
+  issue: number;
+  title?: string;
+  sessions: number;
+  cost: number | null;
+  tokens: { input: number; output: number; cacheRead: number };
+  lastAt?: string;
+  /** The status of the newest run on the issue. */
+  status?: SessionStatus;
 }
 
 export type Block =
@@ -134,49 +153,6 @@ export interface LoopStatus {
   nextComment?: number;
 }
 
-/** Remote access: where the UI is reachable from outside once the tunnel is up, or why it is not. */
-export interface RemoteStatus {
-  url?: string;
-  error?: string;
-}
-export interface InstallStatus {
-  running: boolean;
-  /** The last lines brew printed. */
-  output: string;
-  error?: string;
-}
-/** The QR code's payload — the address with the secret that signs a phone in — and what stands in its way. */
-export interface RemoteLink extends RemoteStatus {
-  link?: string;
-  /** The tunnel tool; absent when `publicUrl` is set and no tool is needed. */
-  tool?: { command: string; installed: boolean; installable: boolean };
-  install: InstallStatus;
-}
-
-/** The update the settings page started: which step it is on, the last lines it printed, how it ended. */
-export interface UpdateStatus {
-  running: boolean;
-  step?: 'pull' | 'install' | 'build' | 'restart';
-  output: string;
-  error?: string;
-  /** The new process is starting; the page reloads once it answers. */
-  restarting: boolean;
-}
-/** What Sloth this is: the version in package.json, the commit of the checkout, and how far behind the remote it is. */
-export interface VersionInfo {
-  version: string;
-  commit?: string;
-  date?: string;
-  branch?: string;
-  /** Tracked files changed in the checkout — a pull may refuse. */
-  dirty: boolean;
-  /** Commits on origin/<branch> this checkout lacks; unknown until a check ran. */
-  behind?: number;
-  checkedAt?: string;
-  checkError?: string;
-  update: UpdateStatus;
-}
-
 export interface Overview {
   generatedAt: string;
   config: MonitorConfig;
@@ -194,26 +170,11 @@ export interface Overview {
   rateLimit?: Record<string, RateBucket>;
   sessions: SessionSummary[];
   orphans: WatcherSession[];
+  /** Per-issue rollup of everything above, dearest first. */
+  issues: IssueCost[];
 }
 
-export interface UsageBucket {
-  hour: string;
-  newInput: number;
-  cacheRead: number;
-  output: number;
-  /** USD at API list price for the priced models in this hour. */
-  cost: number;
-}
-/** `cost` is null for a model with no known list price — its tokens still count, its dollars don't. */
-export interface ModelCost {
-  model: string;
-  cost: number | null;
-}
-export interface UsageSeries {
-  from: string;
-  to: string;
-  buckets: UsageBucket[];
-  /** What the whole window would have cost on API billing, summed over `byModel`. */
-  cost: number;
-  byModel: ModelCost[];
-}
+/** Remote access, updates and the launch agent — what the machine itself reports (`machine-types.ts`). */
+export type { InstallStatus, RemoteLink, RemoteStatus, ServiceStatus, UpdateStatus, VersionInfo } from './machine-types';
+/** The spend series behind the usage chart (`usage-types.ts`). */
+export type { ModelCost, UsageBucket, UsageSeries } from './usage-types';

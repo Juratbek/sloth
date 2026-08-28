@@ -3,10 +3,12 @@ import { broadcast } from '../events';
 import { fetchBoard } from './board';
 import { refreshColumns } from './columns';
 import { comments } from './comments';
+import { autoMerge, failedChecks, finished } from './lifecycle';
 import { isDry, log, nowSec, setDry } from './log';
-import { notifyParked } from './notify';
+import { boardEvents } from './notify-events';
 import { isPaused } from './pause';
 import { previews } from './preview';
+import { prune } from './retention';
 import { answered } from './answers';
 import { finalReviews, pausedUntil, pickup, reap, retryStranded, reviews } from './triggers';
 import type { LoopStatus } from '../types';
@@ -51,13 +53,19 @@ async function runTick({ board = false, comments: wantComments = false, dryRun =
     }
     if (!board) return;
     state.lastBoard = Date.now();
+    // Housekeeping on work that is long over — it costs nothing and skips itself for an hour.
+    await prune();
     const items = await fetchBoard();
     if (!items) return;
-    // A parked card is announced even while paused: sessions keep running, so they keep parking.
-    await notifyParked(items);
+    // Filing a closed issue away is bookkeeping on work that is already over, not new work.
+    await finished(items);
+    // The webhook hears about all of it even while paused: sessions keep running, so they keep parking.
+    await boardEvents(items);
     if (userPaused) return;
+    await failedChecks(items);
     await reviews(items);
     await finalReviews(items);
+    await autoMerge(items);
     await retryStranded(items);
     await answered(items);
     await pickup(items);

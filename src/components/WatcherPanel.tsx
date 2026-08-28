@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { Overview } from '../../server/types';
 import useFollowBottom from '../hooks/use-follow-bottom';
+import IssuesTable from './IssuesTable';
 import UsageChart from './UsageChart';
 
 /** Queue as the log tells it: a "queued (slots full)" line stands until the same target is launched. */
@@ -25,6 +26,8 @@ export default function WatcherPanel({ overview }: { overview: Overview }) {
       <div className="shrink-0">
         <UsageChart />
       </div>
+
+      <IssuesTable issues={overview.issues} config={overview.config} />
 
       {pending.length > 0 && (
         <section className="shrink-0 space-y-1">

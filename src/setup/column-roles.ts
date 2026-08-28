@@ -8,6 +8,7 @@ export const MATCH: Record<ColumnRole, RegExp> = {
   needsHelp: /needs?[\s_-]?help|blocked|question/i,
   codeReview: /review/i,
   approved: /approved|accepted/i,
+  done: /^\s*(done|closed|complete[d]?|shipped|merged)\s*$/i,
 };
 
 /** The columns Sloth moves cards to, in the order they are asked about. */
@@ -16,6 +17,7 @@ export const OTHERS: { role: ColumnRole; label: string; hint: string }[] = [
   { role: 'needsHelp', label: 'Needs help', hint: 'where a blocked session parks its card' },
   { role: 'codeReview', label: 'Code Review', hint: 'where a card goes once its PR is open' },
   { role: 'approved', label: 'Approved', hint: 'cards you approve get a final review of their PR' },
+  { role: 'done', label: 'Done', hint: 'where a card goes once its issue is closed — a merged PR closes it' },
 ];
 
 /**

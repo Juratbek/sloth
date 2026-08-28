@@ -7,6 +7,7 @@ import { watchAll } from './events';
 import { ensureColumns } from './runner/columns';
 import { startTunnel } from './remote';
 import { startLoop } from './runner/loop';
+import { applyAutostart } from './service';
 import type { ColumnRef, ColumnRole, FieldOption, SetupCheck, SetupEnv, SetupFields, SetupProject } from './config-types';
 
 /** execFile only — never a shell. Resolves with the command's stdout or its error text. */
@@ -112,7 +113,7 @@ async function clone(body: any): Promise<{ ok: boolean; path?: string; error?: s
   return r.ok ? { ok: true, path: target } : { ok: false, error: notFound(r.err, 'gh') };
 }
 
-const ROLES: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved'];
+const ROLES: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved', 'done'];
 
 /** Fills in the ids of columns the wizard asked Sloth to create, creating them on the board first. */
 async function withColumns(body: unknown): Promise<unknown> {
@@ -133,13 +134,16 @@ export async function handleSetup(pathname: string, method: string, body: unknow
   if (fields) return projectFields(fields[1]);
   if (pathname === '/api/setup/clone' && method === 'POST') return clone(body);
   if (pathname === '/api/setup/config' && method === 'POST') {
+    const was = readConfigFile(CONFIG_PATH)?.autostart ?? false;
     const config = normalizeConfig(await withColumns(body));
     writeConfigFile(CONFIG_PATH, config);
     reloadConfig();
     watchAll();
     startLoop();
     startTunnel();
-    return { ok: true, path: CONFIG_PATH, config };
+    // The launch agent is named after the repo and points at this checkout, so it is written from here.
+    const serviceError = config.autostart === was ? undefined : await applyAutostart(config.autostart);
+    return { ok: true, path: CONFIG_PATH, config, serviceError };
   }
   if (pathname === '/api/setup/config') return readConfigFile(CONFIG_PATH);
   return undefined;

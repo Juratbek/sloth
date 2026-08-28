@@ -18,6 +18,8 @@ export interface ConfigColumns {
   codeReview: ColumnRef;
   /** Optional: with no Approved column trigger 5 never fires. */
   approved: ColumnRef;
+  /** Optional: where a card goes once its issue is closed (trigger 6); without it the card stays put. */
+  done: ColumnRef;
 }
 export type ColumnRole = keyof ConfigColumns;
 
@@ -28,7 +30,19 @@ export const DEFAULT_COLUMN_NAMES: Record<ColumnRole, string> = {
   needsHelp: 'Sloth needs help',
   codeReview: 'Code Review',
   approved: 'Approved',
+  done: 'Done',
 };
+
+/** How trigger 8 merges a PR that passed the final review; `''` leaves merging to a human. */
+export type MergeMethod = '' | 'squash' | 'merge' | 'rebase';
+export const MERGE_METHODS: MergeMethod[] = ['', 'squash', 'merge', 'rebase'];
+
+/**
+ * What the `helpWebhook` hears about. `needsHelp` is the one Sloth has always sent, and the only one a
+ * config that predates the rest gets: an existing setup keeps behaving exactly as it did.
+ */
+export const WEBHOOK_EVENTS = ['needsHelp', 'codeReview', 'finalPassed', 'finalFailed', 'merged', 'stopped', 'usageLimit'] as const;
+export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 
 /** One admin, any number of developers and testers. A login holds one role: admin wins, then developer. */
 export interface Roles {
@@ -91,15 +105,34 @@ export interface SlothConfig {
   models: AgentModels;
   /** Pass `--chrome` to implement sessions, so a tester subagent can exercise the change in the user's Chrome. */
   chrome: boolean;
+  /** Start Sloth when this machine is logged into, through a macOS launch agent (`server/service.ts`). */
+  autostart: boolean;
   /**
    * How long a finished implement session's app stays up behind a public link posted on its PR, so a
    * reviewer can try the change without checking it out (see `runner/preview.ts`). `0` turns previews off.
    */
   previewHours: number;
+  /**
+   * How long a finished run is kept: its session directory, its worktree and the markers of the status
+   * replies it prompted. The transcripts belong to Claude Code and are never touched.
+   */
+  keepDays: number;
+  /**
+   * A single-select field on the board whose option order ranks the watched column: cards are picked up
+   * first option first. Empty means board order.
+   */
+  priorityField: string;
   /** GitHub logins `@`-mentioned in the comment Sloth writes when it parks a card in the needs-help column. */
   helpLogins: string[];
-  /** Optional URL POSTed (Slack / Discord incoming-webhook shape) when a card lands in the needs-help column. */
+  /** Optional URL POSTed (Slack / Discord incoming-webhook shape) when one of `webhookEvents` happens. */
   helpWebhook: string;
+  /** Which events reach `helpWebhook`; empty means none, and the URL is never called. */
+  webhookEvents: WebhookEvent[];
+  /**
+   * Merge a PR once its final review passed, its checks are green and it merges cleanly — with this
+   * `gh pr merge` method. Empty (the default) leaves the merge to a human.
+   */
+  autoMerge: MergeMethod;
   /** The argv Sloth runs to reach the UI from outside; `{port}` is the UI's port. The first bare https URL it prints is the address. */
   tunnel: string[];
   /** Where the UI is already reachable (your own tunnel or domain). Set, no tunnel is started. */
@@ -128,9 +161,14 @@ export const CONFIG_DEFAULTS = {
   commentSeconds: 120,
   models: DEFAULT_MODELS,
   chrome: true,
+  autostart: false,
   previewHours: 24,
+  keepDays: 30,
+  priorityField: 'Priority',
   helpLogins: [] as string[],
   helpWebhook: '',
+  webhookEvents: ['needsHelp'] as WebhookEvent[],
+  autoMerge: '' as MergeMethod,
   tunnel: DEFAULT_TUNNEL,
   publicUrl: '',
 } satisfies Partial<SlothConfig>;
@@ -142,32 +180,5 @@ export const defaultDirs = (name: string) => ({
   sessionsDir: `~/.sloth/sessions/${name}`,
 });
 
-/** ---- Get-started wizard payloads ---- */
-
-export interface SetupCheck {
-  ok: boolean;
-  version?: string;
-  login?: string;
-  error?: string;
-}
-export interface SetupEnv {
-  claude: SetupCheck;
-  gh: SetupCheck;
-  ghAuth: SetupCheck;
-}
-export interface SetupProject {
-  id: string;
-  number: number;
-  title: string;
-  url: string;
-  owner: string;
-  items: number;
-}
-export interface FieldOption extends ColumnRef {
-  color?: string;
-  description?: string;
-}
-export interface SetupFields {
-  statusField?: { id: string; name: string; options: FieldOption[] };
-  repositories: string[];
-}
+/** The payloads the get-started wizard exchanges with `/api/setup/*` (`setup-types.ts`). */
+export type { FieldOption, SetupCheck, SetupEnv, SetupFields, SetupProject } from './setup-types';

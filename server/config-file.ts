@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AGENT_ROLES, CONFIG_DEFAULTS, DEFAULT_MODELS, defaultDirs, type AgentModels, type AgentRole, type ColumnRef, type Roles, type SlothConfig } from './config-types';
+import { AGENT_ROLES, CONFIG_DEFAULTS, DEFAULT_MODELS, MERGE_METHODS, WEBHOOK_EVENTS, defaultDirs, type AgentModels, type AgentRole, type ColumnRef, type MergeMethod, type Roles, type SlothConfig, type WebhookEvent } from './config-types';
 import { sameLogin } from './roles';
 
 const home = os.homedir();
@@ -86,6 +86,20 @@ function models(v: unknown, legacyModel: unknown, legacyApproved: unknown): Agen
   return Object.fromEntries(AGENT_ROLES.map((role) => [role, pick(role)])) as unknown as AgentModels;
 }
 
+/** One of the `gh pr merge` methods, or empty for "a human merges". Anything else is rejected — it goes into argv. */
+function mergeMethod(v: unknown): MergeMethod {
+  const m = text(v) ?? '';
+  if (!MERGE_METHODS.includes(m as MergeMethod)) throw new Error(`autoMerge must be one of ${MERGE_METHODS.filter(Boolean).join(', ')} or empty`);
+  return m as MergeMethod;
+}
+
+/** The events a saved config asks for; anything unknown is dropped, and an explicit empty list is kept. */
+function webhookEvents(v: unknown, fallback: WebhookEvent[]): WebhookEvent[] {
+  if (!Array.isArray(v)) return fallback;
+  const known = WEBHOOK_EVENTS as readonly string[];
+  return [...new Set(v.map(String).filter((e): e is WebhookEvent => known.includes(e)))];
+}
+
 const argv = (v: unknown, fallback: string[]): string[] =>
   Array.isArray(v) && v.length ? v.map(String).filter((a) => a.trim()) : fallback;
 
@@ -127,6 +141,8 @@ export function normalizeConfig(input: unknown): SlothConfig {
         codeReview: column(columns.codeReview, 'codeReview'),
         // Optional: without it trigger 5 (the final review of Approved cards) never fires.
         approved: optional(columns.approved, 'approved'),
+        // Optional: without it a closed issue's card stays where it is (trigger 6).
+        done: optional(columns.done, 'done'),
       },
     },
     runnerRoot: expandPath(text(b.runnerRoot) ?? dirs.runnerRoot),
@@ -148,9 +164,15 @@ export function normalizeConfig(input: unknown): SlothConfig {
     commentSeconds: int(b.commentSeconds, d.commentSeconds, 30),
     models: models(b.models, b.model, b.approvedModel),
     chrome: b.chrome !== false,
+    autostart: b.autostart === true,
     previewHours: int(b.previewHours, d.previewHours, 0),
+    keepDays: int(b.keepDays, d.keepDays),
+    // An explicit "" turns the ranking off, so it has to survive: `text` would hand back the default.
+    priorityField: typeof b.priorityField === 'string' ? b.priorityField.trim() : d.priorityField,
     helpLogins: logins(b.helpLogins),
     helpWebhook: url(b.helpWebhook, 'helpWebhook'),
+    webhookEvents: webhookEvents(b.webhookEvents, d.webhookEvents),
+    autoMerge: mergeMethod(b.autoMerge),
     tunnel: argv(b.tunnel, d.tunnel),
     publicUrl: url(b.publicUrl, 'publicUrl'),
   };
