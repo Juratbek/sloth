@@ -149,6 +149,13 @@ parked card has been waiting. Clicking a card goes back to the monitor with that
 `elsewhere · 14` chip, and nothing on it writes back — no dragging, no buttons. On a phone the columns take
 turns behind a switcher, the active one filling the page; **← Back** returns to the monitor.
 
+The page you are on is in the URL, so a refresh lands where you were and a view can be linked to:
+`/` the home panel, `/sessions/<id>` one session, `/board` the board, `/settings` and `/setup` the settings
+page and the wizard (both only from the machine Sloth runs on — on a phone they fall back to `/`). Anything
+else is the home panel. Back and forward work. A remote link keeps its path through the sign-in redirect
+(`server/remote.ts` drops only the `code`), so `https://…/board?code=…` opens a phone straight on the board;
+the QR itself always points at `/`.
+
 Read: `GET /api/overview`, `/api/sessions/:id`, `/api/sessions/:id/agents/:agentId`, `/api/usage?days=N`,
 `/api/events` (SSE). Write: `POST /api/tick` (`?dry=1`), `/api/pause`, `/api/resume`, `/api/sessions/:id/stop` (ends the run, parks an issue's card), `/api/previews/:issue/stop` (takes a preview down now), `/api/setup/config`,
 `/api/setup/clone`. Wizard reads: `GET /api/setup/env`, `/api/setup/projects`, `/api/setup/projects/:id/fields`,
