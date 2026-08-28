@@ -182,16 +182,18 @@ export function launchApproved(pr: number, issue: number): boolean {
 }
 
 /**
- * Trigger 3, no session running and no order: answer the question on the issue. The reply reads the
- * issue's own session directory, so it can say what the last run did.
+ * Trigger 3, no session running and no order: answer the question where it was asked — the issue, or
+ * the PR wired to it (`pr`). The reply reads the issue's own session directory, so it can say what the
+ * last run did.
  */
-export function statusReply(issue: number, commentId: string): boolean {
+export function statusReply(issue: number, commentId: string, pr?: number): boolean {
+  const on = pr ? `PR #${pr}` : `#${issue}`;
   if (isDry()) {
-    log(`dry-run: would answer status comment ${commentId} on #${issue}`);
+    log(`dry-run: would answer status comment ${commentId} on ${on}`);
     return true;
   }
   const bookDir = path.join(cfg().stateDir, 'status', `${issue}-${commentId}`);
-  log(`#${issue} status reply for comment ${commentId}`);
-  start(bookDir, issueDir(issue), `/sloth:status ${issue} ${commentId}`, { issue }, path.join(cfg().stateDir, 'status.log'));
+  log(`#${issue} status reply for comment ${commentId} on ${on}`);
+  start(bookDir, issueDir(issue), `/sloth:status ${issue} ${commentId}`, { issue, pr }, path.join(cfg().stateDir, 'status.log'));
   return true;
 }
