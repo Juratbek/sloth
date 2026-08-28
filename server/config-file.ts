@@ -128,6 +128,7 @@ export function normalizeConfig(input: unknown): SlothConfig {
     model: text(b.model) ?? 'opus',
     approvedModel: text(b.approvedModel) ?? 'fable',
     chrome: b.chrome !== false,
+    previewHours: int(b.previewHours, 24, 0),
     helpLogins: logins(b.helpLogins),
     helpWebhook: url(b.helpWebhook, 'helpWebhook'),
     tunnel: argv(b.tunnel, DEFAULT_TUNNEL),

@@ -72,6 +72,7 @@ const BLANK: SlothConfig = {
   model: 'opus',
   approvedModel: 'fable',
   chrome: true,
+  previewHours: 24,
   helpLogins: [],
   helpWebhook: '',
   tunnel: DEFAULT_TUNNEL,

@@ -79,6 +79,7 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_TESTER_LOGINS` | Space-separated logins that answer questions and ask for status, never order (may be empty) |
 | `SLOTH_MODEL` | The model subagents run on (`opus`) |
 | `SLOTH_CHROME` | `1` when the session was started with `--chrome`; implement then tests the change in the browser |
+| `SLOTH_PREVIEW_HOURS` | How long a finished implement run's app stays up behind a public link on its PR; `0` means previews are off, always tear down |
 | `SLOTH_START`, `SLOTH_DEADLINE` | Epoch seconds: run start, hard deadline |
 | `SLOTH_BUDGET_MIN` | Minutes in a full budget (60) |
 | `SLOTH_WAIT_HOURS` | How long a parked session waits (2) |
@@ -98,6 +99,7 @@ Inside `$SLOTH_SESSION_DIR`:
 | `blocked` | Touched when the run is parked and must not be retried; removed on resume |
 | `asked_at` | Epoch seconds of the question comment |
 | `dev.pid`, `redis.pid`, `demo.db` | Pids / database name of anything the session started, for the server's cleanup |
+| `preview.json` | `{url, login}` — an implement run that handed its PR over with `SLOTH_PREVIEW_HOURS` above 0 leaves its app running and names the one local URL it answers on and how to sign in; the server tunnels it, posts the link on the PR and tears the run down after that many hours |
 
 The **last message of the transcript is the report** — the monitor shows it.
 
@@ -111,4 +113,6 @@ The **last message of the transcript is the report** — the monitor shows it.
 - The reviewer subagent is spawned once and reused across rounds.
 - With `SLOTH_CHROME=1` the implement session spawns one tester subagent that drives the change in the user's Chrome
   (own tab, console and network checked) and fixes what it finds before the PR.
+- With `SLOTH_PREVIEW_HOURS` above 0 an implement run that reaches Code Review leaves its app, database and worktree up and
+  writes `preview.json`; the server does the teardown, hours later. Every other ending tears down in the session.
 - No image, gif or video is ever required in a PR: verification, the tester's run and design fidelity are described in words.

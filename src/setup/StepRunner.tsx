@@ -18,7 +18,7 @@ export default function StepRunner({
   const [repo, setRepo] = useState(draft.repo);
   const [typed, setTyped] = useState(!!draft.repo && !linked.includes(draft.repo));
   const [root, setRoot] = useState<string | undefined>(draft.runnerRoot || undefined);
-  const [caps, setCaps] = useState({ maxActive: draft.maxActive, maxAlive: draft.maxAlive });
+  const [caps, setCaps] = useState({ maxActive: draft.maxActive, maxAlive: draft.maxAlive, previewHours: draft.previewHours });
 
   const runnerRoot = root ?? (repo ? `~/.sloth/runners/${repo.split('/')[1]}` : '');
   const ready = /^[\w.-]+\/[\w.-]+$/.test(repo) && !!runnerRoot;
@@ -58,12 +58,15 @@ export default function StepRunner({
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <Field label="Max active sessions" hint="how many run at once">
           <NumberInput value={caps.maxActive} onChange={(maxActive) => setCaps({ ...caps, maxActive })} />
         </Field>
         <Field label="Max alive sessions" hint="active plus parked, before Sloth stops picking up">
           <NumberInput value={caps.maxAlive} onChange={(maxAlive) => setCaps({ ...caps, maxAlive })} />
+        </Field>
+        <Field label="Preview hours" hint="a finished session's app stays up behind a link on its PR this long; 0 turns previews off">
+          <NumberInput min={0} value={caps.previewHours} onChange={(previewHours) => setCaps({ ...caps, previewHours })} />
         </Field>
       </div>
 

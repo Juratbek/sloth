@@ -15,6 +15,9 @@ board. When it finds work, it starts a Claude Code session to do it. That is all
    gets fixed. Then it opens a draft PR that says `Closes #42`. Before handing it over, it asks a reviewer agent to check the PR and fixes what
    the reviewer finds (up to 4 rounds).
 4. **The card moves to *Code Review*.** The PR is marked ready. A human reviews it like any other PR.
+   The app the session tested stays running, and Sloth posts a **preview link** on the PR with how to
+   sign in: the reviewer opens the change in a browser — its own seeded database, nothing shared — without
+   checking anything out. The link lives 24 hours (`previewHours`), or until the PR closes.
 5. **A human's PR in Code Review gets a review from Sloth.** If you wrote the PR yourself and
    wired it to the issue, Sloth reviews each new version once (`/sloth:review`). Sloth's own PRs
    are not reviewed again here — the reviewer agent in step 3 already did that. When a review

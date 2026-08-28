@@ -71,8 +71,8 @@ export function TextInput({ value, onChange, placeholder }: { value: string; onC
   return <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className={inputStyle} spellCheck={false} />;
 }
 
-export function NumberInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  return <input type="number" min={1} value={value} onChange={(e) => onChange(Number(e.target.value))} className={inputStyle} />;
+export function NumberInput({ value, onChange, min = 1 }: { value: number; onChange: (v: number) => void; min?: number }) {
+  return <input type="number" min={min} value={value} onChange={(e) => onChange(Number(e.target.value))} className={inputStyle} />;
 }
 
 export function Select({

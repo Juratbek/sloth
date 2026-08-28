@@ -40,6 +40,17 @@ export interface WatcherState {
   pr?: string;
   servers?: string;
 }
+/** A finished run's app kept alive behind a tunnel — `~/.sloth/sessions/<repo>/issue-<n>/preview-state.json`. */
+export interface PreviewState {
+  issue: number;
+  /** The PR the link was posted on; absent, the comment went on the issue. */
+  pr?: number;
+  /** The public address, once the tunnel printed it. */
+  url?: string;
+  commentId?: number;
+  startedAt: number;
+  expiresAt: number;
+}
 export interface WatcherSession {
   name: string;
   kind: 'issue' | 'review' | 'approved';
@@ -48,6 +59,7 @@ export interface WatcherSession {
   alive: boolean;
   sessionId?: string;
   state?: WatcherState;
+  preview?: PreviewState;
   retries: number;
   blocked: boolean;
   runLogTail: string;

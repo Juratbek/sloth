@@ -193,6 +193,11 @@ retry gh project item-edit --id "$ITEM_ID" --project-id "$SLOTH_PROJECT_ID" \
   --field-id "$SLOTH_STATUS_FIELD_ID" --single-select-option-id "$SLOTH_COL_CODE_REVIEW_ID"
 ```
 
+With `SLOTH_PREVIEW_HOURS` above `0`, hand the running app over too: write `preview.json` as the **`session`**
+skill's *Teardown* says — the app's one local URL and how to sign in, both from the project's run skill — and
+leave the servers, database and worktree up. The server tunnels the app, posts the link on the PR and cleans up
+after `SLOTH_PREVIEW_HOURS` hours. A project whose app cannot answer on one port gets no preview: tear down in Step 7.
+
 ## Step Q — Ask on the issue, then wait
 
 Follow the needs-help protocol in the **`session`** skill: one numbered comment with every open question and
@@ -204,7 +209,8 @@ wait window. Never open or finish a PR built on a guess.
 ## Step 7 — Clean up, report
 
 Teardown per the `session` skill: stop this session's processes and database, remove the worktree,
-`set_state done`. The branch stays on the remote.
+`set_state done`. After a preview hand-off (Step 6) skip the stopping and removing — only `set_state done`
+with `SERVERS=preview`; the server takes the environment down later. The branch stays on the remote.
 
 Finish with the report — it is the transcript's last message and the monitor shows it: branch, PR URL, files
 changed, what Step 4 and the tester verified and what they did not, review rounds, where the card ended up. For a blocked run:
@@ -226,4 +232,5 @@ the question comment URL, whether an answer arrived, where the card is, and what
   touches a screen.
 - Do not push on a failed Step 4; do not hand a PR to a human before the reviewer loop passes; the PR ends
   ready for review, with `Closes #ISSUE`, no reviewer and no assignee.
-- Always clean up (Step 7), whether the run succeeds, waits out, or stops early.
+- Always clean up (Step 7), whether the run succeeds, waits out, or stops early — a preview hand-off (Step 6)
+  is the one ending where the server cleans up instead.

@@ -4,6 +4,7 @@ import { execFile } from 'node:child_process';
 import { cfg } from './config';
 import { loopStatus } from './runner/loop';
 import { isPaused } from './runner/pause';
+import { previewState } from './runner/preview';
 import type { Overview, RateBucket, WatcherSession, WatcherState } from './types';
 
 const read = (f: string) => {
@@ -67,6 +68,7 @@ export function listSessionDirs(): WatcherSession[] {
         alive: pidAlive(pid),
         sessionId: read(path.join(d, 'session_id'))?.trim() || undefined,
         state,
+        preview: m[1] === 'issue' ? previewState(Number(m[2])) : undefined,
         retries: num(path.join(d, 'retries')),
         blocked: fs.existsSync(path.join(d, 'blocked')),
         runLogTail: (read(path.join(d, 'run.log')) ?? '').slice(-4000),

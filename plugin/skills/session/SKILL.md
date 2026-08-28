@@ -28,6 +28,7 @@ directory.
 | `SLOTH_TESTER_LOGINS` | Space-separated **testers** — they answer questions and ask for status, never order (may be empty) |
 | `SLOTH_MODEL` | The model every subagent runs on (`opus`) |
 | `SLOTH_CHROME` | `1` when the server attached Claude in Chrome (`--chrome`) — implement runs test in the browser |
+| `SLOTH_PREVIEW_HOURS` | Hours a finished implement run's app stays up behind a public link on its PR (see *Teardown*); `0` means previews are off — always tear down |
 | `SLOTH_START` / `SLOTH_DEADLINE` | Epoch seconds: run start, hard deadline |
 | `SLOTH_BUDGET_MIN` | Minutes in a full budget (60) |
 | `SLOTH_WAIT_HOURS` | How long a parked session waits for an answer (2) |
@@ -55,7 +56,8 @@ set_state() { jq -n --arg s "$1" --arg step "$2" --arg note "${3:-}" --arg br "$
 - `state`: `working` | `waiting` | `done`. `since`: epoch seconds the current state began — reset it on
   every resume, keep it when only the step changes inside the same state.
 - `step`: the step you are on. `note`: one line a human can read. `branch` / `pr`: as soon as they exist.
-- `servers`: `running` | `stopped` | `none` — whether this session has processes up.
+- `servers`: `running` | `stopped` | `preview` | `none` — whether this session has processes up; `preview` when
+  they were left for the server to show (see *Teardown*).
 - Shell state does not persist between Bash calls: paste `set_state` into each invocation that uses it, and
   pass `SINCE=…` explicitly when it must not move.
 
@@ -66,6 +68,7 @@ Other files the server understands, all inside `$SLOTH_SESSION_DIR`:
 - `asked_at` — epoch seconds of the question comment, written when parking.
 - `dev.pid`, `redis.pid`, `demo.db` — pids / database name of anything this session started, one per line;
   the server kills and drops these during cleanup. Write them the moment a process or database exists.
+- `preview.json` — `{url, login}`, written by an implement run that leaves its app up for a preview (below).
 
 ## Inbox — comments forwarded to a live session
 
@@ -174,6 +177,28 @@ git -C "$SLOTH_RUNNER_ROOT" worktree remove "$SLOTH_WORKTREES_DIR/issue-$SLOTH_I
 git -C "$SLOTH_RUNNER_ROOT" worktree prune
 # set_state done <step> "<how the run ended>"
 ```
+
+**Except a preview hand-off.** When `SLOTH_PREVIEW_HOURS` is above `0` *and* the run ends with its PR handed
+to `$SLOTH_COL_CODE_REVIEW_NAME`, the servers, the database and the worktree **stay**: the server puts a
+tunnel in front of the app, posts the link on the PR with the sign-in notes, and tears everything down
+itself after `SLOTH_PREVIEW_HOURS` hours (or when the PR closes, or when a new run starts on the issue).
+Instead of the commands above:
+
+```bash
+jq -n --arg url "$WEB_URL" --arg login "$LOGIN_NOTES" '{url:$url, login:$login}' > "$SLOTH_SESSION_DIR/preview.json"
+SERVERS=preview   # then set_state done 7 "…"
+```
+
+- `url` — the **one** local address the whole app answers on, `http://localhost:<port>`. The server tunnels
+  exactly that port, so the page must reach its API through its own origin (a relative API URL that the dev
+  server proxies — the project's run skill knows how). Start the servers so they outlive this session
+  (their own process group, output to a file, not tied to your shell). A project that cannot answer on one
+  port gets no preview: tear down as usual.
+- `login` — Markdown for the PR comment: which accounts exist, the phone / OTP or password, which role sees
+  the screen. The link is public to whoever holds it, so only throwaway credentials belong here.
+- `dev.pid`, `redis.pid`, `demo.db` must be complete — they are what the server stops and drops later.
+
+Any other ending — parked, out of time, no PR — tears down as usual.
 
 The branch stays on the remote and `$SLOTH_SESSION_DIR` stays on the machine. The **last message of the
 transcript is the report** — the monitor shows it, so make it a few useful lines, not "Done.".

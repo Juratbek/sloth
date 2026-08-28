@@ -52,6 +52,9 @@ export interface RunState {
   since?: number;
   step?: string;
   note?: string;
+  branch?: string;
+  pr?: string;
+  servers?: string;
 }
 
 export function stateOf(dir: string): RunState {
