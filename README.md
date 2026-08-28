@@ -137,6 +137,16 @@ the run cost at list price and watcher state, plus a home panel with hourly spen
 issue Sloth touched, its runs rolled up into one line, dearest first — the queue and the log. It refreshes on a 15s poll
 and an SSE stream. Transcripts are read from `~/.claude/projects/<runner root, non-alphanumerics as '-'>`.
 
+At the top of the home panel is the **board**: Sloth's columns in pipeline order — pickup, In Progress,
+needs help, Code Review, Approved, Done — whatever order the GitHub board puts them in, with a card per
+issue. A card is two lines: the number and title, a state dot with what Sloth's newest run on that issue
+is doing, and then only what applies — what the issue has cost, its PR, a live preview link, retries, the
+human who owns it, a `Fable: approved` badge, how long a parked card has been waiting. Clicking a card
+opens that run. It is a **mirror**: the view is built from the board the last tick already read (no extra
+GitHub call, and `board as of 14:02` says how fresh it is), Done shows the last 7 days, every other Status
+column is one `elsewhere · 14` chip, and nothing on it writes back — no dragging, no buttons. On a phone
+the columns take turns behind a switcher; the header's small button hides the whole block and remembers that.
+
 Read: `GET /api/overview`, `/api/sessions/:id`, `/api/sessions/:id/agents/:agentId`, `/api/usage?days=N`,
 `/api/events` (SSE). Write: `POST /api/tick` (`?dry=1`), `/api/pause`, `/api/resume`, `/api/sessions/:id/stop` (ends the run, parks an issue's card), `/api/previews/:issue/stop` (takes a preview down now), `/api/setup/config`,
 `/api/setup/clone`. Wizard reads: `GET /api/setup/env`, `/api/setup/projects`, `/api/setup/projects/:id/fields`,

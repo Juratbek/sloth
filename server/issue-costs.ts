@@ -7,7 +7,8 @@ import type { IssueCost, SessionSummary } from './types';
  * review from before the `issue` file existed) is left out rather than guessed at.
  */
 
-const issueOf = (s: SessionSummary): number | undefined =>
+/** Which issue a run belongs to; `board-view.ts` asks the same question when it picks a card's newest run. */
+export const issueOf = (s: SessionSummary): number | undefined =>
   s.watcher?.kind === 'issue' ? s.watcher.target : (s.watcher?.issue ?? (s.kind === 'sloth:implement' ? s.target : undefined));
 
 /** Dearest first; an unpriced issue has no number to compare, so it sits after the priced ones. */

@@ -1,6 +1,7 @@
 import { cfg } from '../config';
 import { broadcast } from '../events';
 import { fetchBoard } from './board';
+import { setSnapshot } from './board-snapshot';
 import { refreshColumns } from './columns';
 import { comments } from './comments';
 import { autoMerge, failedChecks, finished } from './lifecycle';
@@ -57,6 +58,8 @@ async function runTick({ board = false, comments: wantComments = false, dryRun =
     await prune();
     const items = await fetchBoard();
     if (!items) return;
+    // The home panel's board view mirrors this one read — a dry run reads the board too, and reading is harmless.
+    setSnapshot(items);
     // Filing a closed issue away is bookkeeping on work that is already over, not new work.
     await finished(items);
     // The webhook hears about all of it even while paused: sessions keep running, so they keep parking.

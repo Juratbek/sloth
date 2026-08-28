@@ -5,6 +5,7 @@ import { add, promptOf, readRecords, summarize, toMessages, zero } from './trans
 import { agentsDirOf, linkAgents, listAgents } from './agents';
 import { costOfUsage } from './pricing';
 import { rollup } from './issue-costs';
+import { boardFromSnapshot } from './board-view';
 import { remoteStatus } from './remote';
 import { listSessionDirs, rateLimit, titleFor, watcherInfo } from './watcher';
 import type { AgentDetail, AgentSummary, ModelUsage, Overview, SessionDetail, SessionKind, SessionSummary, WatcherSession } from './types';
@@ -91,6 +92,7 @@ function listSessions(): { sessions: SessionSummary[]; orphans: WatcherSession[]
 export async function overview(): Promise<Overview> {
   const [rate, { sessions, orphans }] = [await rateLimit(), listSessions()];
   for (const s of sessions) if (s.target) s.title = titleFor(s.target, rate?.core?.remaining);
+  const issues = rollup(sessions, (n) => titleFor(n, rate?.core?.remaining));
   return {
     generatedAt: new Date().toISOString(),
     config: monitorConfig(),
@@ -99,7 +101,8 @@ export async function overview(): Promise<Overview> {
     rateLimit: rate,
     sessions,
     orphans,
-    issues: rollup(sessions, (n) => titleFor(n, rate?.core?.remaining)),
+    issues,
+    board: boardFromSnapshot(sessions, issues),
   };
 }
 
