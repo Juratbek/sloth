@@ -74,7 +74,12 @@ needs-help notifications carry on) and survives a restart.
   when its servers die, when a new session starts on the issue, or with **stop** next to the link in the
   session's header; a Sloth restart re-opens the tunnel and rewrites the comment with the new address.
   The project's run skill decides whether a run can be previewed: the whole app has to answer on one
-  local port (see [plugin/README.md](plugin/README.md)), and the link is public to whoever holds it.
+  local port (see [plugin/README.md](plugin/README.md)). The tunnel points at a small local **guard**, not
+  at the app: only a request carrying the preview's key (24 random bytes, in the posted link as
+  `?sloth_key=…`) is forwarded. Opening the link trades the key for an `HttpOnly` cookie and redirects to
+  the clean URL — so the key leaves the address bar and the app's logs — and anything else gets a 401 page.
+  Websockets (HMR, live reload) are proxied too. The key lives in the preview's state file, so a Sloth
+  restart keeps the link that was posted working.
 
 ```
 ~/.sloth/
@@ -185,9 +190,11 @@ Sloth runs `claude … --dangerously-skip-permissions` in `runnerRoot` with **yo
   one repo.
 
 The remote-access guard (above) protects the monitor; it does not sandbox the sessions. A **preview link**
-has no guard at all beyond its unguessable address: whoever holds it uses the app with the sign-in notes
-in the PR comment. It reaches only that run's throwaway database — never share it beyond the PR's readers,
-and keep real credentials out of the project's run skill.
+is guarded by its key, not by who you are: whoever holds the link uses the app with the sign-in notes in
+the PR comment, and the cookie it leaves keeps that browser in for as long as the preview lives. It reaches
+only that run's throwaway database — never share it beyond the PR's readers, and keep real credentials out
+of the project's run skill. A preview whose key somehow got out comes down with **stop** next to the link
+in the session's header; the next one gets a fresh key.
 
 ## Conventions
 

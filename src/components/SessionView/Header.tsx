@@ -27,10 +27,13 @@ function Stats({ s }: { s: SessionDetail }) {
 function PreviewLine({ issue, preview }: { issue: number; preview: NonNullable<SessionDetail['watcher']>['preview'] }) {
   const stop = useStopPreview();
   if (!preview) return null;
+  // The guard in front of the app wants the key, exactly as the link posted on the PR carries it.
+  const url = safeUrl(preview.url);
+  const link = url && preview.key ? `${url}/?sloth_key=${preview.key}` : url;
   return (
     <span className="flex items-center gap-2">
-      {safeUrl(preview.url) ? (
-        <a href={safeUrl(preview.url)} target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline">
+      {link ? (
+        <a href={link} target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline">
           preview
         </a>
       ) : (

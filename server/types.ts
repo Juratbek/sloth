@@ -49,6 +49,8 @@ export interface PreviewState {
   pr?: number;
   /** The public address, once the tunnel printed it. */
   url?: string;
+  /** The key the guard in front of the app wants (see `runner/preview-proxy.ts`); it is in the posted link. */
+  key: string;
   commentId?: number;
   startedAt: number;
   expiresAt: number;
