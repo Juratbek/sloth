@@ -126,6 +126,9 @@ export function launchApproved(pr: number, issue: number): boolean {
     return true;
   }
   log(`review PR #${pr} (issue #${issue}) on ${c.models.final}`);
+  // The previous run's final state must not speak for this one: `reap` reads `working` as "died without
+  // a verdict" and clears the head's marker, which a leftover `done` would mask.
+  remove(path.join(approvedDir(pr), 'state.json'));
   // The directory is named after the PR; the issue it belongs to is only known here, and the monitor
   // needs it to roll this run's cost up under the issue.
   write(path.join(approvedDir(pr), 'issue'), String(issue));
