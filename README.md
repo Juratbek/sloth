@@ -16,7 +16,8 @@ process stops — there is no daemon. The first time you open the UI a **Get sta
 `claude` and `gh`, lets you pick the board, its columns, the repository and the checkout the sessions
 run from, then writes `~/.sloth/config.json`. The gear in the header opens **Settings**, where every value in
 that file — the board, the team, the caps, which model each agent runs on — can be changed; the wizard can be
-re-run from there. Its **About** section shows the version and commit Sloth runs, how far behind `origin` it is,
+re-run from there. Its **About** section shows the version and commit Sloth runs (the patch version goes up with
+every PR merged into `main` — `.github/workflows/bump-version.yml` commits the bump), how far behind `origin` it is,
 and an **Update** button: `git pull --ff-only`, `pnpm install`, `pnpm build`, then Sloth restarts itself with the
 same command line (running sessions are not touched; a `caffeinate` or `pnpm` wrapper exits with the old process).
 
@@ -140,7 +141,9 @@ and an SSE stream. Transcripts are read from `~/.claude/projects/<runner root, n
 The header's **Board** button opens the board on a page of its own — the whole window, since half a screen
 was not enough to see a pipeline in. It shows Sloth's columns in pipeline order — pickup, In Progress,
 needs help, Code Review, Approved, Done — whatever order the GitHub board puts them in, each column
-full-height and scrolling on its own, with a card per issue. A card is two lines: the number and title, a
+full-height and scrolling on its own, with a card per issue **Sloth is on**: the ones it has a run on, and the
+unclaimed ones waiting in pickup. A card someone else moved by hand — no run, or claimed in pickup — is not
+listed, only counted in a `not Sloth's · 3` chip. A card is two lines: the number and title, a
 state dot with what Sloth's newest run on that issue is doing, and then only what applies — what the issue
 has cost, its PR, a live preview link, retries, the human who owns it, a `Fable: approved` badge, how long a
 parked card has been waiting. Clicking a card goes back to the monitor with that run open. It is a

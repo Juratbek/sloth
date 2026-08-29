@@ -7,15 +7,20 @@ import Column from './Column';
 /** The needs-help column is called "Sloth needs help" on the board; the phone switcher has no room for that. */
 const SHORT: Partial<Record<ColumnRole, string>> = { needsHelp: 'Help' };
 
-/** Cards on Status options Sloth has no role for. Counted, never listed — this view is Sloth's pipeline. */
-const Elsewhere = ({ count }: { count: number }) =>
-  count ? <span className="rounded border border-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">elsewhere · {count}</span> : null;
+/** A count of cards the view leaves out. Counted, never listed — this view is Sloth's pipeline. */
+const Left = ({ label, count, title }: { label: string; count: number; title: string }) =>
+  count ? (
+    <span title={title} className="rounded border border-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">
+      {label} · {count}
+    </span>
+  ) : null;
 
 /**
- * Where every card is, and whether Sloth is on it — the board as the last tick read it, in Sloth's own
- * pipeline order, given the whole window: half a screen shared with the chart and the log was not enough
- * to see a pipeline in. It mirrors GitHub and nothing more: no dragging, no buttons, no writes. Clicking
- * a card goes back to the monitor with the newest run on that issue open.
+ * Where every card Sloth is on is, and what it is doing there — the board as the last tick read it, in
+ * Sloth's own pipeline order, given the whole window: half a screen shared with the chart and the log was
+ * not enough to see a pipeline in. Only Sloth's cards are on it; the rest of the team's work is two counts
+ * in the header. It mirrors GitHub and nothing more: no dragging, no buttons, no writes. Clicking a card
+ * goes back to the monitor with the newest run on that issue open.
  */
 export default function BoardPage({ board, onSelect, onClose }: { board?: BoardView; onSelect: (id: string) => void; onClose: () => void }) {
   const [tab, setTab] = useState<ColumnRole | null>(null);
@@ -31,7 +36,8 @@ export default function BoardPage({ board, onSelect, onClose }: { board?: BoardV
           Board {board && <span className="ml-1 text-zinc-600">as of {clock(board.asOf)}</span>}
         </span>
         <span className="flex-1" />
-        {board && <Elsewhere count={board.elsewhere} />}
+        {board && <Left label="not Sloth's" count={board.others} title="Cards on Sloth's columns that Sloth has no run on and that are not waiting in pickup — a person's work." />}
+        {board && <Left label="elsewhere" count={board.elsewhere} title="Cards on Status options Sloth has no column for." />}
         <button onClick={onClose} className="text-xs text-zinc-500 hover:text-zinc-200">
           ← Back
         </button>
