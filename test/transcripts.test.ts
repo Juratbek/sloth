@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { promptOf, readRecords, summarize, toMessages } from '../server/transcripts';
+import { mainModel, promptOf, readRecords, summarize, toMessages } from '../server/transcripts';
 import { root } from './harness';
 
 const usage = { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 100, cache_creation_input_tokens: 20 };
@@ -37,6 +37,14 @@ describe('transcripts', () => {
     expect(s.toolCounts).toEqual({ Bash: 1 });
     expect(s.lastText).toBe('done: PR opened');
     expect(s.byModel[0]).toMatchObject({ model: 'claude-opus-5', requests: 2 });
+    expect(s.model).toBe('claude-opus-5');
+  });
+  it('names the run after the model behind most of its requests, never a synthetic or empty row', () => {
+    const row = (model: string, requests: number, tokens = 1) => ({ model, requests, input: tokens, output: 0, cacheRead: 0, cacheWrite: 0, thinking: 0 });
+    expect(mainModel([row('claude-opus-5', 3), row('claude-fable-5', 7)])).toBe('claude-fable-5');
+    expect(mainModel([row('<synthetic>', 9, 0), row('unknown', 9), row('claude-opus-5', 1)])).toBe('claude-opus-5');
+    expect(mainModel([row('<synthetic>', 9, 0)])).toBeUndefined();
+    expect(mainModel([])).toBeUndefined();
   });
   it('merges the records of one request into one assistant message', () => {
     const m = toMessages(readRecords(transcript()));

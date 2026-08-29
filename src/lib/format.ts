@@ -45,6 +45,19 @@ export function elapsed(s: { startedAt?: string; lastAt?: string; live: boolean 
   return duration((end - Date.parse(s.startedAt)) / 1000);
 }
 
+/**
+ * A model id as a person says it: `claude-opus-4-1-20250805` → "opus 4.1", `claude-fable-5` → "fable 5",
+ * `claude-3-5-haiku-20241022` → "haiku 3.5". An alias (`opus`, `fable`) or an id of another shape is shown as it is.
+ */
+export function modelName(id?: string): string | undefined {
+  if (!id) return undefined;
+  const m = /^claude-(?:(\d)-(?:(\d)-)?)?([a-z]+)(?:-(\d{1,2})(?:-(\d{1,2}))?)?(?:-\d{8})?$/.exec(id);
+  if (!m) return id;
+  const [, majorBefore, minorBefore, family, major, minor] = m;
+  const version = [majorBefore ?? major, minorBefore ?? minor].filter(Boolean).join('.');
+  return version ? `${family} ${version}` : family;
+}
+
 const KIND: Record<string, string> = { 'sloth:implement': 'fix', 'sloth:review': 'review', 'sloth:status': 'status', other: 'run' };
 export const label = (s: SessionSummary) => `${KIND[s.kind] ?? s.kind}${s.target ? ` #${s.target}` : ''}`;
 

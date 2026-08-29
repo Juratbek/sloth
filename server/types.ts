@@ -18,6 +18,8 @@ export type ToolCounts = Record<string, number>;
 export interface Stats {
   usage: Usage;
   byModel: ModelUsage[];
+  /** The model the run answered on — the one behind most of its requests; absent until the first reply. */
+  model?: string;
   toolCounts: ToolCounts;
   startedAt?: string;
   lastAt?: string;
