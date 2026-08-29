@@ -152,7 +152,18 @@ export function summarize(records: Rec[]): Stats {
     add(mu, u);
     models.set(model, mu);
   }
-  return { usage, byModel: [...models.values()], toolCounts, startedAt, lastAt, turns, contextTokens, lastText: lastText.slice(-600) };
+  const byModel = [...models.values()];
+  return { usage, byModel, model: mainModel(byModel), toolCounts, startedAt, lastAt, turns, contextTokens, lastText: lastText.slice(-600) };
+}
+
+/**
+ * The model a run ran on: the one that answered most of its requests. `<synthetic>` rows (the CLI's own
+ * messages, no tokens) and unknown ones are not it — a run's last usage-limit message must not rename it.
+ */
+export function mainModel(byModel: ModelUsage[]): string | undefined {
+  return byModel
+    .filter((m) => m.model !== 'unknown' && !m.model.startsWith('<') && m.input + m.output + m.cacheRead + m.cacheWrite > 0)
+    .sort((a, b) => b.requests - a.requests)[0]?.model;
 }
 
 export function promptOf(records: Rec[]): string {

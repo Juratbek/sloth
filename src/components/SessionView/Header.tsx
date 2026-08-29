@@ -1,7 +1,7 @@
 import type { MonitorConfig, SessionDetail } from '../../../server/types';
 import useStopPreview from '../../hooks/use-preview';
 import useStopSession from '../../hooks/use-stop-session';
-import { STATUS_COLOR, ago, elapsed, githubUrl, k, label, newInput, safeUrl, stepLabel, untilLabel, usd } from '../../lib/format';
+import { STATUS_COLOR, ago, elapsed, githubUrl, k, label, modelName, newInput, safeUrl, stepLabel, untilLabel, usd } from '../../lib/format';
 import { ToolChips } from './Usage';
 
 function Stats({ s }: { s: SessionDetail }) {
@@ -17,7 +17,7 @@ function Stats({ s }: { s: SessionDetail }) {
       </p>
       {s.byModel.length > 1 && (
         <p className="text-zinc-400">
-          {s.byModel.map((m) => `${m.model.replace(/^claude-/, '')} ${m.requests}× ↑${k(m.output)}`).join(' · ')}
+          {s.byModel.map((m) => `${modelName(m.model)} ${m.requests}× ↑${k(m.output)}`).join(' · ')}
         </p>
       )}
     </div>
@@ -124,6 +124,11 @@ export default function Header({ s, config }: { s: SessionDetail; config: Monito
           </a>
         )}
         <span className="rounded border border-zinc-700 px-1.5 py-0.5 text-[11px] text-zinc-300">{s.status}</span>
+        {s.model && (
+          <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[11px] text-zinc-300" title={s.model}>
+            {modelName(s.model)}
+          </span>
+        )}
         <span className="text-[11px] text-zinc-400">{elapsed(s)}</span>
         <StopButton s={s} />
         <span className="ml-auto hidden font-mono text-[11px] text-zinc-500 sm:inline">{s.id}</span>

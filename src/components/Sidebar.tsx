@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { SessionStatus, SessionSummary } from '../../server/types';
-import { STATUS_COLOR, dayLabel, elapsed, k, label, stepLabel } from '../lib/format';
+import { STATUS_COLOR, dayLabel, elapsed, k, label, modelName, stepLabel } from '../lib/format';
 import { inputStyle } from '../setup/ui';
 
 const GROUPS: { title: string; statuses: SessionStatus[]; byDay?: boolean }[] = [
@@ -33,6 +33,7 @@ function groupByDay(rows: SessionSummary[]) {
 
 function Row({ s, active, onSelect }: { s: SessionSummary; active: boolean; onSelect: () => void }) {
   const step = s.watcher && stepLabel(s.watcher.kind, s.watcher.state?.step);
+  const model = modelName(s.model);
   return (
     <button
       onClick={onSelect}
@@ -46,6 +47,11 @@ function Row({ s, active, onSelect }: { s: SessionSummary; active: boolean; onSe
       </div>
       {s.title && <div className="mt-0.5 truncate pl-4 text-xs text-zinc-400">{s.title}</div>}
       <div className="mt-0.5 flex gap-2 pl-4 text-[11px] text-zinc-400">
+        {model && (
+          <span className="text-zinc-300" title={s.model}>
+            {model}
+          </span>
+        )}
         <span>ctx {k(s.contextTokens)}</span>
         <span>↑{k(s.usage.output)}</span>
         {s.agents.length > 0 && <span>{s.agents.length} agents</span>}
