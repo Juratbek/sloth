@@ -1,12 +1,19 @@
+import { useState } from 'react';
 import { STACK, type StackChoice, type StackId } from '../../server/config-types';
 import type { StackTool } from '../../server/types';
+import useSession from '../hooks/use-session';
+import { navigate } from '../hooks/use-route';
 import { useInstallStack, useStack } from '../hooks/use-stack';
+import { pathFor } from '../lib/routes';
 import { Button, Error } from '../setup/ui';
+import Chat from './Chat';
+import SudoDialog from './SudoDialog';
 
 /** The stack the sessions' app needs, in the wizard and in Settings: what the checkout needs, what is missing, one button to install it. */
 export default function StackPanel({ root, value, onChange }: { root?: string; value: StackChoice; onChange: (v: StackChoice) => void }) {
   const { data, error, isFetching, refetch } = useStack(root);
   const install = useInstallStack(root);
+  const [asking, setAsking] = useState(false);
   const auto = value === 'auto';
   const detected = data?.tools.filter((t) => t.detected).map((t) => t.id) ?? [];
   const required = auto ? detected : value;
@@ -34,8 +41,13 @@ export default function StackPanel({ root, value, onChange }: { root?: string; v
         </div>
       )}
       {data && !data.installer && missing.length > 0 && <p className="text-xs text-amber-400">{data.installerError}</p>}
+      {data?.sudoPassword && missing.length > 0 && (
+        <Button onClick={() => setAsking(true)}>Install with a password…</Button>
+      )}
+      {asking && <SudoDialog root={root} ids={missing.map((t) => t.id)} onClose={() => setAsking(false)} />}
       {problem && <Error>{problem}</Error>}
-      {running && (
+      {data?.install.sessionId && <Session id={data.install.sessionId} what={data.install.what} running={running} />}
+      {running && !data?.install.sessionId && (
         <pre className="max-h-40 overflow-auto rounded-md border border-zinc-800 bg-zinc-950 p-2 text-[11px] leading-snug text-zinc-400">
           {`Installing ${data?.install.what ?? ''} with ${data?.installer ?? ''}…\n${data?.install.output ?? ''}`}
         </pre>
@@ -58,6 +70,35 @@ export default function StackPanel({ root, value, onChange }: { root?: string; v
                 ? 'Everything required is installed.'
                 : `${missing.length} of ${required.length} missing.`}
         </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The AI session doing the installing, right here on the page — the same transcript the monitor shows,
+ * in a box that scrolls. A missing transcript means claude has not written its first line yet.
+ */
+function Session({ id, what, running }: { id: string; what?: string; running: boolean }) {
+  const { data } = useSession(id, running ? 2_000 : 30_000);
+  const at = pathFor('monitor', id);
+  return (
+    <div className="overflow-hidden rounded-md border border-zinc-800">
+      <div className="flex items-center gap-2 border-b border-zinc-800 px-3 py-1.5 text-[11px] text-zinc-400">
+        <span>{running ? `AI session installing ${what ?? 'the stack'}…` : `AI session — ${what ?? 'the stack'}`}</span>
+        <a
+          href={at}
+          onClick={(e) => {
+            e.preventDefault();
+            navigate(at);
+          }}
+          className="ml-auto text-sky-400 hover:underline"
+        >
+          Open session
+        </a>
+      </div>
+      <div className="flex max-h-96 flex-col">
+        {data ? <Chat messages={data.messages} live={data.live} /> : <p className="px-3 py-2 text-xs text-zinc-400">Starting…</p>}
       </div>
     </div>
   );

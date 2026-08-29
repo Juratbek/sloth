@@ -10,7 +10,8 @@ export default function StackSection({ draft, patch }: SectionProps) {
         What the app needs on this machine so a session can boot it, verify the change and leave a preview. Sloth can install
         PostgreSQL, Redis, Node.js, Python and Java — with Homebrew here, apt-get on Debian / Ubuntu / WSL. <em>Detect</em> reads
         the checkout at every start; <em>choose by hand</em> pins the list. Whatever is missing is installed when Sloth starts,
-        or now, with the button.
+        or now, with the button. On Linux Sloth asks for the sudo password once — it goes into a sudoers rule for apt-get and
+        nothing else — and then installs through an AI session you can watch here.
       </p>
       <StackPanel value={draft.stack} onChange={(stack) => patch({ stack })} />
     </div>

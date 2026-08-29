@@ -25,3 +25,17 @@ export function useInstallStack(root?: string) {
     onSuccess: (data) => queryClient.setQueryData(key(root), data),
   });
 }
+
+/**
+ * Spends the sudo password on `/etc/sudoers.d/sloth` and installs what is missing through an AI
+ * session. The password is a mutation variable, which react-query keeps until the mutation is reset —
+ * `SudoDialog` resets it the moment the call settles, so it does not linger in the query cache.
+ */
+export function useUnlockStack(root?: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { password: string; ids: StackId[] }) =>
+      postJson<StackStatus>(`/api/stack/unlock${root ? `?root=${encodeURIComponent(root)}` : ''}`, v),
+    onSuccess: (data) => queryClient.setQueryData(key(root), data),
+  });
+}

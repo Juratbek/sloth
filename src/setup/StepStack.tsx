@@ -12,7 +12,8 @@ export default function StepStack({ draft, onBack, onContinue }: { draft: Draft;
       <p className="text-sm text-zinc-400">
         A session boots the app to verify its change and leaves it up as a preview — which needs the app's database and runtime on
         this machine. Sloth reads the checkout to see what that is and installs what is missing (Homebrew here, apt-get on Debian /
-        Ubuntu); every start of Sloth installs whatever is still missing.
+        Ubuntu); every start of Sloth installs whatever is still missing. On Linux it asks for the sudo password once, keeps none
+        of it, and installs through an AI session you can watch here.
       </p>
       <StackPanel root={draft.runnerRoot} value={stack} onChange={setStack} />
       <div className="flex gap-2">

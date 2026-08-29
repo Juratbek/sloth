@@ -113,12 +113,19 @@ and runtime on the machine Sloth runs on. Sloth installs them: the wizard's *Sta
 whatever is still missing** (`ensureStack`, logged as `stack: …` in `watcher.log`). The stack Sloth can
 install is fixed — **PostgreSQL, Redis, Node.js, Python, Java** — with Homebrew on macOS (or Linuxbrew), or
 `apt-get` on Debian / Ubuntu / WSL when `sudo -n` works; anywhere else the log names the command to run by
-hand. PostgreSQL is left running as a service, with the user Sloth runs as able to `createdb`. With
+hand. Where apt is there but `sudo -n` is refused — the usual Linux box, Sloth running as an ordinary user —
+the page offers **Install with a password…**: the sudo password of that user is typed once, spent on
+`/etc/sudoers.d/sloth` (`apt-get`, `service`, `systemctl` and `createuser` without a password, nothing else)
+and forgotten — never stored, never logged, never given to a session. The install itself then runs as an **AI
+session**, `/sloth:stack <ids>` on the implement model, whose transcript the page shows while it works; the
+boot-time `ensureStack` keeps running its fixed list of commands, since nobody is watching a page there.
+PostgreSQL is left running as a service, with the user Sloth runs as able to `createdb`. With
 `stack: "auto"` the checkout is read at every start: `package.json` → Node, `pyproject.toml` /
 `requirements.txt` → Python, `pom.xml` / Gradle → Java, and a compose file, `.env.example`, manifest or
 README that names PostgreSQL / Redis → those (the root and one level under `apps/`, `packages/`, `services/`).
-Sessions get the list as `SLOTH_STACK`. `GET /api/stack` (`?root=` for another checkout) and
-`POST /api/stack/install` (`{ids}`) are the endpoints, local-only like the rest of setup.
+Sessions get the list as `SLOTH_STACK`. `GET /api/stack` (`?root=` for another checkout),
+`POST /api/stack/install` (`{ids}`, `{ai: true}` for the session) and `POST /api/stack/unlock`
+(`{password, ids}`) are the endpoints, local-only like the rest of setup.
 
 ## Configuration
 

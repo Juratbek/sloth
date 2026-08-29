@@ -41,13 +41,16 @@ export function ensureTrust(root: string): void {
  * session_id files; `sessionDir` is what the session itself works in (they differ only for a status
  * reply, which reads the issue's previous run directory but must not overwrite its pid). `model` is
  * the one configured for the agent (`models` in the config). `chrome` attaches the Claude in Chrome
- * extension — only implement sessions need a browser, and its tools cost context.
+ * extension — only implement sessions need a browser, and its tools cost context. Exported for the
+ * stack install session (`stack-session.ts`), which is no board run but starts `claude` the same way.
  */
 interface StartOptions {
   model: string;
   chrome?: boolean;
+  /** Extra environment on top of `sessionEnv` — the stack install session names what it has to install. */
+  env?: NodeJS.ProcessEnv;
 }
-function start(bookDir: string, sessionDir: string, prompt: string, target: Target, logFile: string, options: StartOptions): void {
+export function start(bookDir: string, sessionDir: string, prompt: string, target: Target, logFile: string, options: StartOptions): void {
   const c = cfg();
   const { model, chrome = false } = options;
   // A status reply borrows the issue's directory read-only — it must not conjure one that never ran.
@@ -65,7 +68,7 @@ function start(bookDir: string, sessionDir: string, prompt: string, target: Targ
     ['-p', prompt, '--plugin-dir', PLUGIN_DIR, '--session-id', sessionId, '--model', model,
       '--no-chrome', ...(mcp ? ['--mcp-config', mcp] : []),
       '--dangerously-skip-permissions', '--append-system-prompt', APPEND_PROMPT],
-    { cwd: c.runnerRoot, detached: true, stdio: ['ignore', fd, fd], env: sessionEnv(sessionDir, target, model, !!mcp) },
+    { cwd: c.runnerRoot, detached: true, stdio: ['ignore', fd, fd], env: { ...sessionEnv(sessionDir, target, model, !!mcp), ...options.env } },
   );
   fs.closeSync(fd);
   if (child.pid) write(path.join(bookDir, 'pid'), String(child.pid));
