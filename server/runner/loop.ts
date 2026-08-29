@@ -73,8 +73,10 @@ async function runTick({ board = false, comments: wantComments = false, dryRun =
     // The webhook hears about all of it even while paused: sessions keep running, so they keep parking.
     await boardEvents(items);
     if (userPaused) return;
-    await failedChecks(items);
+    // The review first: a card in Code Review is finished work waiting on a short look, so it goes ahead
+    // of everything that starts a build — a red check, a stranded card, an order, the pickup column.
     await reviews(items);
+    await failedChecks(items);
     await handover(items);
     await autoMerge(items);
     await retryStranded(items);

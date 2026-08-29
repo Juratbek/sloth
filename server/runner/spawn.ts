@@ -109,11 +109,14 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
 /**
  * Trigger 4: the review of one PR version — `/sloth:review <pr> final` on `models.final`: the verdict is
  * always posted on the PR; a pass labels the wired issue `Fable: approved` and moves its card to Approved,
- * a fail removes that label and sends the card back to In Progress.
+ * a fail removes that label and sends the card back to In Progress. The review is Sloth's first priority:
+ * it is held by the machine alone, never by the session caps — a card in Code Review is work that is done
+ * and waiting, and a short read-only look must not queue behind the hour-long sessions that build. It
+ * still counts as a session, so those queue behind it instead.
  */
 export function launchApproved(pr: number, issue: number): boolean {
   const c = cfg();
-  const why = held();
+  const why = machineHold();
   if (why) {
     log(`review PR #${pr} queued (${why})`);
     return false;

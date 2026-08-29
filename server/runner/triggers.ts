@@ -132,9 +132,11 @@ export async function reap(): Promise<void> {
 }
 
 /**
- * Trigger 4 — the review. Every Code Review card with an open, non-draft wired PR gets `/sloth:review <pr>
- * final` on `models.final`, once per PR head: Sloth's own PR (its session's reviewer loop is not a second
- * opinion) and a human's alike, `Sloth: skip` or not, a GitHub approval or not — the column is the signal.
+ * Trigger 4 — the review, and Sloth's first priority: it runs ahead of every other trigger that starts a
+ * session, and `launchApproved` is held by the machine alone, never by the session caps. Every Code Review
+ * card with an open wired PR — draft or ready — gets `/sloth:review <pr> final` on `models.final`, once per
+ * PR head: Sloth's own PR (its session's reviewer loop is not a second opinion) and a human's alike,
+ * `Sloth: skip` or not, a GitHub approval or not, a draft or not — the column is the signal.
  * The verdict lands on the PR either way; a pass labels the issue `Fable: approved` and moves the card to
  * Approved, where a human tests it, and a fail sends it back to In Progress, where trigger 2 relaunches the
  * session on the findings (a rejected skipped card keeps its label, so the human keeps it). The marker of

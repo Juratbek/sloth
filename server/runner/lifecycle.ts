@@ -171,20 +171,22 @@ async function merge(pr: number, sha: string): Promise<void> {
  * Trigger 8 — a PR that passed its review is merged, with the `gh pr merge` method in `autoMerge`. Off
  * unless the user set one: it merges as soon as the review passed, so it skips the human test in Approved,
  * which is the last thing a human might want to keep. Everything has to line up on the *current* head — the
- * pass (`state/approved/<pr>-<sha>` plus the label), no review still running, green or absent checks, and a
- * clean merge — so a push after the pass, a red check or a conflict all hold the merge until the card has
- * been through trigger 4 (or 7) again.
+ * pass (`state/approved/<pr>-<sha>` plus the label), no review still running, green or absent checks, a
+ * clean merge and a PR that is no draft — so a push after the pass, a red check or a conflict all hold the
+ * merge until the card has been through trigger 4 (or 7) again, and a draft holds it until someone marks
+ * it ready.
  */
 export async function autoMerge(board: BoardItem[]): Promise<void> {
   const c = cfg();
   const column = c.statusField.columns.approved;
   if (!c.autoMerge || !column.id) return;
   const issues = board.filter((i) => i.status === column.name && i.labels.includes(APPROVED_LABEL)).map((i) => i.number);
-  for (const { pr, sha, checks, mergeable } of await wiredPrs(issues)) {
+  for (const { pr, sha, checks, mergeable, draft } of await wiredPrs(issues)) {
     const head = `${pr}-${sha}`;
     if (!fs.existsSync(statePath(MARKERS.approved, head)) || dirAlive(approvedDir(pr))) continue;
     if (fs.existsSync(statePath('merged', head)) || fs.existsSync(statePath('merge-failed', head))) continue;
-    if (checks === 'FAILURE') say(head, `PR #${pr} is not merged: its checks fail`);
+    if (draft) say(head, `PR #${pr} is not merged: it is still a draft`);
+    else if (checks === 'FAILURE') say(head, `PR #${pr} is not merged: its checks fail`);
     else if (mergeable === 'CONFLICTING') say(head, `PR #${pr} is not merged: it conflicts with its base`);
     else if (checks !== 'PENDING' && mergeable === 'MERGEABLE') await merge(pr, sha);
   }
