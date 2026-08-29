@@ -3,6 +3,7 @@ import path from 'node:path';
 import { cfg } from '../config';
 import { EXTRA_DIRS } from '../install';
 import { requiredStack } from '../stack-detect';
+import { ASSETS_BRANCH } from './browser';
 import { knownColumns } from './columns';
 import { nowSec } from './log';
 import { helpMentions } from './notify';
@@ -32,6 +33,8 @@ export function sessionEnv(dir: string, target: Target, model: string, chrome: b
     ...process.env,
     PATH: [...new Set([...(process.env.PATH ?? '').split(':'), ...PATH_EXTRA])].filter(Boolean).join(':'),
     SLOTH_SESSION_DIR: dir,
+    SLOTH_SCREENSHOTS_DIR: path.join(dir, 'screenshots'),
+    SLOTH_ASSETS_BRANCH: ASSETS_BRANCH,
     ...(target.issue ? { SLOTH_ISSUE: String(target.issue) } : {}),
     ...(target.pr ? { SLOTH_PR: String(target.pr) } : {}),
     SLOTH_REPO: c.repo,

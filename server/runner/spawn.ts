@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { PLUGIN_DIR, cfg } from '../config';
 import { moveCard } from './board';
+import { mcpConfig } from './browser';
 import { run } from './gh';
 import { isDry, log, remove, write } from './log';
 import { stopPreview } from './preview';
@@ -52,12 +53,15 @@ function start(bookDir: string, sessionDir: string, prompt: string, target: Targ
   ensureTrust(c.runnerRoot);
   const sessionId = randomUUID();
   write(path.join(bookDir, 'session_id'), sessionId);
+  // No browser at all unless one was asked for and this machine has Chrome: the session then knows it has none.
+  const mcp = chrome ? mcpConfig(bookDir, path.join(sessionDir, 'screenshots')) : undefined;
   const fd = fs.openSync(logFile, 'a');
   const child = spawn(
     'claude',
     ['-p', prompt, '--plugin-dir', PLUGIN_DIR, '--session-id', sessionId, '--model', model,
-      chrome ? '--chrome' : '--no-chrome', '--dangerously-skip-permissions', '--append-system-prompt', APPEND_PROMPT],
-    { cwd: c.runnerRoot, detached: true, stdio: ['ignore', fd, fd], env: sessionEnv(sessionDir, target, model, chrome) },
+      '--no-chrome', ...(mcp ? ['--mcp-config', mcp] : []),
+      '--dangerously-skip-permissions', '--append-system-prompt', APPEND_PROMPT],
+    { cwd: c.runnerRoot, detached: true, stdio: ['ignore', fd, fd], env: sessionEnv(sessionDir, target, model, !!mcp) },
   );
   fs.closeSync(fd);
   if (child.pid) write(path.join(bookDir, 'pid'), String(child.pid));

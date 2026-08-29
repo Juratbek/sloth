@@ -71,6 +71,16 @@ ambiguous.
    features nobody asked for. A small refactor that directly enables the fix is fine, not "unnecessary".
 4. **Checks** — `gh pr checks <N> --repo "$SLOTH_REPO"`; a failing required check is a bug: "OK to merge" is
    no. Say which check failed and why in the review body; a check still running is not a failure.
+5. **Proof** — for a PR on a `sloth/issue-*` branch (Sloth's own): if the diff changes what a user sees —
+   screens, components, templates, styles, copy — the body must have a `## Screenshots` section with at least
+   one image per changed screen, each linking under `https://github.com/$SLOTH_REPO/blob/$SLOTH_ASSETS_BRANCH/`.
+   Check one is really there:
+   ```bash
+   gh api "repos/$SLOTH_REPO/contents/<path>?ref=$SLOTH_ASSETS_BRANCH" --jq .sha    # a 404 is a dead image
+   ```
+   A missing section, `No screen changed` on a diff that clearly changes one, or a dead image is an **unmet
+   requirement**: "OK to merge" is no. `No browser attached to this session.` is accepted as written. On a PR
+   from any other branch screenshots are welcome, never required.
 
 ## 4. Comment on the PR — whenever "OK to merge" is no, and always in final mode
 
@@ -173,8 +183,9 @@ real gaps or scope creep; 3–4 partial or introduces bugs; 0–2 does not resol
 4. "OK to merge" is **no** whenever the PR introduces a bug or fails to resolve its wired issue.
 5. Base every claim on the actual diff and issue text — cite `file:line` for each bug, in the block and in
    the comment.
-6. A missing image, gif or video is **never** a finding and never lowers the rating: Sloth runs headless, so
-   PRs describe verification and design fidelity in words.
+6. A Sloth PR that changes a screen proves it with `## Screenshots` (Assess 5); a missing or dead screenshot
+   is an unmet requirement. On a human's PR an image is **never** required and its absence never lowers the
+   rating.
 7. The `Fable: approved` label is touched in final mode only, on the wired issue only, and mirrors this
    review's "OK to merge": yes adds it, no removes it. The label never stands alone: the review body on
    the PR says the same thing in words, whichever way the verdict went.
