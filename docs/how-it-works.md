@@ -103,7 +103,9 @@ Every comment Sloth writes starts with `**Sloth:**`.
 - **At most 3 sessions work at once** (and 5 alive, counting the ones waiting for an answer).
   Extra work waits for the next tick.
 - **A crashed session is restarted.** A card in *In Progress* with no session is relaunched, at
-  most twice in a row. After that it goes to *Sloth needs help*.
+  most twice in a row. After that it goes to *Sloth needs help*, and the comment says how each run
+  ended — the step it was on and what it reported on its way out (a session out of time says what
+  it left undone) — so the reason is on the issue, not only in `run.log`.
 - **Claude usage limit reached?** Sloth waits 30 minutes and tries again. The card keeps its place.
 - **Pause** in the header stops Sloth from starting anything new. Running sessions finish, comments
   are still answered, parked cards are still announced. Press **Resume** to continue.
