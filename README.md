@@ -274,4 +274,4 @@ in the session's header; the next one gets a fresh key.
 Source files stay under 200 lines. Every shell-out is `execFile` / `spawn` with an argv array — no
 shell strings. `useEffect` only lives in a dedicated hook that subscribes to something outside React.
 `pnpm lint` (tsc), `pnpm test` (vitest — `test/`, every `gh` call mocked, a throwaway `$HOME`, never the real
-board) and `pnpm build`; CI runs all three on every PR. MIT licensed.
+board) and `pnpm build` — run all three before a PR. MIT licensed.
