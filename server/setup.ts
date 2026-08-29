@@ -113,13 +113,15 @@ async function clone(body: any): Promise<{ ok: boolean; path?: string; error?: s
   return r.ok ? { ok: true, path: target } : { ok: false, error: notFound(r.err, 'gh') };
 }
 
-const ROLES: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved', 'done'];
+const ROLES: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved', 'qa', 'done'];
 
 /** Fills in the ids of columns the wizard asked Sloth to create, creating them on the board first. */
 async function withColumns(body: unknown): Promise<unknown> {
   const b = (body ?? {}) as any;
   const columns = (b.statusField?.columns ?? {}) as Record<string, ColumnRef | undefined>;
-  if (!b.statusField?.id || ROLES.every((role) => columns[role]?.id)) return body;
+  // QA is opt-in: left blank it is not a column to create, so nothing is missing on its account.
+  const settled = (role: ColumnRole) => !!columns[role]?.id || (role === 'qa' && !columns.qa?.name);
+  if (!b.statusField?.id || ROLES.every(settled)) return body;
   const wanted = Object.fromEntries(
     ROLES.map((role) => [role, { id: columns[role]?.id ?? '', name: columns[role]?.name ?? '' }]),
   ) as Record<ColumnRole, ColumnRef>;

@@ -4,7 +4,7 @@ import { cfg } from '../config';
 import { run } from './gh';
 import { isDry, log, nowSec, readNumber, remove, write } from './log';
 import { statePath } from './markers';
-import { issueDir, dirAlive, issueAlive, runDirs } from './session-dirs';
+import { dirAlive, dirOf, issueDir, runDirs, type Kind } from './session-dirs';
 
 /**
  * Sloth never forgets on its own: every run leaves a session directory, a worktree and a handful of
@@ -56,12 +56,15 @@ async function pruneWorktrees(cutoff: number): Promise<void> {
   }
   let removed = 0;
   for (const name of names) {
-    const issue = Number(/^issue-(\d+)$/.exec(name)?.[1]);
-    if (!issue) continue;
+    // `issue-<n>` is an implement run's checkout, `qa-<n>` the QA sweep's test of the same issue.
+    const m = /^(issue|qa)-(\d+)$/.exec(name);
+    const issue = Number(m?.[2]);
+    if (!m || !issue) continue;
+    const kind = m[1] as Kind;
     const dir = path.join(c.worktreesDir, name);
-    if (issueAlive(issue) || previewing(issue) || newest(dir) > cutoff) continue;
+    if (dirAlive(dirOf(kind, issue)) || (kind === 'issue' && previewing(issue)) || newest(dir) > cutoff) continue;
     if (isDry()) {
-      log(`dry-run: would remove the worktree of #${issue}`);
+      log(`dry-run: would remove the worktree of #${issue}${kind === 'qa' ? ' (its QA test)' : ''}`);
       continue;
     }
     const r = await run('git', ['-C', c.runnerRoot, 'worktree', 'remove', dir, '--force'], 120_000);

@@ -23,8 +23,9 @@ Every id comes from the environment the server set for this session — never ha
 | `SLOTH_COL_NEEDS_HELP_ID` / `_NAME` | Parked, waiting for a human (may be empty) |
 | `SLOTH_COL_CODE_REVIEW_ID` / `_NAME` | Handed over: the server runs `/sloth:review <pr> final` on every card here |
 | `SLOTH_COL_APPROVED_ID` / `_NAME` | Passed that review; a human tests it here. Only a passing `/sloth:review … final` moves a card in (may be empty) |
-| `SLOTH_COL_DONE_ID` / `_NAME` | Where a closed issue's card ends up — the server moves it; a session never needs to (may be empty) |
-| `SLOTH_COLUMNS` | **Every** Status column on the board, in board order: JSON `[{"id","name"}]` — the six above and all the others (Planning, Backlog…) |
+| `SLOTH_COL_QA_ID` / `_NAME` | The merged fixes the daily QA sweep tests on the QA branch (`/sloth:qa`); the server moves a card out on the verdict, a session never does (may be empty) |
+| `SLOTH_COL_DONE_ID` / `_NAME` | Where a closed issue's card ends up, and a card that passed the QA sweep — the server moves it; a session never needs to (may be empty) |
+| `SLOTH_COLUMNS` | **Every** Status column on the board, in board order: JSON `[{"id","name"}]` — the seven above and all the others (Planning, Backlog…) |
 
 ```bash
 OWNER=${SLOTH_REPO%%/*}; NAME=${SLOTH_REPO##*/}
@@ -93,7 +94,7 @@ Keep `ITEM_ID` for the rest of the run; every later move reuses it.
 
 ## Move a card to any column by name
 
-A human may ask for a column that is not one of Sloth's five ("move it to Planning", "put it in Backlog").
+A human may ask for a column that is not one of Sloth's own ("move it to Planning", "put it in Backlog").
 Every column is in `$SLOTH_COLUMNS`; match the name case-insensitively and move as above:
 
 ```bash

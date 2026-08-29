@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { Overview } from '../../server/types';
 import useFollowBottom from '../hooks/use-follow-bottom';
+import useQaRun from '../hooks/use-qa-run';
 import IssuesTable from './IssuesTable';
 import UsageChart from './UsageChart';
 
@@ -11,13 +12,28 @@ function queued(logTail: string[]): string[] {
     const target = /(?:(?:final )?review PR )?#(\d+)/.exec(line)?.[0];
     if (!target) continue;
     if (/queued \((slots full|machine busy)/.test(line)) pending.add(target);
-    else if (/^\[[^\]]+\] (launch|review PR|final review PR) /.test(line)) pending.delete(target);
+    else if (/^\[[^\]]+\] (launch|launch QA|review PR|final review PR) /.test(line)) pending.delete(target);
   }
   return [...pending];
 }
 
+/** The QA sweep's line on the panel: its column, when it runs, and a button that runs it now. Nothing without a column. */
+function QaSweep({ column, at }: { column: string; at: string }) {
+  const run = useQaRun();
+  return (
+    <span>
+      {' '}
+      · QA sweep of {column} {at ? `daily at ${at}` : 'not scheduled'}{' '}
+      <button onClick={() => run.mutate()} disabled={run.isPending} className="text-sky-400 hover:underline disabled:text-zinc-600" title="Test every card in the QA column now">
+        {run.isPending ? 'sweeping…' : 'sweep now'}
+      </button>
+      {run.error && <span className="text-red-400"> {String(run.error)}</span>}
+    </span>
+  );
+}
+
 export default function WatcherPanel({ overview, onSelect }: { overview: Overview; onSelect: (id: string) => void }) {
-  const { watcher } = overview;
+  const { watcher, config } = overview;
   const pending = useMemo(() => queued(watcher.logTail), [watcher.logTail]);
   const { ref: logRef } = useFollowBottom<HTMLPreElement>(true, watcher.logTail.length);
 
@@ -47,6 +63,7 @@ export default function WatcherPanel({ overview, onSelect }: { overview: Overvie
           <h3 className="text-[10px] font-semibold tracking-wide text-zinc-400 uppercase">watcher log</h3>
           <p className="text-[11px] text-zinc-500">
             seen comments {watcher.seen} · reviewed heads {watcher.reviewed}
+            {config.qaColumn && <QaSweep column={config.qaColumn} at={config.qaAt} />}
           </p>
           <pre
             ref={logRef}

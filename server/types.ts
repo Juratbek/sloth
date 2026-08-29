@@ -61,7 +61,8 @@ export interface PreviewState {
 }
 export interface WatcherSession {
   name: string;
-  kind: 'issue' | 'review' | 'approved';
+  /** `issue` implements, `approved` reviews a PR (`review` is that kind's older name), `qa` tests a card on the QA branch. */
+  kind: 'issue' | 'review' | 'approved' | 'qa';
   target: number;
   pid?: number;
   alive: boolean;
@@ -144,6 +145,9 @@ export interface MonitorConfig {
   maxActive: number;
   maxAlive: number;
   models: AgentModels;
+  /** The QA sweep as configured: its column (empty: none) and its time of day (empty: not scheduled). */
+  qaColumn: string;
+  qaAt: string;
 }
 
 /** The last reading of the machine's memory, CPU and disk (`runner/machine.ts`), taken before a tick may launch. */

@@ -5,6 +5,7 @@ import { broadcast, sse, watchAll } from './events';
 import { startLoop, stopLoop, tick } from './runner/loop';
 import { isPaused, setPaused } from './runner/pause';
 import { closeTunnels, stopPreview } from './runner/preview';
+import { openSweep } from './runner/qa';
 import { stop as stopRun } from './runner/triggers';
 import { install } from './install';
 import { guard, isLocal, remoteLink, rotateToken, sameOrigin, startTunnel, stopTunnel } from './remote';
@@ -123,6 +124,11 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       const dryRun = url.searchParams.get('dry') === '1';
       await tick({ board: true, comments: true, dryRun });
       body = { ok: true, dryRun };
+    } else if (p === '/api/qa/run' && req.method === 'POST') {
+      // The QA sweep now, whatever the clock says; the board tick that follows starts its sessions.
+      const sweep = await openSweep(true);
+      if (sweep) await tick({ board: true });
+      body = { ok: !!sweep, sweep };
     } else if ((p === '/api/pause' || p === '/api/resume') && req.method === 'POST') {
       // Pause / resume the launching triggers; running sessions and replies are untouched.
       setPaused(p === '/api/pause');

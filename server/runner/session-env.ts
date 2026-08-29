@@ -25,14 +25,24 @@ export interface Target {
   pr?: number;
 }
 
-export function sessionEnv(dir: string, target: Target, model: string, chrome: boolean): NodeJS.ProcessEnv {
+/** What differs between the kinds of run: the QA sweep's session has its own budget and its own worktree name. */
+export interface SessionExtras {
+  budgetMinutes?: number;
+  /** The run's worktree under `worktreesDir` — `issue-<n>` unless said otherwise. */
+  worktree?: string;
+}
+
+export function sessionEnv(dir: string, target: Target, model: string, chrome: boolean, extras: SessionExtras = {}): NodeJS.ProcessEnv {
   const c = cfg();
   const col = c.statusField.columns;
   const start = nowSec();
+  const budget = extras.budgetMinutes ?? c.budgetMinutes;
+  const worktree = extras.worktree ?? (target.issue ? `issue-${target.issue}` : '');
   return {
     ...process.env,
     PATH: [...new Set([...(process.env.PATH ?? '').split(':'), ...PATH_EXTRA])].filter(Boolean).join(':'),
     SLOTH_SESSION_DIR: dir,
+    ...(worktree ? { SLOTH_WORKTREE: path.join(c.worktreesDir, worktree) } : {}),
     SLOTH_SCREENSHOTS_DIR: path.join(dir, 'screenshots'),
     SLOTH_ASSETS_BRANCH: ASSETS_BRANCH,
     ...(target.issue ? { SLOTH_ISSUE: String(target.issue) } : {}),
@@ -52,8 +62,11 @@ export function sessionEnv(dir: string, target: Target, model: string, chrome: b
     SLOTH_COL_CODE_REVIEW_NAME: col.codeReview.name,
     SLOTH_COL_APPROVED_ID: col.approved.id,
     SLOTH_COL_APPROVED_NAME: col.approved.name,
+    SLOTH_COL_QA_ID: col.qa.id,
+    SLOTH_COL_QA_NAME: col.qa.name,
     SLOTH_COL_DONE_ID: col.done.id,
     SLOTH_COL_DONE_NAME: col.done.name,
+    SLOTH_QA_BRANCH: c.qa.branch,
     SLOTH_COLUMNS: JSON.stringify(knownColumns()),
     SLOTH_RUNNER_ROOT: c.runnerRoot,
     SLOTH_WORKTREES_DIR: c.worktreesDir,
@@ -69,8 +82,8 @@ export function sessionEnv(dir: string, target: Target, model: string, chrome: b
     SLOTH_PREVIEW_HOURS: String(c.previewHours),
     SLOTH_STACK: requiredStack().join(' '),
     SLOTH_START: String(start),
-    SLOTH_DEADLINE: String(start + c.budgetMinutes * 60),
-    SLOTH_BUDGET_MIN: String(c.budgetMinutes),
+    SLOTH_DEADLINE: String(start + budget * 60),
+    SLOTH_BUDGET_MIN: String(budget),
     SLOTH_WAIT_HOURS: String(c.waitHours),
     SLOTH_REVIEW_ROUNDS: String(c.reviewRounds),
     SLOTH_BOT_PREFIX: c.botPrefix,

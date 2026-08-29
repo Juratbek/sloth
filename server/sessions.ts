@@ -73,7 +73,7 @@ function listSessions(): { sessions: SessionSummary[]; orphans: WatcherSession[]
   const sessions = files.map((f) => summary(path.join(cfg().transcriptsDir, f))).sort(newestFirst);
   const orphans: WatcherSession[] = [];
   for (const dir of listSessionDirs()) {
-    const wanted: SessionKind = dir.kind === 'issue' ? 'sloth:implement' : 'sloth:review';
+    const wanted: SessionKind = dir.kind === 'issue' ? 'sloth:implement' : dir.kind === 'qa' ? 'sloth:qa' : 'sloth:review';
     const s =
       sessions.find((x) => x.id === dir.sessionId) ??
       sessions.find((x) => !x.watcher && x.kind === wanted && x.target === dir.target);
@@ -120,6 +120,8 @@ function monitorConfig(): Overview['config'] {
     maxActive: c.maxActive,
     maxAlive: c.maxAlive,
     models: c.models,
+    qaColumn: c.statusField.columns.qa.name,
+    qaAt: c.qa.at,
   };
 }
 

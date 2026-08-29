@@ -4,11 +4,14 @@ import { cfg } from '../config';
 import { readFile, readNumber } from './log';
 
 /**
- * `approved` is trigger 4's `/sloth:review <pr> final`, the review a Code Review card gets. `review` was the
- * plain `/sloth:review` an older Sloth ran on human PRs: nothing starts one any more, but its directories
- * still list, count and prune like the rest.
+ * `approved` is trigger 4's `/sloth:review <pr> final`, the review a Code Review card gets; `qa` is trigger
+ * 9's `/sloth:qa <issue>`, the QA sweep's test of one card — named after the issue, but apart from its
+ * implement run, so the two never share a directory or a worktree. `review` was the plain `/sloth:review`
+ * an older Sloth ran on human PRs: nothing starts one any more, but its directories still list, count and
+ * prune like the rest.
  */
-export type Kind = 'issue' | 'review' | 'approved';
+export type Kind = 'issue' | 'review' | 'approved' | 'qa';
+export const KINDS: Kind[] = ['issue', 'review', 'approved', 'qa'];
 
 export interface RunDir {
   name: string;
@@ -21,6 +24,9 @@ export interface RunDir {
 export const dirOf = (kind: Kind, target: number) => path.join(cfg().sessionsDir, `${kind}-${target}`);
 export const issueDir = (issue: number) => dirOf('issue', issue);
 export const approvedDir = (pr: number) => dirOf('approved', pr);
+export const qaDir = (issue: number) => dirOf('qa', issue);
+/** The worktree a run checks out under `worktreesDir`: `issue-12` for an implement run, `qa-12` for its QA test. */
+export const worktreeName = (kind: Kind, target: number) => (kind === 'qa' ? `qa-${target}` : `issue-${target}`);
 
 export function pidAlive(pid: number | undefined): boolean {
   if (!pid) return false;
@@ -45,7 +51,7 @@ export function runDirs(): RunDir[] {
     return [];
   }
   return names.flatMap((name) => {
-    const m = /^(issue|review|approved)-(\d+)$/.exec(name);
+    const m = /^(issue|review|approved|qa)-(\d+)$/.exec(name);
     return m ? [{ name, kind: m[1] as Kind, target: Number(m[2]), dir: path.join(cfg().sessionsDir, name) }] : [];
   });
 }

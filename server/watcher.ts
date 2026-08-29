@@ -40,7 +40,7 @@ export function listSessionDirs(): WatcherSession[] {
     return [];
   }
   return names.flatMap((name): WatcherSession[] => {
-    const m = /^(issue|review|approved)-(\d+)$/.exec(name);
+    const m = /^(issue|review|approved|qa)-(\d+)$/.exec(name);
     if (!m) return [];
     const d = path.join(cfg().sessionsDir, name);
     const pid = num(path.join(d, 'pid')) || undefined;
@@ -62,7 +62,7 @@ export function listSessionDirs(): WatcherSession[] {
     return [
       {
         name,
-        kind: m[1] as 'issue' | 'review' | 'approved',
+        kind: m[1] as WatcherSession['kind'],
         target: Number(m[2]),
         pid,
         alive: pidAlive(pid),

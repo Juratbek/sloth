@@ -29,6 +29,11 @@ const AGENTS: { role: AgentRole; label: string; hint: string; orchestrated?: { l
     hint: "The independent review of every PR in Code Review — Sloth's own and a human's — once per PR head. Its verdict lands on the PR; a pass moves the card to Approved for a human to test, a fail sends it back to In Progress.",
   },
   { role: 'status', label: 'Mentions', hint: 'Answers a mention on an issue or PR when no session is running on it — where is it, why is it waiting.' },
+  {
+    role: 'qa',
+    label: 'QA sweep',
+    hint: 'The session the daily QA sweep starts per card in the QA column: it checks the QA branch out, boots the app and judges the fix from what the browser tester (above) sees.',
+  },
 ];
 
 export function Models({ draft, patch }: SectionProps) {

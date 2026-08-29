@@ -15,6 +15,7 @@ what the commit convention is, how designs are read — all of that comes from t
 | `commands/implement.md` | `/sloth:implement <issue> [order]` — claim → worktree → fix → verify → browser tester + screenshots → PR → reviewer loop → Code Review |
 | `commands/review.md` | `/sloth:review <pr> [feedback-only\|final]` — verdict block, inline comments, card back to In Progress; `final` (the server's review of every Code Review card) always posts the verdict on the PR, and a pass labels the issue `Fable: approved` and moves the card to Approved for a human to test |
 | `commands/status.md` | `/sloth:status <issue> <comment-id>` — answer a mention when no session is running |
+| `commands/qa.md` | `/sloth:qa <issue>` — the daily QA sweep's test of one card: check the QA branch out, boot the app, test the merged fix in the browser, post the findings on the issue, write the verdict for the server |
 | `commands/stack.md` | `/sloth:stack <tool-id…>` — install the project's stack on the machine Sloth runs on and verify it answers |
 | `skills/board/SKILL.md` | Board reads and moves with the ids from the environment, wired-PR lookup, `retry` |
 | `skills/session/SKILL.md` | `state.json`, the inbox, the time budget, the needs-help protocol, teardown |
@@ -28,7 +29,7 @@ git clone https://github.com/Juratbek/sloth.git
 claude --plugin-dir /path/to/sloth/plugin        # loads it for this session only
 ```
 
-Then `/sloth:implement 123`, `/sloth:review 456`, `/sloth:status 123 987654321`, `/sloth:stack redis postgresql`.
+Then `/sloth:implement 123`, `/sloth:review 456`, `/sloth:status 123 987654321`, `/sloth:qa 123`, `/sloth:stack redis postgresql`.
 
 Permanently, once the repository root carries a marketplace entry
 (`.claude-plugin/marketplace.json` with `{"name":"sloth", …, "plugins":[{"name":"sloth","source":"./plugin"}]}` —
@@ -72,12 +73,15 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_COL_NEEDS_HELP_ID` / `_NAME` | Parked, waiting for a human (may be empty) |
 | `SLOTH_COL_CODE_REVIEW_ID` / `_NAME` | Handed over: the server gives every PR here `/sloth:review … final` on the review model, Fable by default |
 | `SLOTH_COL_APPROVED_ID` / `_NAME` | Passed that review; a human tests it here. Only a passing review moves a card in — the server then posts the preview link on the issue (may be empty) |
-| `SLOTH_COL_DONE_ID` / `_NAME` | Where a closed issue's card ends up — the server moves it; a session never needs to (may be empty) |
+| `SLOTH_COL_QA_ID` / `_NAME` | The merged fixes the daily QA sweep tests (`/sloth:qa`); the server moves a card out on the verdict (may be empty) |
+| `SLOTH_COL_DONE_ID` / `_NAME` | Where a closed issue's card ends up, and a card that passed the QA sweep — the server moves it; a session never needs to (may be empty) |
 | `SLOTH_COLUMNS` | Every Status column on the board as JSON `[{"id","name"}]`, Sloth's and the rest, so a session can move a card anywhere a human asks |
+| `SLOTH_QA_BRANCH` | The branch the QA sweep tests; empty means the repository's default branch |
 | `SLOTH_STACK` | The tools the project's app needs on this machine, space-separated (`postgresql redis node …`) |
 | `SLOTH_STACK_INSTALL` | Only on a `/sloth:stack` run: the tools that run has to install — the same list as its arguments |
 | `SLOTH_RUNNER_ROOT` | The checkout sessions run from |
 | `SLOTH_WORKTREES_DIR` | Where per-issue worktrees go — `issue-<n>` under it |
+| `SLOTH_WORKTREE` | This run's own worktree path — `issue-<n>` for an implement run, `qa-<n>` for a QA test |
 | `SLOTH_ADMIN_LOGIN` | The admin — the one login whose orders have no limit (may be empty: nobody is admin) |
 | `SLOTH_DEVELOPER_LOGINS` | Space-separated logins whose orders are followed within the issue they are on (may be empty) |
 | `SLOTH_TESTER_LOGINS` | Space-separated logins that answer questions and ask for status, never order (may be empty) |
@@ -91,7 +95,7 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_ASSETS_BRANCH` | The branch screenshots are pushed to so the PR can embed them (`sloth-assets`); never a code branch |
 | `SLOTH_PREVIEW_HOURS` | How long a finished implement run's app stays up behind a public link on its PR; `0` means previews are off, always tear down |
 | `SLOTH_START`, `SLOTH_DEADLINE` | Epoch seconds: run start, hard deadline |
-| `SLOTH_BUDGET_MIN` | Minutes in a full budget (60) |
+| `SLOTH_BUDGET_MIN` | Minutes in a full budget (60; a QA test gets `qa.budgetMinutes`) |
 | `SLOTH_WAIT_HOURS` | How long a parked session waits (2) |
 | `SLOTH_REVIEW_ROUNDS` | Max reviewer-agent rounds (4) |
 | `SLOTH_BOT_PREFIX` | First line of every comment Sloth writes (`**Sloth:**`) |
@@ -111,6 +115,7 @@ Inside `$SLOTH_SESSION_DIR`:
 | `dev.pid`, `redis.pid`, `demo.db` | Pids / database name of anything the session started, for the server's cleanup |
 | `screenshots/*.png` | The tester's screenshots of the screens it verified; pushed to `$SLOTH_ASSETS_BRANCH` by `publish_shots` (`session` skill) and embedded in the PR's `## Screenshots` |
 | `preview.json` | `{url, login}` — an implement run that handed its PR over with `SLOTH_PREVIEW_HOURS` above 0 leaves its app running and names the one local URL it answers on and how to sign in; the server tunnels it, posts the link on the PR and tears the run down after that many hours |
+| `verdict` | A `/sloth:qa` run's one word — `passed`, `failed` or `inconclusive` — written after its comment on the issue; the server moves the card on it (Done, In Progress, or nowhere) |
 
 The **last message of the transcript is the report** — the monitor shows it.
 
@@ -133,6 +138,11 @@ The **last message of the transcript is the report** — the monitor shows it.
 - A card in Code Review is reviewed by the server (`/sloth:review … final`), Sloth's PR or a human's: a pass moves it to
   Approved, where a human tests it from the preview link; a fail moves it back to In Progress with the findings, and a
   new `/sloth:implement` run on the issue addresses them on the same branch.
+- A `/sloth:qa` run is the daily QA sweep's test of one card: a worktree of `$SLOTH_QA_BRANCH` at its current
+  head (`qa-<n>`, never the issue's own), the app booted the way the project's run skill says, and the tester
+  subagent driving the merged fix as the user the issue is about. It comments the result on the issue —
+  steps, what was seen, screenshots — and writes `verdict`; it moves no card and never asks for help: what it
+  cannot test is `inconclusive`, and the card stays for a human.
 - A `/sloth:stack` run is not a board run: no issue, no card, no worktree, no git. It installs, starts the
   services, verifies each tool answers and reports — with `sudo -n` for `apt-get`, `service` / `systemctl`
   and `createuser` only (the Stack page writes that rule), never a password, never another command.

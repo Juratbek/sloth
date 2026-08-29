@@ -35,6 +35,7 @@ The short version; the tick-by-tick account is in [docs/how-it-works.md](docs/ho
 | 6 | An issue Sloth was working on is **closed** | Moves the card to Done, takes its preview, servers, database and worktree down, and deletes the `sloth/issue-<n>-…` branch of the PR that closed it. A PR closed *without* being merged parks its still-open issue instead |
 | 7 | The checks on a PR **Sloth wrote** are red, its card in Code Review or Approved | Sends the session back to the branch to make them pass — once per commit, keeping the PR. A human's PR is left to its author |
 | 8 | A PR that passed its review is green and merges cleanly | Merges it with the `autoMerge` method — as soon as that is true, so nobody tests it in Approved first. Off by default: merging stays a human's call until you ask for it |
+| 9 | It is `qa.at` o'clock and the QA column holds cards | **The QA sweep**: every card there — a merged fix, deployed to `qa.branch` — gets `/sloth:qa <n>` on `models.qa`, a session of its own that checks the branch out at its current head, boots the app and tests the fix in the browser as the user it concerns. The findings go on the issue with screenshots; a pass moves the card to Done, a fail to In Progress (row 2 then starts an implement run on the findings), an inconclusive test leaves it for a human. Once per card per head, so a passed card is not tested again until the branch moves. Off until a QA column is chosen — then daily at `qa.at`, 20:00 unless changed; **sweep now** on the home panel runs one regardless |
 
 The board is read every 5 minutes, comments every 2; **Tick now** runs both at once. **Pause**
 stops Sloth from starting anything new (running sessions, inbox deliveries, status replies and
@@ -63,8 +64,9 @@ needs-help notifications carry on) and survives a restart.
   *Code Review* (trigger 4 — every PR there is reviewed by another agent on `models.final`, Fable by default; a GitHub
   approval does not skip it, the verdict lands on the PR pass or fail, and a pass labels the issue `Fable: approved` and
   moves the card on), *Approved* (a human tests it there, from the link trigger 5 posts on the issue; without the column
-  a passing card stays in Code Review), and *Done*, where the card
-  of a closed issue lands (trigger 6; without the column the card stays where it is).
+  a passing card stays in Code Review), *QA* (opt-in — the merged fixes the daily sweep tests, trigger 9; a
+  board without a QA step leaves it at *none* and no column is created), and *Done*, where the card
+  of a closed issue lands (trigger 6; without the column the card stays where it is — and so does a card that passed QA).
   Missing columns are created after the pickup column — Done at the end of the board — without dropping any existing option.
 - **Sessions** are detached `claude -p … --plugin-dir <sloth>/plugin` runs in the runner checkout.
   They survive a Sloth restart. `maxActive` may work at once, `maxAlive` including the ones waiting
@@ -97,16 +99,16 @@ needs-help notifications carry on) and survives a restart.
 ├── config.json                     the whole configuration
 ├── watcher.log                     one line per event — the log the UI tails (rotated to .1 past 5 MB)
 ├── runners/<repo>/                 the checkout the sessions run from
-├── worktrees/<repo>/issue-42/      one worktree per issue
-├── sessions/<repo>/                issue-42/, approved-91/ — pid, state.json, inbox/, run.log, preview.json …
+├── worktrees/<repo>/issue-42/      one worktree per issue — and qa-42/ while the QA sweep tests it
+├── sessions/<repo>/                issue-42/, approved-91/, qa-42/ — pid, state.json, inbox/, run.log, preview.json, verdict …
 └── state/                          seen/, approved/, handed/, notified/, finished/, closed/, checks/, merged/,
-                                    merge-failed/ dedupe markers; paused, paused_until, pruned_at
+                                    merge-failed/, qa/ dedupe markers; paused, paused_until, pruned_at, qa_sweep, qa_ran
 ```
 
 ## The plugin
 
-`plugin/` is the Claude Code plugin the sessions run: `/sloth:implement <issue>`, `/sloth:review <pr>`
-and `/sloth:status <issue> <comment-id>`. Nothing needs installing — Sloth passes `--plugin-dir`. To
+`plugin/` is the Claude Code plugin the sessions run: `/sloth:implement <issue>`, `/sloth:review <pr>`,
+`/sloth:status <issue> <comment-id>` and `/sloth:qa <issue>`. Nothing needs installing — Sloth passes `--plugin-dir`. To
 use it yourself: `claude plugin marketplace add Juratbek/sloth && claude plugin install sloth@sloth`.
 The session protocol (environment variables, `state.json`, the inbox) is in [plugin/README.md](plugin/README.md).
 
@@ -148,7 +150,8 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `budgetMinutes` / `waitHours` | `60` / `2` | A session's time budget; how long a parked session waits for an answer |
 | `reviewRounds` / `maxRetries` | `4` / `2` | Reviewer-agent rounds before asking for help; trigger-2 relaunches before parking |
 | `boardSeconds` / `commentSeconds` | `300` / `120` | Poll intervals |
-| `models` | `opus` each, `final: fable`, `orchestrator: fable` | Which model each agent runs on (Settings → *Models*): `implement` (triggers 1–3; with `orchestrator` on, the implementor subagent), `orchestrator` (the implement session when `orchestrator` is on), `tester` (the headless-Chrome subagent that screenshots the change), `reviewer` (the in-session review loop), `final` (trigger 4 — the review every Code Review card gets), `status` (mention replies). An older config's `model` / `approvedModel` still load; its `review` key is ignored |
+| `models` | `opus` each, `final: fable`, `orchestrator: fable` | Which model each agent runs on (Settings → *Models*): `implement` (triggers 1–3; with `orchestrator` on, the implementor subagent), `orchestrator` (the implement session when `orchestrator` is on), `tester` (the headless-Chrome subagent that screenshots the change — the QA sweep's browser runs on it too), `reviewer` (the in-session review loop), `final` (trigger 4 — the review every Code Review card gets), `status` (mention replies), `qa` (trigger 9 — the session that tests one QA card). An older config's `model` / `approvedModel` still load; its `review` key is ignored |
+| `qa` | `{branch: "", at: "20:00", budgetMinutes: 60}` | The daily QA sweep (trigger 9, Settings → *QA sweep*): `at` is the local time of day it starts (`HH:MM`; empty turns it off), `branch` the branch the merged fixes are deployed from and tested on (empty: the default branch), `budgetMinutes` one QA session's own budget. The column it sweeps is the *QA* role in `statusField.columns` — opt-in, chosen in Settings → *Board*; nothing runs without it |
 | `orchestrator` | `true` | Run implement sessions as an orchestrator on `models.orchestrator` that never edits code itself: it reads the issue, briefs one implementor subagent on `models.implement`, verifies, runs the tester and the reviewer, opens the PR. Off, one session on `models.implement` does all of it. Either way the tester and the reviewer are subagents (Settings → *Models*) |
 | `autostart` | `false` | Start Sloth at login through a macOS launch agent (Settings → *Machine*; see *Run at login*). Saved but ignored on other platforms |
 | `chrome` | `true` | Give implement sessions a headless Chrome (Playwright MCP), so a tester subagent clicks through the change and its screenshots go on the PR; needs Google Chrome installed |
@@ -158,7 +161,7 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `helpLogins` | `[]` | GitHub logins `@`-mentioned in the comment that parks a card in *needs help*, so GitHub notifies them (not the login `gh` writes with — GitHub skips self-mentions) |
 | `autoMerge` | `""` | How trigger 8 merges a PR whose review passed, whose checks are green and which merges cleanly: `squash`, `merge` or `rebase` (the `gh pr merge` methods) — as soon as it passes, skipping the human test in Approved. Empty leaves merging to a human |
 | `helpWebhook` | `""` | URL POSTed once per event in `webhookEvents` (`{event, text, content, repo, issue, title, url, column, pr?}` — Slack and Discord incoming webhooks read `text` / `content` as is) |
-| `webhookEvents` | `["needsHelp"]` | What `helpWebhook` hears about (Settings → *Notifications*, one toggle each): `needsHelp` (a card is parked), `codeReview` (a PR awaits Sloth's review), `finalPassed` (the review passed and the card is in Approved, with the preview link) / `finalFailed` (the `Fable: approved` label was taken back), `merged` (Sloth filed a closed issue away), `stopped` (a run was stopped or parked), `usageLimit` (a Claude limit paused the watcher) |
+| `webhookEvents` | `["needsHelp"]` | What `helpWebhook` hears about (Settings → *Notifications*, one toggle each): `needsHelp` (a card is parked), `codeReview` (a PR awaits Sloth's review), `finalPassed` (the review passed and the card is in Approved, with the preview link) / `finalFailed` (the `Fable: approved` label was taken back), `merged` (Sloth filed a closed issue away), `qaPassed` / `qaFailed` (the QA sweep's verdict on a card), `stopped` (a run was stopped or parked), `usageLimit` (a Claude limit paused the watcher) |
 | `tunnel` | `["cloudflared", "tunnel", "--url", "http://localhost:{port}"]` | The command Sloth runs so the UI is reachable from outside (see *Remote access*); the first bare `https://` URL it prints is the address |
 | `publicUrl` | — | Where the UI is already reachable — your own tunnel or domain. Set, no tunnel is started |
 | `stack` | `"auto"` | What the sessions' app needs on this machine, out of the stack Sloth can install: `postgresql`, `redis`, `node`, `python`, `java` (see *Stack* below). `auto` reads the checkout at every start; a list pins it |
@@ -195,7 +198,7 @@ else is the home panel. Back and forward work. A remote link keeps its path thro
 the QR itself always points at `/`.
 
 Read: `GET /api/overview`, `/api/sessions/:id`, `/api/sessions/:id/agents/:agentId`, `/api/usage?days=N`,
-`/api/events` (SSE). Write: `POST /api/tick` (`?dry=1`), `/api/pause`, `/api/resume`, `/api/sessions/:id/stop` (ends the run, parks an issue's card), `/api/previews/:issue/stop` (takes a preview down now), `/api/setup/config`,
+`/api/events` (SSE). Write: `POST /api/tick` (`?dry=1`), `/api/pause`, `/api/resume`, `/api/qa/run` (opens a QA sweep now and ticks), `/api/sessions/:id/stop` (ends the run, parks an issue's card), `/api/previews/:issue/stop` (takes a preview down now), `/api/setup/config`,
 `/api/setup/clone`. Wizard reads: `GET /api/setup/env`, `/api/setup/projects`, `/api/setup/projects/:id/fields`,
 `/api/setup/config`. `GET /api/remote` (the QR's link and the tunnel tool's state), `POST /api/remote/rotate`
 (a new link) and `POST /api/remote/install` (brew installs the tool). `GET /api/update` (version, commit, commits
