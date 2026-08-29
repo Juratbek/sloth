@@ -23,7 +23,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('boardEvents: needs help', () => {
   it('announces each newly parked card once, and again after it left and came back', async () => {
-    const parked = [card(1, COLUMNS.needsHelp.name), card(2, COLUMNS.needsHelp.name, { assignees: ['bob'] })];
+    const parked = [card(1, COLUMNS.needsHelp.name), card(2, COLUMNS.needsHelp.name, { labels: ['Sloth: skip'] })];
     await boardEvents(parked);
     expect(posted.map((p) => p.body.issue)).toEqual([1]);
     expect(posted[0].body).toMatchObject({

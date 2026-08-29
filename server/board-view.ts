@@ -1,7 +1,7 @@
 import { cfg } from './config';
 import { issueOf } from './issue-costs';
 import { snapshot } from './runner/board-snapshot';
-import { DONE_DAYS, PIPELINE } from './board-types';
+import { DONE_DAYS, PIPELINE, skipped } from './board-types';
 import type { BoardCard, BoardColumn, BoardView } from './board-types';
 import type { BoardItem } from './runner/board';
 import type { ColumnRole, ConfigColumns } from './config-types';
@@ -35,11 +35,11 @@ function newestByIssue(sessions: SessionSummary[]): Map<number, SessionSummary> 
 const recent = (s: SessionSummary, now: number): boolean => !s.lastAt || now - Date.parse(s.lastAt) <= DONE_MS;
 
 /**
- * Whether a card is Sloth's: it has a run on it, or it sits unclaimed in the pickup column — the queue
- * Sloth takes from. Anything else on Sloth's columns is a person's work, moved by hand, and the board
+ * Whether a card is Sloth's: it has a run on it, or it sits in the pickup column without the skip
+ * label — the queue Sloth takes from. Anything else on Sloth's columns is a person's work, moved by hand, and the board
  * only counts it (`others`): this view is what Sloth is doing, not what the team is doing.
  */
-const sloths = (role: ColumnRole, item: BoardItem, s: SessionSummary | undefined): boolean => !!s || (role === 'pickup' && item.assignees.length === 0);
+const sloths = (role: ColumnRole, item: BoardItem, s: SessionSummary | undefined): boolean => !!s || (role === 'pickup' && !skipped(item));
 
 function cardOf(item: BoardItem, s: SessionSummary | undefined, cost: number | null): BoardCard {
   const w = s?.watcher;

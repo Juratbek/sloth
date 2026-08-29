@@ -14,6 +14,17 @@ import type { SessionStatus, WatcherSession } from './types';
  */
 export const APPROVED_LABEL = 'Fable: approved';
 
+/**
+ * The label a person puts on an issue to keep Sloth off it: a card carrying it is a human's, in any
+ * column, and Sloth neither picks it up, relaunches it, reviews its PR nor fixes its checks. The one
+ * exception is the final review in Approved — the column is the signal there. Sloth creates the label
+ * in the repo at start-up (`ensureSkipLabel`) so it is there to apply.
+ */
+export const SKIP_LABEL = 'Sloth: skip';
+
+/** Whether a card is held back from Sloth by `SKIP_LABEL`. */
+export const skipped = (item: { labels: string[] }): boolean => item.labels.includes(SKIP_LABEL);
+
 /** Sloth's columns, always in this order — the pipeline, not the order the GitHub board happens to be in. */
 export const PIPELINE: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved', 'done'];
 
@@ -27,7 +38,7 @@ export const DONE_DAYS = 7;
 export interface BoardCard {
   issue: number;
   title: string;
-  /** An assignee means a human owns the card — Sloth leaves it alone (except the final review). */
+  /** Shown on the card; an assignee does not keep Sloth off it — `SKIP_LABEL` among `labels` does. */
   assignees: string[];
   labels: string[];
   closed: boolean;

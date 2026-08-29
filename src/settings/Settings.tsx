@@ -47,9 +47,23 @@ const navItem = 'rounded-md px-3 py-1.5 text-left text-sm whitespace-nowrap';
  * Every value of the config, by section. Edits pile up in a draft; Save writes the whole config at once
  * (the server validates it, creates the columns that are still to be created, and restarts the watcher and
  * the tunnel on the new values). Only the machine Sloth runs on ever gets here.
+ *
+ * The open section comes from the URL (`/settings/about`), so a refresh keeps it; picking one calls `onSection`.
+ * A section the URL names that does not exist shows the first one.
  */
-export default function Settings({ config, onClose, onWizard }: { config: SlothConfig; onClose: () => void; onWizard: () => void }) {
-  const [key, setKey] = useState<Key>('general');
+export default function Settings({
+  config,
+  section: wanted,
+  onSection,
+  onClose,
+  onWizard,
+}: {
+  config: SlothConfig;
+  section?: string;
+  onSection: (key: Key) => void;
+  onClose: () => void;
+  onWizard: () => void;
+}) {
   const [baseline, setBaseline] = useState(config);
   const [draft, setDraft] = useState(config);
   /** Where the user wants to go with unsaved edits — asked to confirm first. */
@@ -64,7 +78,8 @@ export default function Settings({ config, onClose, onWizard }: { config: SlothC
     }
   }, [config]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const section = SECTIONS.find((s) => s.key === key)!;
+  const section = SECTIONS.find((s) => s.key === wanted) ?? SECTIONS[0];
+  const key = section.key;
   const Section = section.component;
   const patch = (p: Partial<SlothConfig>) => setDraft((d) => ({ ...d, ...p }));
   // The guard is on Settings' own buttons only. The browser's back button changes the URL through
@@ -96,7 +111,7 @@ export default function Settings({ config, onClose, onWizard }: { config: SlothC
           {SECTIONS.map((s) => (
             <button
               key={s.key}
-              onClick={() => setKey(s.key)}
+              onClick={() => onSection(s.key)}
               aria-current={s.key === key ? 'page' : undefined}
               className={`${navItem} ${s.key === key ? 'bg-zinc-900 text-zinc-100' : 'text-zinc-400 hover:bg-zinc-900/60 hover:text-zinc-200'}`}
             >

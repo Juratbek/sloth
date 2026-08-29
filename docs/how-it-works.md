@@ -87,10 +87,12 @@ Every comment Sloth writes starts with `**Sloth:**`.
 
 ## Rules to know
 
-- **An assignee means a human owns the card.** Sloth never works on an assigned card, in any column.
-  The one exception is the final review in *Approved*: every open, non-draft PR wired to a card there
-  gets it, assigned or not. A rejection sends the card back to *In Progress* still assigned, so the
-  owner keeps it. Sloth never assigns anyone.
+- **The `Sloth: skip` label means a human owns the card.** Sloth never works on a card carrying it, in
+  any column; take the label off and the card is Sloth's again. Sloth creates the label in the repo at
+  start-up. The one exception is the final review in *Approved*: every open, non-draft PR wired to a
+  card there gets it, skipped or not. A rejection sends the card back to *In Progress* still labelled,
+  so the owner keeps it. Assignees do not matter to Sloth — an assigned card is worked like any other —
+  and Sloth never assigns anyone.
 - **Sessions have a time budget** (60 minutes). A session that runs 5 minutes over is killed and
   its card goes to *Sloth needs help*. **Stop** in a running session's header does the same right away.
 - **At most 3 sessions work at once** (and 5 alive, counting the ones waiting for an answer).

@@ -12,6 +12,11 @@ describe('parseRoute', () => {
     expect(parseRoute('/sessions/issue-12-1a2b')).toEqual({ page: 'monitor', sessionId: 'issue-12-1a2b' });
     expect(parseRoute(pathFor('monitor', 'review-7_x'))).toEqual({ page: 'monitor', sessionId: 'review-7_x' });
   });
+  it('reads a settings section out of /settings/:section', () => {
+    expect(parseRoute('/settings/about')).toEqual({ page: 'settings', section: 'about' });
+    expect(parseRoute(pathFor('settings', 'models'))).toEqual({ page: 'settings', section: 'models' });
+    expect(parseRoute('/settings')).toEqual({ page: 'settings' });
+  });
   it('ignores a trailing slash, a query and a hash', () => {
     expect(parseRoute('/board/')).toEqual({ page: 'board' });
     expect(parseRoute('/board?code=abc')).toEqual({ page: 'board' });
@@ -29,6 +34,12 @@ describe('parseRoute', () => {
     expect(parseRoute('/sessions/a%20b')).toEqual({ page: 'monitor' });
     expect(parseRoute('/sessions/one/two')).toEqual({ page: 'monitor' });
   });
+  it('takes only a section name that could be one', () => {
+    expect(parseRoute('/settings/')).toEqual({ page: 'settings' });
+    expect(parseRoute('/settings/..')).toEqual({ page: 'monitor' });
+    expect(parseRoute('/settings/a%20b')).toEqual({ page: 'monitor' });
+    expect(parseRoute('/settings/about/extra')).toEqual({ page: 'monitor' });
+  });
 });
 
 describe('pathFor', () => {
@@ -38,8 +49,13 @@ describe('pathFor', () => {
     expect(pathFor('settings')).toBe('/settings');
     expect(pathFor('wizard')).toBe('/setup');
   });
+  it('puts a settings section under /settings', () => {
+    expect(pathFor('settings', 'about')).toBe('/settings/about');
+    expect(pathFor('settings', '../etc')).toBe('/settings');
+  });
   it('ignores a session id on a page that has no sessions, and one that is not an id', () => {
     expect(pathFor('board', 'issue-1')).toBe('/board');
+    expect(pathFor('wizard', 'about')).toBe('/setup');
     expect(pathFor('monitor', '../etc')).toBe('/');
     expect(pathFor('monitor', '')).toBe('/');
   });

@@ -1,3 +1,4 @@
+import { skipped } from '../board-types';
 import { cfg } from '../config';
 import { gh, graphql } from './gh';
 import { isDry, log } from './log';
@@ -77,9 +78,9 @@ export async function fetchBoard(): Promise<BoardItem[] | undefined> {
   return items;
 }
 
-/** Cards in one column that no human has claimed — an assignee means a person owns the card. */
-export const unassignedIn = (board: BoardItem[], column: string): number[] =>
-  board.filter((i) => i.status === column && i.assignees.length === 0).map((i) => i.number);
+/** Cards in one column that no human has held back — the `Sloth: skip` label means a person owns the card. */
+export const freeIn = (board: BoardItem[], column: string): number[] =>
+  board.filter((i) => i.status === column && !skipped(i)).map((i) => i.number);
 
 /**
  * The same cards, in the order work should be taken in: the board's priority field first — its options
@@ -88,7 +89,7 @@ export const unassignedIn = (board: BoardItem[], column: string): number[] =>
  */
 export const pickupOrder = (board: BoardItem[], column: string): number[] =>
   board
-    .filter((i) => i.status === column && i.assignees.length === 0)
+    .filter((i) => i.status === column && !skipped(i))
     .sort((a, b) => (a.priority ?? Infinity) - (b.priority ?? Infinity))
     .map((i) => i.number);
 

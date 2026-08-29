@@ -45,9 +45,9 @@ beforeEach(() => {
 });
 
 describe('pickup (trigger 1)', () => {
-  it('launches unassigned cards of the watched column in board order and moves them to In Progress', async () => {
+  it('launches the watched column in board order, assigned or not, and moves the cards to In Progress', async () => {
     onGh(/project item-add/, 'ITEM');
-    await pickup([card(5, 'Todo'), card(6, 'Todo', { assignees: ['bob'] }), card(7, 'Backlog'), card(8, 'Todo')]);
+    await pickup([card(5, 'Todo'), card(6, 'Todo', { labels: ['Sloth: skip'] }), card(7, 'Backlog'), card(8, 'Todo', { assignees: ['bob'] })]);
     expect(launches()).toEqual(['/sloth:implement 5', '/sloth:implement 8']);
     expect(called(/item-edit .*opt-wip/)).toHaveLength(2);
     expect(spawned[0].options.env.SLOTH_ISSUE).toBe('5');
@@ -157,9 +157,9 @@ describe('reviews (trigger 4)', () => {
 });
 
 describe('finalReviews (trigger 5)', () => {
-  it('reviews Approved cards — assigned too — on the final model, except labelled ones', async () => {
+  it('reviews Approved cards — skipped too — on the final model, except approved ones', async () => {
     wired({ 1: [{ pr: 10, sha: 'aaa', head: 'sloth/issue-1-x', approved: true }], 3: [{ pr: 12, sha: 'ccc', head: 'y' }] });
-    await finalReviews([card(1, 'Approved', { assignees: ['bob'] }), card(2, 'Approved', { labels: ['Fable: approved'] }), card(3, 'Approved')]);
+    await finalReviews([card(1, 'Approved', { labels: ['Sloth: skip'] }), card(2, 'Approved', { labels: ['Fable: approved'] }), card(3, 'Approved')]);
     expect(launches()).toEqual(['/sloth:review 10 final', '/sloth:review 12 final']);
     expect(spawned[0].args).toContain('fable');
     expect(exists(statePath('approved', '10-aaa'))).toBe(true);

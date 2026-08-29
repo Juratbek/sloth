@@ -27,23 +27,26 @@ The short version; the tick-by-tick account is in [docs/how-it-works.md](docs/ho
 
 | # | When | What Sloth does |
 |---|---|---|
-| 1 | An unassigned issue sits in the watched column | Moves it to In Progress and starts `/sloth:implement <n>`, most important card first (`priorityField`) |
-| 2 | An unassigned issue sits in In Progress with no live session | Relaunches it, at most `maxRetries` times in a row |
+| 1 | An issue sits in the watched column | Moves it to In Progress and starts `/sloth:implement <n>`, most important card first (`priorityField`) |
+| 2 | An issue sits in In Progress with no live session | Relaunches it, at most `maxRetries` times in a row |
 | 3 | Someone on the team mentions `@sloth` in a comment — on an issue, or on the PR that closes it | Delivers it to the live session; with no session, an order (admin or developer) starts one and anything else gets a status reply, on the thread it was written in. A login with no role is ignored; a PR linked to no issue gets told so |
-| 4 | An unassigned issue in Code Review has an open, non-draft, unapproved wired PR **written by a human** | Runs `/sloth:review <pr>`, once per PR head. Sloth's own PRs were already vetted by their session's reviewer loop |
-| 5 | An issue in Approved — assigned or not — has an open, non-draft wired PR and no `Fable: approved` label for its current head | Runs `/sloth:review <pr> final` on the final-review model (`models.final`, `fable` by default), once per PR head; the verdict is posted on the PR either way, and a pass labels the issue `Fable: approved`, which keeps that head from being reviewed again. Pending checks wait a tick; red ones are row 7's |
+| 4 | An issue in Code Review has an open, non-draft, unapproved wired PR **written by a human** | Runs `/sloth:review <pr>`, once per PR head. Sloth's own PRs were already vetted by their session's reviewer loop |
+| 5 | An issue in Approved — `Sloth: skip` or not — has an open, non-draft wired PR and no `Fable: approved` label for its current head | Runs `/sloth:review <pr> final` on the final-review model (`models.final`, `fable` by default), once per PR head; the verdict is posted on the PR either way, and a pass labels the issue `Fable: approved`, which keeps that head from being reviewed again. Pending checks wait a tick; red ones are row 7's |
 | 6 | An issue Sloth was working on is **closed** | Moves the card to Done, takes its preview, servers, database and worktree down, and deletes the `sloth/issue-<n>-…` branch of the PR that closed it. A PR closed *without* being merged parks its still-open issue instead |
-| 7 | The checks on a PR **Sloth wrote** are red, its card unassigned in Code Review or Approved | Sends the session back to the branch to make them pass — once per commit, keeping the PR. A human's PR is left to its author |
+| 7 | The checks on a PR **Sloth wrote** are red, its card in Code Review or Approved | Sends the session back to the branch to make them pass — once per commit, keeping the PR. A human's PR is left to its author |
 | 8 | A PR that passed its final review is green and merges cleanly | Merges it with the `autoMerge` method. Off by default: merging stays a human's call until you ask for it |
 
 The board is read every 5 minutes, comments every 2; **Tick now** runs both at once. **Pause**
 stops Sloth from starting anything new (running sessions, inbox deliveries, status replies and
 needs-help notifications carry on) and survives a restart.
 
-- An **assignee on a card means a human owns it** — Sloth never works on it. The one exception is the
-  final review in Approved (trigger 5): an assigned card is reviewed too, and a rejection sends it back
-  to In Progress still assigned, so the owner keeps it. Sloth never assigns anyone and
-  never requests a reviewer.
+- **The `Sloth: skip` label keeps Sloth off a card.** Put it on an issue and Sloth leaves it alone in
+  any column — no pickup, no relaunch, no review of its PR, no fixing its checks; take it off and the
+  card is Sloth's again. Sloth creates the label in the repo when it starts. Every row above but 5 reads
+  "an issue without `Sloth: skip`". The one exception is the final review in Approved (trigger 5): a
+  skipped card is reviewed too, and a rejection sends it back to In Progress still labelled, so the owner
+  keeps it. Assignees mean nothing to Sloth — an assigned card is worked like any other — and Sloth never
+  assigns anyone or requests a reviewer.
 - **Priority**: the watched column is worked in the order of the board's `Priority` field — its options top
   to bottom, first option first — and cards with no priority set come after the ranked ones, in board order.
   Point `priorityField` at another single-select field, or empty it to take cards in plain board order.
@@ -235,7 +238,7 @@ Sloth runs `claude … --dangerously-skip-permissions` in `runnerRoot` with **yo
   order or comment feeds text straight into the session. Only give board write access to people you
   trust with a shell on this machine.
 - **Only the admin and the developers give orders**, and only the team's comments reach a session at
-  all — but *any* unassigned pickup card is worked: the card, not the author, is the trigger. Keep the
+  all — but *any* pickup card without `Sloth: skip` is worked: the card, not the author, is the trigger. Keep the
   pickup column behind the same trust boundary as the repo.
 - For a stronger boundary, run Sloth (or at least the sessions) in a VM or container with a **scoped**
   `GITHUB_TOKEN` rather than your personal `gh` login, so a prompt-injected run cannot reach beyond the
