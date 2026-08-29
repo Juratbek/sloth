@@ -1,3 +1,5 @@
+import type { StackId } from './config-types';
+
 /** What the machine Sloth runs on reports about itself: how it is reachable, what it is running, and
  *  whether it starts itself at login. Split out of `types.ts`, which re-exports all of it. */
 
@@ -8,9 +10,34 @@ export interface RemoteStatus {
 }
 export interface InstallStatus {
   running: boolean;
-  /** The last lines brew printed. */
+  /** What is being installed right now — `PostgreSQL`, `cloudflared` … */
+  what?: string;
+  /** The last lines the package manager printed. */
   output: string;
   error?: string;
+}
+
+/** One tool of the stack (`config-types.ts` `STACK`) as this machine has it. */
+export interface StackTool {
+  id: StackId;
+  label: string;
+  /** The executable the check looks for — `psql`, `redis-server`, `node` … */
+  command: string;
+  installed: boolean;
+  version?: string;
+  /** The checkout at the root asked about looks like it needs this. */
+  detected: boolean;
+}
+/** The stack: every tool Sloth can install, what the checkout needs, and whether this machine can install anything. */
+export interface StackStatus {
+  tools: StackTool[];
+  /** The package manager the install goes through; absent when there is none Sloth can drive. */
+  installer?: 'brew' | 'apt';
+  /** Why nothing can be installed from here — no Homebrew, no passwordless sudo for apt … */
+  installerError?: string;
+  install: InstallStatus;
+  /** Why the install just asked for did not start. */
+  installError?: string;
 }
 /** The QR code's payload — the address with the secret that signs a phone in — and what stands in its way. */
 export interface RemoteLink extends RemoteStatus {

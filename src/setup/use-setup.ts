@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ColumnRef, ConfigProject, SetupEnv, SetupFields, SetupProject, SlothConfig } from '../../server/config-types';
+import type { ColumnRef, ConfigProject, SetupEnv, SetupFields, SetupProject, SlothConfig, StackChoice } from '../../server/config-types';
 import { fetchJson, postJson } from '../lib/api';
 
 export const CONFIG_QUERY_KEY = ['setup', 'config'] as const;
@@ -32,6 +32,8 @@ export interface Draft {
   maxAlive: number;
   /** How long a finished session's app stays reachable behind a link on its PR; 0 = no previews. */
   previewHours: number;
+  /** What the app needs on this machine — `auto` reads it off the checkout. */
+  stack: StackChoice;
   /** Who hears about a card landing in needs help: `@`-mentioned logins, and an optional webhook URL. */
   helpLogins: string[];
   helpWebhook: string;
@@ -55,6 +57,7 @@ export const draftFrom = (config: SlothConfig | null | undefined): Draft => ({
   maxActive: config?.maxActive ?? 3,
   maxAlive: config?.maxAlive ?? 5,
   previewHours: config?.previewHours ?? 24,
+  stack: config?.stack ?? 'auto',
   helpLogins: config?.helpLogins ?? [],
   helpWebhook: config?.helpWebhook ?? '',
 });

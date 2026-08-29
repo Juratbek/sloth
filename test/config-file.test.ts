@@ -13,6 +13,12 @@ describe('normalizeConfig', () => {
     expect(c.tunnel).toEqual(CONFIG_DEFAULTS.tunnel);
     expect(c.helpLogins).toEqual([]);
   });
+  it('keeps the stack to what Sloth can install, once each, and defaults to auto', () => {
+    expect(normalizeConfig(baseConfig()).stack).toBe('auto');
+    expect(normalizeConfig(baseConfig({ stack: ['Redis', 'postgresql', 'docker', 'redis'] })).stack).toEqual(['redis', 'postgresql']);
+    expect(normalizeConfig(baseConfig({ stack: [] })).stack).toEqual([]);
+    expect(normalizeConfig(baseConfig({ stack: 'everything' })).stack).toBe('auto');
+  });
   it('rejects a repo that is not owner/repo and a missing project', () => {
     expect(() => normalizeConfig(baseConfig({ repo: 'not a repo' }))).toThrow(/owner\/repo/);
     expect(() => normalizeConfig(baseConfig({ project: undefined }))).toThrow(/project\.id/);

@@ -11,6 +11,7 @@ import { guard, isLocal, remoteLink, rotateToken, sameOrigin, startTunnel, stopT
 import { agentDetail, overview, sessionDetail, watcherOf } from './sessions';
 import { serviceStatus } from './service';
 import { handleSetup } from './setup';
+import { ensureStack, handleStack } from './stack';
 import { check, update, versionInfo } from './update';
 import { usageSeries } from './usage';
 
@@ -77,7 +78,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
   }
   let body: unknown;
   const mutating = (req.method ?? 'GET') !== 'GET';
-  const sensitive = p.startsWith('/api/setup/') || p.startsWith('/api/remote') || p.startsWith('/api/update') || p === '/api/service';
+  const sensitive = p.startsWith('/api/setup/') || p.startsWith('/api/remote') || p.startsWith('/api/update') || p.startsWith('/api/stack') || p === '/api/service';
   // CSRF guard: a cross-site page (even one open on the machine itself) must not be able to drive a
   // POST or reach the sensitive endpoints. `sameOrigin` fails closed on a cross-site fetch.
   if ((mutating || sensitive) && !sameOrigin(req)) {
@@ -100,6 +101,11 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     // Once the tool is there the tunnel starts on its own and the QR follows.
     else if (p === '/api/remote/install' && req.method === 'POST') install(cfg().tunnel[0], () => startTunnel());
     return json(res, remoteLink());
+  }
+  if (p.startsWith('/api/stack')) {
+    // The project's stack on this machine; `?root=` asks about a checkout other than the configured one (the wizard, before saving).
+    const body = req.method === 'POST' ? await readBody(req) : undefined;
+    return json(res, await handleStack(p, req.method ?? 'GET', url.searchParams.get('root') || undefined, body));
   }
   if (p.startsWith('/api/update')) {
     // Sloth's own version and update: fetch to see what is new, pull-install-build-restart to get it.
@@ -157,6 +163,8 @@ export function monitorApi(): Plugin {
     watchAll();
     // The watcher is this process: it starts with the server and stops when the server stops.
     startLoop();
+    // Whatever the project's stack still lacks on this machine gets installed, so sessions can boot the app.
+    void ensureStack();
     const http = server.httpServer;
     // The tunnel needs the port actually bound — Vite moves to the next one when the configured port is taken.
     const tunnel = () => {

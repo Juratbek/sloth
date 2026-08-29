@@ -100,6 +100,21 @@ and `/sloth:status <issue> <comment-id>`. Nothing needs installing — Sloth pas
 use it yourself: `claude plugin marketplace add Juratbek/sloth && claude plugin install sloth@sloth`.
 The session protocol (environment variables, `state.json`, the inbox) is in [plugin/README.md](plugin/README.md).
 
+## Stack
+
+A session boots the app to verify its change and leaves it up as a preview — which needs the app's database
+and runtime on the machine Sloth runs on. Sloth installs them: the wizard's *Stack* step (and Settings →
+*Stack*) shows what the checkout needs, what is missing, and installs it; **every start of Sloth installs
+whatever is still missing** (`ensureStack`, logged as `stack: …` in `watcher.log`). The stack Sloth can
+install is fixed — **PostgreSQL, Redis, Node.js, Python, Java** — with Homebrew on macOS (or Linuxbrew), or
+`apt-get` on Debian / Ubuntu / WSL when `sudo -n` works; anywhere else the log names the command to run by
+hand. PostgreSQL is left running as a service, with the user Sloth runs as able to `createdb`. With
+`stack: "auto"` the checkout is read at every start: `package.json` → Node, `pyproject.toml` /
+`requirements.txt` → Python, `pom.xml` / Gradle → Java, and a compose file, `.env.example`, manifest or
+README that names PostgreSQL / Redis → those (the root and one level under `apps/`, `packages/`, `services/`).
+Sessions get the list as `SLOTH_STACK`. `GET /api/stack` (`?root=` for another checkout) and
+`POST /api/stack/install` (`{ids}`) are the endpoints, local-only like the rest of setup.
+
 ## Configuration
 
 `~/.sloth/config.json` (path overridable with `SLOTH_CONFIG`). The wizard asks about the board, the
@@ -127,6 +142,7 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `webhookEvents` | `["needsHelp"]` | What `helpWebhook` hears about (Settings → *Notifications*, one toggle each): `needsHelp` (a card is parked), `codeReview` (a PR is ready for a human), `finalPassed` / `finalFailed` (the final review's verdict — the `Fable: approved` label appearing or going), `merged` (Sloth filed a closed issue away), `stopped` (a run was stopped or parked), `usageLimit` (a Claude limit paused the watcher) |
 | `tunnel` | `["cloudflared", "tunnel", "--url", "http://localhost:{port}"]` | The command Sloth runs so the UI is reachable from outside (see *Remote access*); the first bare `https://` URL it prints is the address |
 | `publicUrl` | — | Where the UI is already reachable — your own tunnel or domain. Set, no tunnel is started |
+| `stack` | `"auto"` | What the sessions' app needs on this machine, out of the stack Sloth can install: `postgresql`, `redis`, `node`, `python`, `java` (see *Stack* below). `auto` reads the checkout at every start; a list pins it |
 
 Environment: `SLOTH_CONFIG`, `SLOTH_PORT` (default `4400`), and `SLOTH_DRY_RUN=1` to log what every
 tick *would* do without doing it. A `.env` in the project root works too.

@@ -178,7 +178,7 @@ export interface Overview {
 }
 
 /** Remote access, updates and the launch agent — what the machine itself reports (`machine-types.ts`). */
-export type { InstallStatus, RemoteLink, RemoteStatus, ServiceStatus, UpdateStatus, VersionInfo } from './machine-types';
+export type { InstallStatus, RemoteLink, RemoteStatus, ServiceStatus, StackStatus, StackTool, UpdateStatus, VersionInfo } from './machine-types';
 /** The home panel's mirror of the GitHub board (`board-types.ts`). */
 export type { BoardCard, BoardColumn, BoardView } from './board-types';
 /** The spend series behind the usage chart (`usage-types.ts`). */
