@@ -8,11 +8,12 @@ import BoardSection from './BoardSection';
 import MachineSection from './MachineSection';
 import NotificationsSection from './NotificationsSection';
 import RepositorySection from './RepositorySection';
+import StackSection from './StackSection';
 import { Models } from './ModelsSection';
 import { General, Remote, Sessions, Team } from './sections';
 import type { SectionProps } from './ui';
 
-type Key = 'general' | 'board' | 'repository' | 'team' | 'notifications' | 'models' | 'sessions' | 'remote' | 'machine' | 'about';
+type Key = 'general' | 'board' | 'repository' | 'stack' | 'team' | 'notifications' | 'models' | 'sessions' | 'remote' | 'machine' | 'about';
 
 const pick = <K extends keyof typeof CONFIG_DEFAULTS>(...keys: K[]) =>
   Object.fromEntries(keys.map((k) => [k, CONFIG_DEFAULTS[k]])) as Pick<typeof CONFIG_DEFAULTS, K>;
@@ -30,6 +31,7 @@ const SECTIONS: { key: Key; label: string; component: ComponentType<SectionProps
       return { ...pick('runnersDir', 'stateDir', 'watcherLog'), worktreesDir, sessionsDir };
     },
   },
+  { key: 'stack', label: 'Stack', component: StackSection, defaults: () => pick('stack') },
   { key: 'team', label: 'Team', component: Team },
   { key: 'notifications', label: 'Notifications', component: NotificationsSection, defaults: () => pick('helpLogins', 'helpWebhook', 'webhookEvents') },
   { key: 'models', label: 'Models', component: Models, defaults: () => ({ models: { ...DEFAULT_MODELS } }) },

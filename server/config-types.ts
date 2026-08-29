@@ -137,9 +137,22 @@ export interface SlothConfig {
   tunnel: string[];
   /** Where the UI is already reachable (your own tunnel or domain). Set, no tunnel is started. */
   publicUrl: string;
+  /** What the sessions' app needs on this machine (see `STACK`); `auto` detects it from the checkout. */
+  stack: StackChoice;
 }
 
 export const DEFAULT_TUNNEL = ['cloudflared', 'tunnel', '--url', 'http://localhost:{port}'];
+
+/**
+ * The stack Sloth knows how to install on the machine it runs on (`server/stack.ts`): the only tools a
+ * project may ask for. A session cannot boot an app whose database or runtime is missing, so the wizard
+ * installs what the project needs before the first run, and every start of Sloth installs what is
+ * still missing.
+ */
+export const STACK = ['postgresql', 'redis', 'node', 'python', 'java'] as const;
+export type StackId = (typeof STACK)[number];
+/** Which of `STACK` this project needs: an explicit list, or `auto` — read off the checkout at every start. */
+export type StackChoice = StackId[] | 'auto';
 
 /**
  * Every value with a default: what a saved config gets when it leaves the key out, and what Settings'
@@ -171,6 +184,7 @@ export const CONFIG_DEFAULTS = {
   autoMerge: '' as MergeMethod,
   tunnel: DEFAULT_TUNNEL,
   publicUrl: '',
+  stack: 'auto' as StackChoice,
 } satisfies Partial<SlothConfig>;
 
 /** The directories that are kept apart per repository (`name` is the part after the slash). */

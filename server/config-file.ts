@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AGENT_ROLES, CONFIG_DEFAULTS, DEFAULT_MODELS, MERGE_METHODS, WEBHOOK_EVENTS, defaultDirs, type AgentModels, type AgentRole, type ColumnRef, type MergeMethod, type Roles, type SlothConfig, type WebhookEvent } from './config-types';
+import { AGENT_ROLES, CONFIG_DEFAULTS, DEFAULT_MODELS, MERGE_METHODS, STACK, WEBHOOK_EVENTS, defaultDirs, type AgentModels, type AgentRole, type ColumnRef, type MergeMethod, type Roles, type SlothConfig, type StackChoice, type StackId, type WebhookEvent } from './config-types';
 import { sameLogin } from './roles';
 
 const home = os.homedir();
@@ -175,5 +175,13 @@ export function normalizeConfig(input: unknown): SlothConfig {
     autoMerge: mergeMethod(b.autoMerge),
     tunnel: argv(b.tunnel, d.tunnel),
     publicUrl: url(b.publicUrl, 'publicUrl'),
+    stack: stackOf(b.stack),
   };
+}
+
+/** The stack choice: `auto` unless a list is given; a list keeps only the ids Sloth can install, once each. */
+export function stackOf(v: unknown): StackChoice {
+  if (!Array.isArray(v)) return 'auto';
+  const ids = v.map((x) => String(x).trim().toLowerCase()).filter((x): x is StackId => (STACK as readonly string[]).includes(x));
+  return [...new Set(ids)];
 }

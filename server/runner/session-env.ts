@@ -1,6 +1,8 @@
 import os from 'node:os';
 import path from 'node:path';
 import { cfg } from '../config';
+import { EXTRA_DIRS } from '../install';
+import { requiredStack } from '../stack-detect';
 import { knownColumns } from './columns';
 import { nowSec } from './log';
 import { helpMentions } from './notify';
@@ -14,8 +16,8 @@ import { helpMentions } from './notify';
 export const APPEND_PROMPT =
   'You run as a Sloth session; the SLOTH_* environment variables describe the board, the session directory and the time budget.';
 
-/** cron / launchd-style bare PATHs miss homebrew; a Sloth started from a shell keeps its own. */
-const PATH_EXTRA = ['/opt/homebrew/bin', '/usr/local/bin', path.join(os.homedir(), '.local/bin')];
+/** cron / launchd-style bare PATHs miss homebrew (and the keg-only stack tools); a Sloth started from a shell keeps its own. */
+const PATH_EXTRA = [...EXTRA_DIRS, path.join(os.homedir(), '.local/bin')];
 
 export interface Target {
   issue?: number;
@@ -60,6 +62,7 @@ export function sessionEnv(dir: string, target: Target, model: string, chrome: b
     SLOTH_REVIEWER_MODEL: c.models.reviewer,
     SLOTH_CHROME: chrome ? '1' : '0',
     SLOTH_PREVIEW_HOURS: String(c.previewHours),
+    SLOTH_STACK: requiredStack().join(' '),
     SLOTH_START: String(start),
     SLOTH_DEADLINE: String(start + c.budgetMinutes * 60),
     SLOTH_BUDGET_MIN: String(c.budgetMinutes),

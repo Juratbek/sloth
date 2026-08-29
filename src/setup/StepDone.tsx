@@ -1,4 +1,5 @@
 import type { SlothConfig } from '../../server/config-types';
+import { stackLabel } from '../components/StackPanel';
 import { Button, Error } from './ui';
 import type { ConfigPayload, Draft } from './use-setup';
 import { useSaveConfig } from './use-setup';
@@ -25,6 +26,7 @@ function payload(draft: Draft, existing: SlothConfig | null): ConfigPayload {
     maxActive: draft.maxActive,
     maxAlive: draft.maxAlive,
     previewHours: draft.previewHours,
+    stack: draft.stack,
     helpLogins: draft.helpLogins,
     helpWebhook: draft.helpWebhook,
   };
@@ -63,6 +65,7 @@ export default function StepDone({
     ['Needs help → notify', [...(config.helpLogins ?? []).map((l) => `@${l}`), config.helpWebhook && 'webhook'].filter(Boolean).join(' · ') || 'nobody'],
     ['Caps', `${config.maxActive} active · ${config.maxAlive} alive`],
     ['Previews', config.previewHours ? `${config.previewHours} h behind a link on the PR` : 'off'],
+    ['Stack', stackLabel(config.stack ?? 'auto')],
   ];
 
   return (
