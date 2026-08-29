@@ -67,8 +67,8 @@ needs-help notifications carry on) and survives a restart.
 - **Sessions** are detached `claude -p … --plugin-dir <sloth>/plugin` runs in the runner checkout.
   They survive a Sloth restart. `maxActive` may work at once, `maxAlive` including the ones waiting
   for an answer; a trigger with no free slot is retried next tick. The machine sets a cap of its
-  own: with less than `minFreeMemory` percent of the memory available or `minIdleCpu` percent of the
-  CPU idle, nothing new starts either — running sessions go on. A session past
+  own: with less than `minFreeMemory` percent of the memory available, `minIdleCpu` percent of the
+  CPU idle or `minIdleDisk` percent of the busiest disk idle, nothing new starts either — running sessions go on. A session past
   `budgetMinutes + 5` is killed, cleaned up, and its card parked; **stop** in a live session's header
   does the same on demand (a stopped review is not repeated for that PR head), and **end** on a parked
   session whose process is gone cleans it up and takes it off the needs-help list — the card stays put. A Claude usage
@@ -139,7 +139,7 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `roles` | `{admin, developers, testers}` | The team: the one login that orders anything, the logins that order within an issue, the logins that answer and ask. A config from before roles keeps its `orderLogin` as the admin |
 | `mention` / `botPrefix` | `@sloth` / `**Sloth:**` | The keyword that wakes Sloth; the first line of every comment it writes |
 | `maxActive` / `maxAlive` | `3` / `5` | Session caps |
-| `minFreeMemory` / `minIdleCpu` | `10` / `5` | No new session while less of the machine's memory is available / of its CPU is idle (percent); `0` turns a check off |
+| `minFreeMemory` / `minIdleCpu` / `minIdleDisk` | `10` / `5` / `10` | No new session while less of the machine's memory is available / of its CPU is idle / of its busiest disk is idle (percent, the last one being 100 minus Task Manager's *Disk*); `0` turns a check off |
 | `budgetMinutes` / `waitHours` | `60` / `2` | A session's time budget; how long a parked session waits for an answer |
 | `reviewRounds` / `maxRetries` | `4` / `2` | Reviewer-agent rounds before asking for help; trigger-2 relaunches before parking |
 | `boardSeconds` / `commentSeconds` | `300` / `120` | Poll intervals |

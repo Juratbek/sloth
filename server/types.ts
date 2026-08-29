@@ -144,12 +144,14 @@ export interface MonitorConfig {
   models: AgentModels;
 }
 
-/** The last reading of the machine's memory and CPU (`runner/machine.ts`), taken before a tick may launch. */
+/** The last reading of the machine's memory, CPU and disk (`runner/machine.ts`), taken before a tick may launch. */
 export interface MachineLoad {
   /** Memory a new process could take, percent of the total. */
   memoryFree: number;
   /** CPU idle over the window since the previous reading, percent. */
   cpuIdle: number;
+  /** The busiest disk's idle over the same window, percent — 100 minus what Task Manager calls *Disk*. */
+  diskIdle: number;
   at: number;
   /** Set while the reading holds new sessions back — the reason, as the log prints it. */
   hold?: string;

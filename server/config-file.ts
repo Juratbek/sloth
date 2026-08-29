@@ -162,6 +162,7 @@ export function normalizeConfig(input: unknown): SlothConfig {
     maxAlive: int(b.maxAlive, d.maxAlive),
     minFreeMemory: percent(b.minFreeMemory, d.minFreeMemory),
     minIdleCpu: percent(b.minIdleCpu, d.minIdleCpu),
+    minIdleDisk: percent(b.minIdleDisk, d.minIdleDisk),
     budgetMinutes: int(b.budgetMinutes, d.budgetMinutes),
     waitHours: int(b.waitHours, d.waitHours),
     reviewRounds: int(b.reviewRounds, d.reviewRounds),

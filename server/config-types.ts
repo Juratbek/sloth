@@ -103,11 +103,12 @@ export interface SlothConfig {
   maxAlive: number;
   /**
    * The machine's own limit: no session starts while less than this percent of the memory is available
-   * (`minFreeMemory`) or of the CPU is idle (`minIdleCpu`) — running sessions go on, new work waits for
-   * the next tick. `0` turns the check off.
+   * (`minFreeMemory`), of the CPU is idle (`minIdleCpu`) or of the busiest disk is idle (`minIdleDisk`) —
+   * running sessions go on, new work waits for the next tick. `0` turns a check off.
    */
   minFreeMemory: number;
   minIdleCpu: number;
+  minIdleDisk: number;
   budgetMinutes: number;
   waitHours: number;
   reviewRounds: number;
@@ -190,6 +191,7 @@ export const CONFIG_DEFAULTS = {
   maxAlive: 5,
   minFreeMemory: 10,
   minIdleCpu: 5,
+  minIdleDisk: 10,
   budgetMinutes: 60,
   waitHours: 2,
   reviewRounds: 4,
