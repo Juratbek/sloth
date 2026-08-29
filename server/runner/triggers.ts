@@ -102,6 +102,8 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
  * Forgets dead sessions, notices usage-limit exits, kills and cleans up hung ones. An issue run that died
  * while still `working` finished nothing: how it ended is recorded before trigger 2 relaunches it and
  * `launch` wipes its state, so the comment that finally parks the card can say what each run got to.
+ * A review that died the same way posted no verdict, but `launchApproved` already marked its head as
+ * reviewed — the marker goes, so trigger 4 gives the head the review it never got.
  */
 export async function reap(): Promise<void> {
   for (const { kind, target, dir } of runDirs()) {
@@ -111,8 +113,13 @@ export async function reap(): Promise<void> {
     if (!dirAlive(dir)) {
       remove(pidFile);
       if (!limitExit(readFile(path.join(dir, 'run.log')))) {
-        if (kind === 'issue' && (stateOf(dir).state ?? 'working') === 'working') {
-          log(`${name} ended without finishing — ${exitLine(recordExit(dir, 'the session ended on its own'))}`);
+        if ((stateOf(dir).state ?? 'working') === 'working') {
+          if (kind === 'issue') {
+            log(`${name} ended without finishing — ${exitLine(recordExit(dir, 'the session ended on its own'))}`);
+          } else {
+            for (const f of markerFiles(kind, target)) remove(statePath(MARKERS[kind], f));
+            log(`${name} ended without a verdict — the head will be reviewed again`);
+          }
         }
         continue;
       }

@@ -180,11 +180,14 @@ describe('reviews (trigger 4)', () => {
       4: [{ pr: 13, sha: 'ddd', head: 'wip', draft: true }],
     });
     const board = [card(1, 'Code Review'), card(2, 'Code Review'), card(3, 'Code Review', { labels: ['Sloth: skip'] }), card(4, 'Code Review')];
+    // A leftover final state from the previous head's run must not follow the new run into `reap`.
+    makeSession('approved', 10, { 'state.json': { state: 'done' } });
     await reviews(board);
     expect(launches()).toEqual(['/sloth:review 10 final', '/sloth:review 11 final', '/sloth:review 12 final', '/sloth:review 13 final']);
     expect(spawned[0].options.env.SLOTH_PR).toBe('10');
     expect(spawned[0].args).toContain('fable');
     expect(read(path.join(sessionDir('approved', 10), 'issue'))).toBe('1');
+    expect(exists(sessionDir('approved', 10), 'state.json')).toBe(false);
     expect(exists(statePath('approved', '10-aaa'))).toBe(true);
     expect(called(/item-edit/)).toHaveLength(0);
     resetSpawn();
@@ -319,13 +322,14 @@ describe('handover (trigger 5)', () => {
 describe('reap', () => {
   it('forgets a dead session and pauses the watcher after a usage-limit exit', async () => {
     makeSession('issue', 1, { pid: '2000000000', 'run.log': 'working…\nClaude AI usage limit reached|123\n' });
-    makeSession('review', 5, { pid: '2000000000', 'run.log': 'all good\n' });
+    makeSession('review', 5, { pid: '2000000000', 'state.json': { state: 'done' }, 'run.log': 'all good\n' });
     fs.mkdirSync(statePath('reviewed'), { recursive: true });
     fs.writeFileSync(statePath('reviewed', '5-abc'), '');
     await reap();
     expect(exists(sessionDir('issue', 1), 'pid')).toBe(false);
     expect(exists(sessionDir('review', 5), 'pid')).toBe(false);
     expect(Number(read(statePath('paused_until')))).toBeGreaterThan(Date.now() / 1000 + 1700);
+    // The review finished before it died, so its head stays reviewed.
     expect(exists(statePath('reviewed', '5-abc'))).toBe(true);
   });
   it('records how a working issue run ended, from its state and its last output', async () => {
@@ -338,7 +342,9 @@ describe('reap', () => {
     expect(exitsOf(sessionDir('issue', 1))).toMatchObject([{ how: 'the session ended on its own', step: '4', note: 'running the tester', tail: 'Out of time. Left: the UI.' }]);
     expect(exitsOf(sessionDir('issue', 2))).toEqual([]);
     expect(exitsOf(sessionDir('review', 5))).toEqual([]);
-    expect(readLog().at(-1)).toMatch(/issue-1 ended without finishing — the session ended on its own at step 4 \(running the tester\)/);
+    const logged = readLog().join('\n');
+    expect(logged).toMatch(/issue-1 ended without finishing — the session ended on its own at step 4 \(running the tester\)/);
+    expect(logged).toMatch(/review-5 ended without a verdict — the head will be reviewed again/);
   });
   it('drops the review marker when a review died on the limit, so the head is reviewed again', async () => {
     makeSession('review', 5, { pid: '2000000000', 'run.log': 'usage limit reached\n' });
@@ -346,6 +352,17 @@ describe('reap', () => {
     fs.writeFileSync(statePath('reviewed', '5-abc'), '');
     await reap();
     expect(exists(statePath('reviewed', '5-abc'))).toBe(false);
+  });
+  it('drops the review marker when a review died without a verdict, and keeps a finished review’s', async () => {
+    makeSession('review', 5, { pid: '2000000000', 'run.log': 'died mid-run\n' });
+    makeSession('review', 6, { pid: '2000000000', 'state.json': { state: 'done' }, 'run.log': 'verdict posted\n' });
+    fs.mkdirSync(statePath('reviewed'), { recursive: true });
+    fs.writeFileSync(statePath('reviewed', '5-abc'), '');
+    fs.writeFileSync(statePath('reviewed', '6-def'), '');
+    await reap();
+    expect(exists(statePath('reviewed', '5-abc'))).toBe(false);
+    expect(exists(statePath('reviewed', '6-def'))).toBe(true);
+    expect(exists(statePath('paused_until'))).toBe(false);
   });
 });
 
