@@ -15,6 +15,8 @@ export interface InstallStatus {
   /** The last lines the package manager printed. */
   output: string;
   error?: string;
+  /** The transcript of the AI session doing the installing, when a session is doing it (`stack-session.ts`). */
+  sessionId?: string;
 }
 
 /** One tool of the stack (`config-types.ts` `STACK`) as this machine has it. */
@@ -35,6 +37,8 @@ export interface StackStatus {
   installer?: 'brew' | 'apt';
   /** Why nothing can be installed from here — no Homebrew, no passwordless sudo for apt … */
   installerError?: string;
+  /** apt is here, Sloth is not root and `sudo -n` is refused: the user's password would unlock installing (`POST /api/stack/unlock`). */
+  sudoPassword?: boolean;
   install: InstallStatus;
   /** Why the install just asked for did not start. */
   installError?: string;

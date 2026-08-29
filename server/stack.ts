@@ -4,7 +4,9 @@ import { STACK, type StackId } from './config-types';
 import { stackOf } from './config-file';
 import { installStatus, runJob, which, type Step } from './install';
 import { isDry, log } from './runner/log';
+import { startStackSession, withStackSession } from './stack-session';
 import { TOOLS, detectStack, requiredStack } from './stack-detect';
+import { canSudoApt, unlockSudo } from './sudo';
 import type { StackStatus, StackTool } from './types';
 
 export { detectStack, requiredStack } from './stack-detect';
@@ -15,7 +17,8 @@ export { detectStack, requiredStack } from './stack-detect';
  * cannot boot the app cannot verify anything and leaves no preview, so the wizard installs what the
  * checkout needs before the first run, and every start installs whatever is still missing
  * (`ensureStack`). Homebrew on macOS (or Linuxbrew), `apt-get` with passwordless sudo on Debian /
- * Ubuntu / WSL; anything else reports what to install by hand.
+ * Ubuntu / WSL — and where that sudo is refused, the Stack page asks for the user's password once and
+ * writes the rule that grants it (`sudo.ts`); anything else reports what to install by hand.
  */
 
 function run(cmd: string, args: string[]): Promise<{ ok: boolean; out: string }> {
@@ -38,7 +41,8 @@ async function check(id: StackId, detected: StackId[]): Promise<StackTool> {
 const absent = async (ids: StackId[]): Promise<StackId[]> =>
   (await Promise.all(ids.map((id) => check(id, [])))).filter((t) => !t.installed).map((t) => t.id);
 
-type Installer = { kind: 'brew' } | { kind: 'apt'; sudo: boolean } | { kind: 'none'; error: string };
+/** `password` on the `none` case: nothing is missing but the user's sudo password (`sudo.ts` `unlockSudo`). */
+type Installer = { kind: 'brew' } | { kind: 'apt'; sudo: boolean } | { kind: 'none'; error: string; password?: boolean };
 
 const isRoot = () => typeof process.getuid === 'function' && process.getuid() === 0;
 
@@ -47,9 +51,14 @@ export async function installer(): Promise<Installer> {
   if (which('brew')) return { kind: 'brew' };
   if (!which('apt-get')) return { kind: 'none', error: 'no Homebrew and no apt-get on this machine — install the tools by hand' };
   if (isRoot()) return { kind: 'apt', sudo: false };
-  const r = await run('sudo', ['-n', 'true']);
-  if (r.ok) return { kind: 'apt', sudo: true };
-  return { kind: 'none', error: 'apt-get needs passwordless sudo here — run the apt-get install by hand, or allow it in sudoers' };
+  // `sudo -n -l <apt-get>` asks the one question that matters — may this user run apt-get without a
+  // password — and answers it for a blanket NOPASSWD line as well as for Sloth's own scoped rule.
+  if (await canSudoApt()) return { kind: 'apt', sudo: true };
+  return {
+    kind: 'none',
+    password: true,
+    error: 'apt-get needs passwordless sudo here — give Sloth your password once and it sets that up, or allow it in sudoers by hand',
+  };
 }
 
 /** The commands that install one tool and leave its service running, for the given package manager. */
@@ -86,19 +95,24 @@ export async function stackStatus(root = cfg().runnerRoot): Promise<StackStatus>
     tools,
     installer: by.kind === 'none' ? undefined : by.kind,
     installerError: by.kind === 'none' ? by.error : undefined,
-    install: installStatus(),
+    ...(by.kind === 'none' && by.password ? { sudoPassword: true } : {}),
+    install: withStackSession(installStatus()),
   };
 }
 
 /**
- * Installs the given tools, one after the other, skipping what is already there. Returns what it set out
+ * Installs the given tools, skipping what is already there. `session` picks who does it: an AI session
+ * the page can watch, or `runJob`'s fixed list of commands. Left out it means apt — where the install
+ * is a package, a service and a database role, and a session sees what went wrong; `ensureStack` at
+ * boot passes `false`, because there is no page open to watch a session there. Returns what it set out
  * to install, or the reason nothing started.
  */
-export async function installStack(ids: StackId[]): Promise<{ started: StackId[]; error?: string }> {
+export async function installStack(ids: StackId[], options: { session?: boolean } = {}): Promise<{ started: StackId[]; error?: string }> {
   const missing = await absent(ids);
   if (!missing.length) return { started: [] };
   const by = await installer();
   if (by.kind === 'none') return { started: [], error: `${by.error} (${missing.map(manualCommand).join('; ')})` };
+  if (options.session ?? by.kind === 'apt') return startStackSession(missing);
   if (isDry()) {
     log(`dry-run: would install ${missing.map((id) => TOOLS[id].label).join(', ')} with ${by.kind}`);
     return { started: missing };
@@ -118,20 +132,49 @@ export async function ensureStack(): Promise<void> {
     return;
   }
   const names = missing.map((id) => TOOLS[id].label).join(', ');
-  const r = await installStack(missing);
+  const r = await installStack(missing, { session: false });
   if (r.error) log(`stack: ${names} missing — ${r.error}`);
   else if (r.started.length) log(`stack: ${names} missing — installing`);
 }
 
+/** The `ids` of a request body, or whatever the configured stack is still missing when it names none. */
+async function wanted(body: unknown): Promise<StackId[]> {
+  const ids = stackOf((body as { ids?: unknown } | undefined)?.ids);
+  return ids === 'auto' || !ids.length ? await absent(requiredStack()) : ids;
+}
+
 /**
- * `/api/stack` (the state) and `POST /api/stack/install` (`{ids}`): one answer shape, the state — plus
- * why an install just asked for did not start. `root` asks about a checkout other than the configured one.
+ * Takes the password, spends it on the sudoers rule (`sudo.ts` — it never comes back out of that call,
+ * is never logged and never reaches the session) and installs what is missing through an AI session.
+ */
+async function unlock(body: unknown): Promise<string | undefined> {
+  const password = (body as { password?: unknown } | undefined)?.password;
+  if (typeof password !== 'string' || !password.trim()) return 'a password is needed';
+  try {
+    const error = await unlockSudo(password);
+    if (error) return error;
+    return (await installStack(await wanted(body), { session: true })).error;
+  } catch (e) {
+    // Whatever went wrong is a file or a process error, never the body: this is the one request whose
+    // failure must not be echoed back unread.
+    return e instanceof Error ? e.message : 'the sudoers rule could not be written';
+  }
+}
+
+/**
+ * `/api/stack` (the state), `POST /api/stack/install` (`{ids, ai}`) and `POST /api/stack/unlock`
+ * (`{password, ids}`): one answer shape, the state — plus why an install just asked for did not start.
+ * `root` asks about a checkout other than the configured one. Nothing here ever puts the body in the
+ * answer or in the log.
  */
 export async function handleStack(pathname: string, method: string, root: string | undefined, body: unknown): Promise<StackStatus> {
   let installError: string | undefined;
-  if (pathname === '/api/stack/install' && method === 'POST') {
+  if (method === 'POST' && pathname === '/api/stack/install') {
     const ids = stackOf((body as { ids?: unknown } | undefined)?.ids);
-    installError = (await installStack(ids === 'auto' ? [] : ids)).error;
+    const ai = (body as { ai?: unknown } | undefined)?.ai === true;
+    installError = (await installStack(ids === 'auto' ? [] : ids, ai ? { session: true } : {})).error;
+  } else if (method === 'POST' && pathname === '/api/stack/unlock') {
+    installError = await unlock(body);
   }
   return { ...(await stackStatus(root)), ...(installError ? { installError } : {}) };
 }

@@ -15,6 +15,7 @@ what the commit convention is, how designs are read — all of that comes from t
 | `commands/implement.md` | `/sloth:implement <issue> [order]` — claim → worktree → fix → verify → browser tester + screenshots → PR → reviewer loop → Code Review |
 | `commands/review.md` | `/sloth:review <pr> [feedback-only\|final]` — verdict block, inline comments, card back to In Progress; `final` always posts the verdict on the PR and labels a passing issue `Fable: approved` |
 | `commands/status.md` | `/sloth:status <issue> <comment-id>` — answer a mention when no session is running |
+| `commands/stack.md` | `/sloth:stack <tool-id…>` — install the project's stack on the machine Sloth runs on and verify it answers |
 | `skills/board/SKILL.md` | Board reads and moves with the ids from the environment, wired-PR lookup, `retry` |
 | `skills/session/SKILL.md` | `state.json`, the inbox, the time budget, the needs-help protocol, teardown |
 
@@ -27,7 +28,7 @@ git clone https://github.com/Juratbek/sloth.git
 claude --plugin-dir /path/to/sloth/plugin        # loads it for this session only
 ```
 
-Then `/sloth:implement 123`, `/sloth:review 456`, `/sloth:status 123 987654321`.
+Then `/sloth:implement 123`, `/sloth:review 456`, `/sloth:status 123 987654321`, `/sloth:stack redis postgresql`.
 
 Permanently, once the repository root carries a marketplace entry
 (`.claude-plugin/marketplace.json` with `{"name":"sloth", …, "plugins":[{"name":"sloth","source":"./plugin"}]}` —
@@ -73,6 +74,8 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_COL_APPROVED_ID` / `_NAME` | Approved by a human; the server gives its PR a final `/sloth:review` on the final-review model, Fable by default (may be empty) |
 | `SLOTH_COL_DONE_ID` / `_NAME` | Where a closed issue's card ends up — the server moves it; a session never needs to (may be empty) |
 | `SLOTH_COLUMNS` | Every Status column on the board as JSON `[{"id","name"}]`, Sloth's and the rest, so a session can move a card anywhere a human asks |
+| `SLOTH_STACK` | The tools the project's app needs on this machine, space-separated (`postgresql redis node …`) |
+| `SLOTH_STACK_INSTALL` | Only on a `/sloth:stack` run: the tools that run has to install — the same list as its arguments |
 | `SLOTH_RUNNER_ROOT` | The checkout sessions run from |
 | `SLOTH_WORKTREES_DIR` | Where per-issue worktrees go — `issue-<n>` under it |
 | `SLOTH_ADMIN_LOGIN` | The admin — the one login whose orders have no limit (may be empty: nobody is admin) |
@@ -127,5 +130,8 @@ The **last message of the transcript is the report** — the monitor shows it.
   checked, saves a PNG per screen it verified into `$SLOTH_SCREENSHOTS_DIR`, and fixes what it finds before the PR.
 - With `SLOTH_PREVIEW_HOURS` above 0 an implement run that reaches Code Review leaves its app, database and worktree up and
   writes `preview.json`; the server does the teardown, hours later. Every other ending tears down in the session.
+- A `/sloth:stack` run is not a board run: no issue, no card, no worktree, no git. It installs, starts the
+  services, verifies each tool answers and reports — with `sudo -n` for `apt-get`, `service` / `systemctl`
+  and `createuser` only (the Stack page writes that rule), never a password, never another command.
 - A Sloth PR that changes a screen carries `## Screenshots` — the tester's PNGs, pushed to `$SLOTH_ASSETS_BRANCH`
   and embedded — and the reviewer sends back one that does not. A change with no screen says so in that section.
