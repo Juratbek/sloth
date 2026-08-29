@@ -20,7 +20,10 @@ export const PIPELINE: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'cod
 /** How far back Done looks. A closed card older than this is archive, not this week's work. */
 export const DONE_DAYS = 7;
 
-/** One card: the issue as the board has it, plus the newest run Sloth made on that issue. */
+/**
+ * One card: the issue as the board has it, plus the newest run Sloth made on that issue. Only Sloth's
+ * cards are on the view — the ones it has run on, and the unclaimed ones waiting in pickup.
+ */
 export interface BoardCard {
   issue: number;
   title: string;
@@ -28,7 +31,7 @@ export interface BoardCard {
   assignees: string[];
   labels: string[];
   closed: boolean;
-  /** The transcript of the newest run on this issue — what clicking the card selects. Absent: no run yet. */
+  /** The transcript of the newest run on this issue — what clicking the card selects. Absent: still waiting in pickup. */
   sessionId?: string;
   status?: SessionStatus;
   /** That run's raw step from `state.json`; the UI turns it into words (`stepLabel`). */
@@ -60,4 +63,6 @@ export interface BoardView {
   columns: BoardColumn[];
   /** Cards on Status options Sloth has no role for — counted, not listed. */
   elsewhere: number;
+  /** Cards on Sloth's columns that are not Sloth's — no run on them and not waiting in pickup; a person's work, counted, not listed. */
+  others: number;
 }

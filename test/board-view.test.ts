@@ -45,7 +45,8 @@ const issuesIn = (v: ReturnType<typeof buildBoardView>, role: string) => v.colum
 
 describe('buildBoardView', () => {
   it('puts Sloth\'s columns in pipeline order whatever order the board is in', () => {
-    const v = view([card(1, 'Done', { closed: true }), card(2, 'Approved'), card(3, 'Todo'), card(4, 'In Progress')]);
+    const ran = (n: number) => session({ id: `s${n}`, target: n, watcher: dir('issue', n) });
+    const v = view([card(1, 'Done', { closed: true }), card(2, 'Approved'), card(3, 'Todo'), card(4, 'In Progress')], [ran(1), ran(2), ran(4)]);
     expect(names(v)).toEqual(['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved', 'done']);
     expect(issuesIn(v, 'pickup')).toEqual([3]);
     expect(issuesIn(v, 'inProgress')).toEqual([4]);
@@ -62,12 +63,32 @@ describe('buildBoardView', () => {
     expect(v.elsewhere).toBe(4);
   });
 
-  it('shows only the last 7 days in Done, and keeps a card no run can date', () => {
+  it('shows only the last 7 days in Done', () => {
     const old = session({ id: 'old', target: 1, watcher: dir('issue', 1), lastAt: '2026-08-01T12:00:00Z' });
     const fresh = session({ id: 'fresh', target: 2, watcher: dir('issue', 2), lastAt: '2026-08-27T12:00:00Z' });
-    const v = view([card(1, 'Done'), card(2, 'Done'), card(3, 'Done')], [old, fresh]);
+    const undated = session({ id: 'undated', target: 3, watcher: dir('issue', 3) });
+    const v = view([card(1, 'Done'), card(2, 'Done'), card(3, 'Done')], [old, fresh, undated]);
     expect(issuesIn(v, 'done')).toEqual([2, 3]);
-    // Dropped from Done, not counted as being somewhere else.
+    // Dropped from Done, not counted as being somewhere else or as someone else's.
+    expect(v.elsewhere).toBe(0);
+    expect(v.others).toBe(0);
+  });
+
+  it('shows only Sloth\'s cards: the ones it ran on and the unclaimed ones waiting in pickup; the rest are counted', () => {
+    const ran = session({ id: 'ran', target: 2, watcher: dir('issue', 2) });
+    // A human's final review still shows: Sloth reviewed it.
+    const final = session({ id: 'final', kind: 'sloth:review', target: 90, watcher: dir('approved', 90, { issue: 5 }) });
+    const v = view(
+      [card(1, 'Todo'), card(2, 'In Progress'), card(3, 'In Progress'), card(4, 'Code Review'), card(5, 'Approved', { assignees: ['bob'] }), card(6, 'Todo', { assignees: ['bob'] }), card(7, 'Done')],
+      [ran, final],
+    );
+    expect(issuesIn(v, 'pickup')).toEqual([1]);
+    expect(issuesIn(v, 'inProgress')).toEqual([2]);
+    expect(issuesIn(v, 'codeReview')).toEqual([]);
+    expect(issuesIn(v, 'approved')).toEqual([5]);
+    expect(issuesIn(v, 'done')).toEqual([]);
+    // #3, #4, #7 moved by hand with no run; #6 claimed in pickup, so not Sloth's to take.
+    expect(v.others).toBe(4);
     expect(v.elsewhere).toBe(0);
   });
 
@@ -115,14 +136,14 @@ describe('buildBoardView', () => {
     });
   });
 
-  it('leaves a running card without a waiting time, an unpriced issue without a cost, and an untouched card bare', () => {
+  it('leaves a running card without a waiting time, an unpriced issue without a cost, and a queued card bare', () => {
     const running = session({ id: 'run', target: 1, status: 'running', watcher: dir('issue', 1, state({ since: 100 })) });
     const unpriced = session({ id: 'un', target: 2, status: 'done', watcher: dir('issue', 2) });
-    const v = view([card(1, 'In Progress'), card(2, 'In Progress'), card(3, 'In Progress')], [running, unpriced], [cost(2, { cost: null })]);
-    const [a, b, c] = v.columns.find((x) => x.role === 'inProgress')!.cards;
+    const v = view([card(1, 'In Progress'), card(2, 'In Progress'), card(3, 'Todo')], [running, unpriced], [cost(2, { cost: null })]);
+    const [a, b] = v.columns.find((x) => x.role === 'inProgress')!.cards;
     expect(a.since).toBeUndefined();
     expect(b.cost).toBeNull();
-    expect(c).toMatchObject({ sessionId: undefined, status: undefined, retries: 0, cost: null });
+    expect(v.columns[0].cards[0]).toMatchObject({ sessionId: undefined, status: undefined, retries: 0, cost: null });
   });
 
   it('offers no preview link before the tunnel has an address', () => {
