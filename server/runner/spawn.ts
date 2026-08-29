@@ -11,7 +11,7 @@ import { run } from './gh';
 import { isDry, log, remove, write } from './log';
 import { stopPreview } from './preview';
 import { APPEND_PROMPT, sessionEnv, type Target } from './session-env';
-import { approvedDir, issueDir, reviewDir, slotsFull } from './session-dirs';
+import { approvedDir, issueDir, slotsFull } from './session-dirs';
 import { machineHold } from './machine';
 
 /** Why nothing may start right now: every slot taken, or the machine too loaded to take one more run. */
@@ -106,44 +106,25 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
   return true;
 }
 
-/** Trigger 4: review one PR version. */
-export function launchReview(pr: number, issue: number): boolean {
-  const dir = reviewDir(pr);
+/**
+ * Trigger 4: the review of one PR version — `/sloth:review <pr> final` on `models.final`: the verdict is
+ * always posted on the PR; a pass labels the wired issue `Fable: approved` and moves its card to Approved,
+ * a fail removes that label and sends the card back to In Progress.
+ */
+export function launchApproved(pr: number, issue: number): boolean {
+  const c = cfg();
   const why = held();
   if (why) {
     log(`review PR #${pr} queued (${why})`);
     return false;
   }
   if (isDry()) {
-    log(`dry-run: would review PR #${pr} (issue #${issue})`);
+    log(`dry-run: would review PR #${pr} (issue #${issue}) on ${c.models.final}`);
     return true;
   }
-  const model = cfg().models.review;
-  log(`review PR #${pr} (issue #${issue}) on ${model}`);
+  log(`review PR #${pr} (issue #${issue}) on ${c.models.final}`);
   // The directory is named after the PR; the issue it belongs to is only known here, and the monitor
   // needs it to roll this run's cost up under the issue.
-  write(path.join(dir, 'issue'), String(issue));
-  start(dir, dir, `/sloth:review ${pr}`, { pr, issue }, path.join(dir, 'run.log'), { model });
-  return true;
-}
-
-/**
- * Trigger 5: the final review of one PR version — the same `/sloth:review`, on `models.final`, in
- * `final` mode: the verdict is always posted on the PR; a pass labels the wired issue `Fable: approved`,
- * a fail removes that label.
- */
-export function launchApproved(pr: number, issue: number): boolean {
-  const c = cfg();
-  const why = held();
-  if (why) {
-    log(`final review PR #${pr} queued (${why})`);
-    return false;
-  }
-  if (isDry()) {
-    log(`dry-run: would run final review PR #${pr} (issue #${issue}) on ${c.models.final}`);
-    return true;
-  }
-  log(`final review PR #${pr} (issue #${issue}) on ${c.models.final}`);
   write(path.join(approvedDir(pr), 'issue'), String(issue));
   start(approvedDir(pr), approvedDir(pr), `/sloth:review ${pr} final`, { pr, issue }, path.join(approvedDir(pr), 'run.log'), { model: c.models.final });
   return true;

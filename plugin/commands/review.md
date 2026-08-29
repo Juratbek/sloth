@@ -1,5 +1,5 @@
 ---
-description: Assess a PR against its wired issue — does it resolve it, is it safe to merge, does it add bugs or unnecessary changes — rate it 0–10, comment inline on the findings, and move the wired issue back to In Progress; in final mode the verdict is always posted on the PR and a pass labels the issue `Fable: approved`
+description: Assess a PR against its wired issue — does it resolve it, is it safe to merge, does it add bugs or unnecessary changes — rate it 0–10, comment inline on the findings, and move the wired issue back to In Progress; in final mode the verdict is always posted on the PR, and a pass labels the issue `Fable: approved` and moves its card to Approved for a human to test
 argument-hint: <PR number or URL> [feedback-only|final]
 allowed-tools: Bash, Read, Grep, Glob, Skill, ToolSearch
 ---
@@ -25,11 +25,13 @@ your memory of the old one.
 
 ## Final mode
 
-If `$ARGUMENTS` contains `final`, this is the server's last review before merge (trigger 5): a human moved
-the card to `$SLOTH_COL_APPROVED_NAME` and waits for the verdict — on the PR, where they will look for it.
-Everything else applies unchanged, plus two things: Step 4 **always** submits the review, pass or fail, with
-the verdict in its body; and Step 5.5: the wired issue carries the label **`Fable: approved`** exactly when
-this review passed.
+If `$ARGUMENTS` contains `final`, this is the server's review of a card in `$SLOTH_COL_CODE_REVIEW_NAME`
+(trigger 4): the PR was handed over — by the implement session after its own reviewer loop, or by the human
+who wrote it — and this is the independent look it gets before a human tests it. Nobody reviews it after
+you: what you pass goes to `$SLOTH_COL_APPROVED_NAME` and a person tries it from the preview link. Everything
+else applies unchanged, plus three things: Step 4 **always** submits the review, pass or fail, with the verdict
+in its body; Step 5 moves the card on a pass too — to `$SLOTH_COL_APPROVED_NAME`; and Step 5.5: the wired issue
+carries the label **`Fable: approved`** exactly when this review passed.
 
 ## 1. Resolve the PR and its wired issue
 
@@ -87,8 +89,8 @@ ambiguous.
 Clean and resolves its issue, **not** in final mode → submit nothing; the verdict block is the whole output.
 
 Otherwise submit **one** review with `event: "COMMENT"`: an inline comment per bug, plus a body bullet per
-unmet requirement. In final mode the body opens with the verdict, so the human who moved the card sees
-the result on the PR — a pass has no inline comments and an empty `comments` array.
+unmet requirement. In final mode the body opens with the verdict, so whoever follows the card sees the
+result on the PR — a pass has no inline comments and an empty `comments` array.
 
 ```bash
 cat > /tmp/sloth-review-<N>.json <<'EOF'
@@ -108,12 +110,12 @@ Body in final mode — the first line is `$SLOTH_BOT_PREFIX`, the second the ver
 
 ```
 **Sloth:**
-Final review: **passed** — <rating>/10, resolves #<issue>, no new bugs. Labelled `Fable: approved`; ready to merge.
+Review: **passed** — <rating>/10, resolves #<issue>, no new bugs. Labelled `Fable: approved`; card in <Approved column name>, ready for a human to test.
 ```
 
 ```
 **Sloth:**
-Final review: **failed** — <rating>/10. <how many bugs>; card back to <In Progress column name>.
+Review: **failed** — <rating>/10. <how many bugs>; card back to <In Progress column name>.
 - <unmet requirement, where it is missing>
 ```
 
@@ -126,22 +128,28 @@ Final review: **failed** — <rating>/10. <how many bugs>; card back to <In Prog
   no restating what the code does.
 - Never `APPROVE`, never `REQUEST_CHANGES`. First line of the review body is `$SLOTH_BOT_PREFIX`.
 
-## 5. Move the wired issue back — whenever "OK to merge" is no
+## 5. Move the wired issue — whenever "OK to merge" is no, and on a pass in final mode
 
 New bugs, or the PR does not resolve its issue, or both → move that issue's card to
 `$SLOTH_COL_IN_PROGRESS_NAME` (`board` skill: single-issue read for `ITEM_ID`, then `item-edit` with
 `$SLOTH_COL_IN_PROGRESS_ID`). Not on the board, or already there → leave it and note that in the report.
+
+Final mode, "OK to merge" **yes** → move it to `$SLOTH_COL_APPROVED_NAME` the same way, with
+`$SLOTH_COL_APPROVED_ID`; the server then tells the issue it is ready to test, with the preview link. An empty
+`$SLOTH_COL_APPROVED_ID` means the board has no such column: leave the card where it is and say so in the
+report. Outside final mode a pass moves nothing.
+
 Only ever move the issue wired to **this** PR.
 
 ## 5.5. Label the wired issue — final mode only
 
 "OK to merge" **yes** → add `Fable: approved` to the wired issue. **No** → remove it, so a label an earlier
-final review left there does not outlive a rejected new head. Create the label first: a repository that
+review left there does not outlive a rejected new head. Create the label first: a repository that
 never had it rejects the add.
 
 ```bash
 retry gh label create "Fable: approved" --repo "$SLOTH_REPO" --color 6f42c1 \
-  --description "Passed Sloth's final review on the Fable model" --force
+  --description "Passed Sloth's review — ready for a human to test" --force
 retry gh issue edit <issue> --repo "$SLOTH_REPO" --add-label "Fable: approved"       # OK to merge: yes
 retry gh issue edit <issue> --repo "$SLOTH_REPO" --remove-label "Fable: approved"    # OK to merge: no
 ```
@@ -160,7 +168,7 @@ OK to merge: <yes/no>
 New bugs: <yes/no>
 Unnecessary changes: <yes/no>
 Review comment: <review URL, or none — never none in final mode>
-Issue moved to In Progress: <yes/no — issue number, or n/a>
+Issue moved to: <In Progress / Approved / nowhere — issue number, or n/a>
 Fable: approved label: <added/removed — issue number, or n/a>
 ```
 
@@ -177,9 +185,10 @@ real gaps or scope creep; 3–4 partial or introduces bugs; 0–2 does not resol
 1. Never change code, never `APPROVE` / `REQUEST_CHANGES`, never close the issue or merge. In feedback-only
    mode, never submit any review and never move a card.
 2. The wired issue comes from `closingIssuesReferences` only.
-3. Outside feedback-only mode, the comments and the board move happen **exactly** when "OK to merge" is no.
-   A clean PR that still leaves a requirement unimplemented gets both. Final mode adds one exception: the
-   review is submitted on every verdict, so a pass leaves a body-only review saying so.
+3. Outside feedback-only mode, the comments and the move to In Progress happen **exactly** when "OK to merge"
+   is no. A clean PR that still leaves a requirement unimplemented gets both. Final mode adds two things: the
+   review is submitted on every verdict, so a pass leaves a body-only review saying so, and a pass moves the
+   card to Approved — the only way a card ever gets there.
 4. "OK to merge" is **no** whenever the PR introduces a bug or fails to resolve its wired issue.
 5. Base every claim on the actual diff and issue text — cite `file:line` for each bug, in the block and in
    the comment.
@@ -188,4 +197,5 @@ real gaps or scope creep; 3–4 partial or introduces bugs; 0–2 does not resol
    rating.
 7. The `Fable: approved` label is touched in final mode only, on the wired issue only, and mirrors this
    review's "OK to merge": yes adds it, no removes it. The label never stands alone: the review body on
-   the PR says the same thing in words, whichever way the verdict went.
+   the PR says the same thing in words, whichever way the verdict went, and the card sits where the verdict
+   put it — Approved on a pass, In Progress on a fail.

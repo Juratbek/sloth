@@ -6,6 +6,7 @@ import type { BoardItem } from './board';
 import { isDry, remove, write } from './log';
 import { APPROVED_LABEL, skipped, statePath } from './markers';
 import { notifies, notify } from './notify';
+import { previewLink } from './preview';
 
 /**
  * The webhook events that are read off the board rather than raised where they happen. Each one is a
@@ -49,12 +50,15 @@ const STATES: State[] = [
   {
     event: 'codeReview',
     of: (b) => inColumn(b, cfg().statusField.columns.codeReview.name),
-    line: (i) => `#${i.number} ${i.title} is in ${i.status} — its PR is ready for a human`,
+    line: (i) => `#${i.number} ${i.title} is in ${i.status} — its PR awaits Sloth's review`,
   },
   {
     event: 'finalPassed',
     of: (b) => inColumn(b, cfg().statusField.columns.approved.name).filter((i) => i.labels.includes(APPROVED_LABEL)),
-    line: (i) => `#${i.number} ${i.title} passed its final review — the PR is ready to merge`,
+    line: (i) => {
+      const link = previewLink(i.number);
+      return `#${i.number} ${i.title} passed its review — in ${i.status}, ready for a human to test${link ? `: ${link}` : ''}`;
+    },
   },
   {
     // Only what Sloth itself filed away (trigger 6's marker): every issue the board ever closed is not news.
@@ -71,7 +75,7 @@ async function unapproved(item: BoardItem | undefined): Promise<void> {
     issue: item.number,
     title: item.title,
     column: item.status,
-    text: `#${item.number} ${item.title} lost its "${APPROVED_LABEL}" label — its final review has to happen again`,
+    text: `#${item.number} ${item.title} lost its "${APPROVED_LABEL}" label — its review has to happen again`,
   });
 }
 

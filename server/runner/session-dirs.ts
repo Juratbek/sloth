@@ -3,7 +3,11 @@ import path from 'node:path';
 import { cfg } from '../config';
 import { readFile, readNumber } from './log';
 
-/** `review` is trigger 4's `/sloth:review`; `approved` is trigger 5's final review with the project's own command. */
+/**
+ * `approved` is trigger 4's `/sloth:review <pr> final`, the review a Code Review card gets. `review` was the
+ * plain `/sloth:review` an older Sloth ran on human PRs: nothing starts one any more, but its directories
+ * still list, count and prune like the rest.
+ */
 export type Kind = 'issue' | 'review' | 'approved';
 
 export interface RunDir {
@@ -13,10 +17,9 @@ export interface RunDir {
   dir: string;
 }
 
-/** `<sessionsDir>/issue-12` for the implement session of issue 12, `review-34` / `approved-34` for a PR review. */
+/** `<sessionsDir>/issue-12` for the implement session of issue 12, `approved-34` for the review of PR 34. */
 export const dirOf = (kind: Kind, target: number) => path.join(cfg().sessionsDir, `${kind}-${target}`);
 export const issueDir = (issue: number) => dirOf('issue', issue);
-export const reviewDir = (pr: number) => dirOf('review', pr);
 export const approvedDir = (pr: number) => dirOf('approved', pr);
 
 export function pidAlive(pid: number | undefined): boolean {

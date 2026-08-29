@@ -13,7 +13,7 @@ what the commit convention is, how designs are read — all of that comes from t
 | Path | What |
 |---|---|
 | `commands/implement.md` | `/sloth:implement <issue> [order]` — claim → worktree → fix → verify → browser tester + screenshots → PR → reviewer loop → Code Review |
-| `commands/review.md` | `/sloth:review <pr> [feedback-only\|final]` — verdict block, inline comments, card back to In Progress; `final` always posts the verdict on the PR and labels a passing issue `Fable: approved` |
+| `commands/review.md` | `/sloth:review <pr> [feedback-only\|final]` — verdict block, inline comments, card back to In Progress; `final` (the server's review of every Code Review card) always posts the verdict on the PR, and a pass labels the issue `Fable: approved` and moves the card to Approved for a human to test |
 | `commands/status.md` | `/sloth:status <issue> <comment-id>` — answer a mention when no session is running |
 | `commands/stack.md` | `/sloth:stack <tool-id…>` — install the project's stack on the machine Sloth runs on and verify it answers |
 | `skills/board/SKILL.md` | Board reads and moves with the ids from the environment, wired-PR lookup, `retry` |
@@ -70,8 +70,8 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_COL_PICKUP_ID` / `_NAME` | Column work is taken from |
 | `SLOTH_COL_IN_PROGRESS_ID` / `_NAME` | Claimed / being worked on |
 | `SLOTH_COL_NEEDS_HELP_ID` / `_NAME` | Parked, waiting for a human (may be empty) |
-| `SLOTH_COL_CODE_REVIEW_ID` / `_NAME` | Handed to a human reviewer |
-| `SLOTH_COL_APPROVED_ID` / `_NAME` | Approved by a human; the server gives its PR a final `/sloth:review` on the final-review model, Fable by default (may be empty) |
+| `SLOTH_COL_CODE_REVIEW_ID` / `_NAME` | Handed over: the server gives every PR here `/sloth:review … final` on the review model, Fable by default |
+| `SLOTH_COL_APPROVED_ID` / `_NAME` | Passed that review; a human tests it here. Only a passing review moves a card in — the server then posts the preview link on the issue (may be empty) |
 | `SLOTH_COL_DONE_ID` / `_NAME` | Where a closed issue's card ends up — the server moves it; a session never needs to (may be empty) |
 | `SLOTH_COLUMNS` | Every Status column on the board as JSON `[{"id","name"}]`, Sloth's and the rest, so a session can move a card anywhere a human asks |
 | `SLOTH_STACK` | The tools the project's app needs on this machine, space-separated (`postgresql redis node …`) |
@@ -130,6 +130,9 @@ The **last message of the transcript is the report** — the monitor shows it.
   checked, saves a PNG per screen it verified into `$SLOTH_SCREENSHOTS_DIR`, and fixes what it finds before the PR.
 - With `SLOTH_PREVIEW_HOURS` above 0 an implement run that reaches Code Review leaves its app, database and worktree up and
   writes `preview.json`; the server does the teardown, hours later. Every other ending tears down in the session.
+- A card in Code Review is reviewed by the server (`/sloth:review … final`), Sloth's PR or a human's: a pass moves it to
+  Approved, where a human tests it from the preview link; a fail moves it back to In Progress with the findings, and a
+  new `/sloth:implement` run on the issue addresses them on the same branch.
 - A `/sloth:stack` run is not a board run: no issue, no card, no worktree, no git. It installs, starts the
   services, verifies each tool answers and reports — with `sudo -n` for `apt-get`, `service` / `systemctl`
   and `createuser` only (the Stack page writes that rule), never a password, never another command.

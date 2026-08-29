@@ -135,8 +135,6 @@ export interface WiredPr {
   mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN';
 }
 export interface WiredOptions {
-  /** Leave out PRs a human already approved on GitHub (trigger 4); trigger 5 wants them all — the column is the signal there. */
-  unapprovedOnly?: boolean;
   /** Which PR states to return; open PRs are never drafts. */
   states?: PrState[];
 }
@@ -144,10 +142,13 @@ export interface WiredOptions {
 const checksOf = (state: string | undefined): Checks =>
   state === 'SUCCESS' ? 'SUCCESS' : state === 'FAILURE' || state === 'ERROR' ? 'FAILURE' : state ? 'PENDING' : 'NONE';
 
-const PR_FIELDS = 'number state isDraft headRefOid headRefName reviewDecision mergeable commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }';
+const PR_FIELDS = 'number state isDraft headRefOid headRefName mergeable commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }';
 
-/** The PRs wired to these issues — one aliased query for all of them; open, non-draft and unapproved by default. */
-export async function wiredPrs(issues: number[], { unapprovedOnly = true, states = ['OPEN'] }: WiredOptions = {}): Promise<WiredPr[]> {
+/**
+ * The PRs wired to these issues — one aliased query for all of them; open and non-draft by default. A
+ * GitHub approval on the PR changes nothing: the column a card sits in is the signal, never the review decision.
+ */
+export async function wiredPrs(issues: number[], { states = ['OPEN'] }: WiredOptions = {}): Promise<WiredPr[]> {
   if (!issues.length) return [];
   const [owner, name] = cfg().repo.split('/');
   const parts = issues.map((n) => `i${n}: issue(number: ${n}) { closedByPullRequestsReferences(first: 5) { nodes { ${PR_FIELDS} } } }`).join(' ');
@@ -155,7 +156,7 @@ export async function wiredPrs(issues: number[], { unapprovedOnly = true, states
     const data = await graphql(`{ repository(owner: "${owner}", name: "${name}") { ${parts} } }`);
     return Object.entries(data.repository ?? {}).flatMap(([key, value]: [string, any]) =>
       ((value?.closedByPullRequestsReferences?.nodes ?? []) as any[])
-        .filter((p) => states.includes(p.state) && (p.state !== 'OPEN' || !p.isDraft) && (!unapprovedOnly || p.reviewDecision !== 'APPROVED'))
+        .filter((p) => states.includes(p.state) && (p.state !== 'OPEN' || !p.isDraft))
         .map((p) => ({
           issue: Number(key.slice(1)),
           pr: p.number as number,

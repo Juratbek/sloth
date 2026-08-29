@@ -46,9 +46,7 @@ export function elapsed(s: { startedAt?: string; lastAt?: string; live: boolean 
 }
 
 const KIND: Record<string, string> = { 'sloth:implement': 'fix', 'sloth:review': 'review', 'sloth:status': 'status', other: 'run' };
-/** A trigger-5 review runs the same command as a trigger-4 one; its `approved-<pr>` directory tells them apart. */
-export const label = (s: SessionSummary) =>
-  `${s.watcher?.kind === 'approved' ? 'final review' : (KIND[s.kind] ?? s.kind)}${s.target ? ` #${s.target}` : ''}`;
+export const label = (s: SessionSummary) => `${KIND[s.kind] ?? s.kind}${s.target ? ` #${s.target}` : ''}`;
 
 /** Step numbers are the section headings of the plugin commands; the UI shows what the session is doing instead. */
 const IMPLEMENT_STEPS: Record<string, string> = {
@@ -69,7 +67,7 @@ const REVIEW_STEPS: Record<string, string> = {
   '2': 'reading diff',
   '3': 'assessing',
   '4': 'commenting',
-  '5': 'sending back',
+  '5': 'moving card',
   '5.5': 'labeling',
   '6': 'reporting',
 };

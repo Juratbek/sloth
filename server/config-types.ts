@@ -16,7 +16,7 @@ export interface ConfigColumns {
   inProgress: ColumnRef;
   needsHelp: ColumnRef;
   codeReview: ColumnRef;
-  /** Optional: with no Approved column trigger 5 never fires. */
+  /** Optional: with no Approved column a passing review leaves the card in Code Review and trigger 5 never fires. */
   approved: ColumnRef;
   /** Optional: where a card goes once its issue is closed (trigger 6); without it the card stays put. */
   done: ColumnRef;
@@ -33,7 +33,7 @@ export const DEFAULT_COLUMN_NAMES: Record<ColumnRole, string> = {
   done: 'Done',
 };
 
-/** How trigger 8 merges a PR that passed the final review; `''` leaves merging to a human. */
+/** How trigger 8 merges a PR that passed the review; `''` leaves merging — and the test in Approved — to a human. */
 export type MergeMethod = '' | 'squash' | 'merge' | 'rebase';
 export const MERGE_METHODS: MergeMethod[] = ['', 'squash', 'merge', 'rebase'];
 
@@ -71,16 +71,14 @@ export interface AgentModels {
   tester: string;
   /** The reviewer subagent an implement session asks before it hands the PR over. */
   reviewer: string;
-  /** `/sloth:review` of a human's PR in Code Review (trigger 4). */
-  review: string;
-  /** `/sloth:review … final` of an Approved card's PR (trigger 5). */
+  /** `/sloth:review … final` of a Code Review card's PR (trigger 4) — the review that moves a card to Approved. */
   final: string;
   /** `/sloth:status`: the reply to an @sloth question when no session is running. */
   status: string;
 }
 export type AgentRole = keyof AgentModels;
 
-export const DEFAULT_MODELS: AgentModels = { orchestrator: 'fable', implement: 'opus', tester: 'opus', reviewer: 'opus', review: 'opus', final: 'fable', status: 'opus' };
+export const DEFAULT_MODELS: AgentModels = { orchestrator: 'fable', implement: 'opus', tester: 'opus', reviewer: 'opus', final: 'fable', status: 'opus' };
 export const AGENT_ROLES = Object.keys(DEFAULT_MODELS) as AgentRole[];
 
 export interface SlothConfig {
@@ -152,8 +150,9 @@ export interface SlothConfig {
   /** Which events reach `helpWebhook`; empty means none, and the URL is never called. */
   webhookEvents: WebhookEvent[];
   /**
-   * Merge a PR once its final review passed, its checks are green and it merges cleanly — with this
-   * `gh pr merge` method. Empty (the default) leaves the merge to a human.
+   * Merge a PR once its review passed, its checks are green and it merges cleanly — with this
+   * `gh pr merge` method, as soon as it passes: the human test in Approved is skipped. Empty (the default)
+   * leaves the merge to a human.
    */
   autoMerge: MergeMethod;
   /** The argv Sloth runs to reach the UI from outside; `{port}` is the UI's port. The first bare https URL it prints is the address. */

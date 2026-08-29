@@ -43,7 +43,7 @@ export function General({ draft, patch }: SectionProps) {
       </Row>
       <Row
         label="Auto-merge"
-        hint="Merge a PR once its final review passed, its checks are green and it merges cleanly, with this gh pr merge method. Off leaves the merge to a human; the card still reaches Done when the issue closes."
+        hint="Merge a PR once its review passed, its checks are green and it merges cleanly, with this gh pr merge method — as soon as it passes, so nobody tests it in Approved first. Off leaves the merge to a human; the card still reaches Done when the issue closes."
       >
         <Choose
           label="Auto-merge"

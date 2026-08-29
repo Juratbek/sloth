@@ -30,23 +30,23 @@ The short version; the tick-by-tick account is in [docs/how-it-works.md](docs/ho
 | 1 | An issue sits in the watched column | Moves it to In Progress and starts `/sloth:implement <n>`, most important card first (`priorityField`) |
 | 2 | An issue sits in In Progress with no live session | Relaunches it, at most `maxRetries` times in a row; the comment that then parks the card says how each run ended — its last step and its own final report — so nobody has to open `run.log` to learn why |
 | 3 | Someone on the team mentions `@sloth` in a comment — on an issue, or on the PR that closes it | Delivers it to the live session; with no session, an order (admin or developer) starts one and anything else gets a status reply, on the thread it was written in. A login with no role is ignored; a PR linked to no issue gets told so |
-| 4 | An issue in Code Review has an open, non-draft, unapproved wired PR **written by a human** | Runs `/sloth:review <pr>`, once per PR head. Sloth's own PRs were already vetted by their session's reviewer loop |
-| 5 | An issue in Approved — `Sloth: skip` or not — has an open, non-draft wired PR and no `Fable: approved` label for its current head | Runs `/sloth:review <pr> final` on the final-review model (`models.final`, `fable` by default), once per PR head; the verdict is posted on the PR either way, and a pass labels the issue `Fable: approved`, which keeps that head from being reviewed again. Pending checks wait a tick; red ones are row 7's |
+| 4 | An issue in Code Review — `Sloth: skip` or not, Sloth's PR or a human's — has an open, non-draft wired PR whose current head has not been reviewed | Runs `/sloth:review <pr> final` on the review model (`models.final`, `fable` by default), once per PR head. The verdict is posted on the PR either way: a pass labels the issue `Fable: approved` and moves the card to Approved, a fail comments inline and moves it back to In Progress, where row 2 sends the session back to address the findings. An Approved card pushed to after its pass loses the label and comes back to Code Review for a fresh review. Pending checks wait a tick; red ones are row 7's |
+| 5 | An issue in Approved carries `Fable: approved` for its current head | Comments once on the issue that it is ready for a human to test — with the preview link when the app is up behind one, else the PR to check out |
 | 6 | An issue Sloth was working on is **closed** | Moves the card to Done, takes its preview, servers, database and worktree down, and deletes the `sloth/issue-<n>-…` branch of the PR that closed it. A PR closed *without* being merged parks its still-open issue instead |
 | 7 | The checks on a PR **Sloth wrote** are red, its card in Code Review or Approved | Sends the session back to the branch to make them pass — once per commit, keeping the PR. A human's PR is left to its author |
-| 8 | A PR that passed its final review is green and merges cleanly | Merges it with the `autoMerge` method. Off by default: merging stays a human's call until you ask for it |
+| 8 | A PR that passed its review is green and merges cleanly | Merges it with the `autoMerge` method — as soon as that is true, so nobody tests it in Approved first. Off by default: merging stays a human's call until you ask for it |
 
 The board is read every 5 minutes, comments every 2; **Tick now** runs both at once. **Pause**
 stops Sloth from starting anything new (running sessions, inbox deliveries, status replies and
 needs-help notifications carry on) and survives a restart.
 
 - **The `Sloth: skip` label keeps Sloth off a card.** Put it on an issue and Sloth leaves it alone in
-  any column — no pickup, no relaunch, no review of its PR, no fixing its checks; take it off and the
-  card is Sloth's again. Sloth creates the label in the repo when it starts. Every row above but 5 reads
-  "an issue without `Sloth: skip`". The one exception is the final review in Approved (trigger 5): a
-  skipped card is reviewed too, and a rejection sends it back to In Progress still labelled, so the owner
-  keeps it. Assignees mean nothing to Sloth — an assigned card is worked like any other — and Sloth never
-  assigns anyone or requests a reviewer.
+  any column — no pickup, no relaunch, no fixing its checks; take it off and the card is Sloth's again.
+  Sloth creates the label in the repo when it starts. Every row above but 4 reads "an issue without
+  `Sloth: skip`". The one exception is the review in Code Review (trigger 4): a skipped card is reviewed
+  too, and a rejection sends it back to In Progress still labelled, so the owner keeps it. Assignees mean
+  nothing to Sloth — an assigned card is worked like any other — and Sloth never assigns anyone or requests
+  a reviewer.
 - **Priority**: the watched column is worked in the order of the board's `Priority` field — its options top
   to bottom, first option first — and cards with no priority set come after the ranked ones, in board order.
   Point `priorityField` at another single-select field, or empty it to take cards in plain board order.
@@ -60,8 +60,10 @@ needs-help notifications carry on) and survives a restart.
   *In Progress*, *needs help* (a stuck session parks the card here after asking its questions; an
   answer in the thread brings it back — `helpLogins` are mentioned in that question and `helpWebhook`
   hears about it, along with anything else in `webhookEvents`, see *Configuration*),
-  *Code Review* (trigger 4) and *Approved* (trigger 5 — a final review on `models.final`, Fable by default; a GitHub approval does not skip it,
-  the verdict lands on the PR pass or fail, and a pass labels the issue `Fable: approved`), and *Done*, where the card
+  *Code Review* (trigger 4 — every PR there is reviewed by another agent on `models.final`, Fable by default; a GitHub
+  approval does not skip it, the verdict lands on the PR pass or fail, and a pass labels the issue `Fable: approved` and
+  moves the card on), *Approved* (a human tests it there, from the link trigger 5 posts on the issue; without the column
+  a passing card stays in Code Review), and *Done*, where the card
   of a closed issue lands (trigger 6; without the column the card stays where it is).
   Missing columns are created after the pickup column — Done at the end of the board — without dropping any existing option.
 - **Sessions** are detached `claude -p … --plugin-dir <sloth>/plugin` runs in the runner checkout.
@@ -75,8 +77,9 @@ needs-help notifications carry on) and survives a restart.
   limit pauses the watcher for 30 minutes without costing the card its place.
 - **Previews** (`previewHours`, default 24): an implement session that hands its PR to Code Review leaves
   the app it tested running — its own database, seeded, nothing shared — and Sloth puts a tunnel in front
-  of it and posts the link on the PR, with how to sign in. The reviewer tries the change in a browser
-  without checking anything out. The environment comes down after `previewHours`, when the PR closes,
+  of it and posts the link on the PR, with how to sign in; once the PR passes its review the link is posted
+  on the issue too, for whoever tests the card in Approved — in a browser, without checking anything out.
+  The environment comes down after `previewHours`, when the PR closes,
   when its servers die, when a new session starts on the issue, or with **stop** next to the link in the
   session's header; a Sloth restart re-opens the tunnel and rewrites the comment with the new address.
   The project's run skill decides whether a run can be previewed: the whole app has to answer on one
@@ -93,8 +96,8 @@ needs-help notifications carry on) and survives a restart.
 ├── watcher.log                     one line per event — the log the UI tails (rotated to .1 past 5 MB)
 ├── runners/<repo>/                 the checkout the sessions run from
 ├── worktrees/<repo>/issue-42/      one worktree per issue
-├── sessions/<repo>/                issue-42/, review-91/, approved-91/ — pid, state.json, inbox/, run.log, preview.json …
-└── state/                          seen/, reviewed/, approved/, notified/, finished/, closed/, checks/, merged/,
+├── sessions/<repo>/                issue-42/, approved-91/ — pid, state.json, inbox/, run.log, preview.json …
+└── state/                          seen/, approved/, handed/, notified/, finished/, closed/, checks/, merged/,
                                     merge-failed/ dedupe markers; paused, paused_until, pruned_at
 ```
 
@@ -143,7 +146,7 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `budgetMinutes` / `waitHours` | `60` / `2` | A session's time budget; how long a parked session waits for an answer |
 | `reviewRounds` / `maxRetries` | `4` / `2` | Reviewer-agent rounds before asking for help; trigger-2 relaunches before parking |
 | `boardSeconds` / `commentSeconds` | `300` / `120` | Poll intervals |
-| `models` | `opus` each, `final: fable`, `orchestrator: fable` | Which model each agent runs on (Settings → *Models*): `implement` (triggers 1–3; with `orchestrator` on, the implementor subagent), `orchestrator` (the implement session when `orchestrator` is on), `tester` (the headless-Chrome subagent that screenshots the change), `reviewer` (the in-session review loop), `review` (trigger 4), `final` (trigger 5), `status` (mention replies). An older config's `model` / `approvedModel` still load |
+| `models` | `opus` each, `final: fable`, `orchestrator: fable` | Which model each agent runs on (Settings → *Models*): `implement` (triggers 1–3; with `orchestrator` on, the implementor subagent), `orchestrator` (the implement session when `orchestrator` is on), `tester` (the headless-Chrome subagent that screenshots the change), `reviewer` (the in-session review loop), `final` (trigger 4 — the review every Code Review card gets), `status` (mention replies). An older config's `model` / `approvedModel` still load; its `review` key is ignored |
 | `orchestrator` | `true` | Run implement sessions as an orchestrator on `models.orchestrator` that never edits code itself: it reads the issue, briefs one implementor subagent on `models.implement`, verifies, runs the tester and the reviewer, opens the PR. Off, one session on `models.implement` does all of it. Either way the tester and the reviewer are subagents (Settings → *Models*) |
 | `autostart` | `false` | Start Sloth at login through a macOS launch agent (Settings → *Machine*; see *Run at login*). Saved but ignored on other platforms |
 | `chrome` | `true` | Give implement sessions a headless Chrome (Playwright MCP), so a tester subagent clicks through the change and its screenshots go on the PR; needs Google Chrome installed |
@@ -151,9 +154,9 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `priorityField` | `Priority` | A single-select field on the board whose option order ranks the watched column. Missing from the board, or empty here: cards are picked up in board order |
 | `keepDays` | `30` | How long a finished run is kept. Once an hour Sloth deletes the session directories, worktrees and status-reply markers older than this — never a live, parked or previewing run, and never a transcript (those are Claude Code's, under `~/.claude`). `watcher.log` is rotated to `watcher.log.1` past 5 MB |
 | `helpLogins` | `[]` | GitHub logins `@`-mentioned in the comment that parks a card in *needs help*, so GitHub notifies them (not the login `gh` writes with — GitHub skips self-mentions) |
-| `autoMerge` | `""` | How trigger 8 merges a PR whose final review passed, whose checks are green and which merges cleanly: `squash`, `merge` or `rebase` (the `gh pr merge` methods). Empty leaves merging to a human |
+| `autoMerge` | `""` | How trigger 8 merges a PR whose review passed, whose checks are green and which merges cleanly: `squash`, `merge` or `rebase` (the `gh pr merge` methods) — as soon as it passes, skipping the human test in Approved. Empty leaves merging to a human |
 | `helpWebhook` | `""` | URL POSTed once per event in `webhookEvents` (`{event, text, content, repo, issue, title, url, column, pr?}` — Slack and Discord incoming webhooks read `text` / `content` as is) |
-| `webhookEvents` | `["needsHelp"]` | What `helpWebhook` hears about (Settings → *Notifications*, one toggle each): `needsHelp` (a card is parked), `codeReview` (a PR is ready for a human), `finalPassed` / `finalFailed` (the final review's verdict — the `Fable: approved` label appearing or going), `merged` (Sloth filed a closed issue away), `stopped` (a run was stopped or parked), `usageLimit` (a Claude limit paused the watcher) |
+| `webhookEvents` | `["needsHelp"]` | What `helpWebhook` hears about (Settings → *Notifications*, one toggle each): `needsHelp` (a card is parked), `codeReview` (a PR awaits Sloth's review), `finalPassed` (the review passed and the card is in Approved, with the preview link) / `finalFailed` (the `Fable: approved` label was taken back), `merged` (Sloth filed a closed issue away), `stopped` (a run was stopped or parked), `usageLimit` (a Claude limit paused the watcher) |
 | `tunnel` | `["cloudflared", "tunnel", "--url", "http://localhost:{port}"]` | The command Sloth runs so the UI is reachable from outside (see *Remote access*); the first bare `https://` URL it prints is the address |
 | `publicUrl` | — | Where the UI is already reachable — your own tunnel or domain. Set, no tunnel is started |
 | `stack` | `"auto"` | What the sessions' app needs on this machine, out of the stack Sloth can install: `postgresql`, `redis`, `node`, `python`, `java` (see *Stack* below). `auto` reads the checkout at every start; a list pins it |

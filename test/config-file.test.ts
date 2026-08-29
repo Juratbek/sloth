@@ -50,7 +50,7 @@ describe('normalizeConfig', () => {
     expect(() => normalizeConfig(baseConfig({ statusField: { id: 'f', columns: { pickup: { id: 'a', name: 'A' } } } }))).toThrow(/inProgress/);
   });
   it('rejects a model with spaces and a webhook that is not a URL', () => {
-    expect(() => normalizeConfig(baseConfig({ models: { review: 'opus 4' } }))).toThrow(/models\.review/);
+    expect(() => normalizeConfig(baseConfig({ models: { final: 'opus 4' } }))).toThrow(/models\.final/);
     expect(() => normalizeConfig(baseConfig({ helpWebhook: 'hooks.slack.com/x' }))).toThrow(/helpWebhook/);
     expect(normalizeConfig(baseConfig({ publicUrl: 'https://sloth.example.com/' })).publicUrl).toBe('https://sloth.example.com');
   });

@@ -12,7 +12,7 @@ import { isPaused } from './pause';
 import { previews } from './preview';
 import { prune } from './retention';
 import { answered } from './answers';
-import { finalReviews, pausedUntil, pickup, reap, retryStranded, reviews } from './triggers';
+import { handover, pausedUntil, pickup, reap, retryStranded, reviews } from './triggers';
 import type { LoopStatus } from '../types';
 
 export interface TickOptions {
@@ -75,7 +75,7 @@ async function runTick({ board = false, comments: wantComments = false, dryRun =
     if (userPaused) return;
     await failedChecks(items);
     await reviews(items);
-    await finalReviews(items);
+    await handover(items);
     await autoMerge(items);
     await retryStranded(items);
     await answered(items);
