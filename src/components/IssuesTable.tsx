@@ -9,9 +9,9 @@ import { STATUS_COLOR, ago, k, usd } from '../lib/format';
 export default function IssuesTable({ issues, config }: { issues: IssueCost[]; config: MonitorConfig }) {
   if (!issues.length) return null;
   return (
-    <section className="shrink-0 space-y-1">
+    <section className="flex min-h-0 min-w-0 flex-1 basis-0 flex-col gap-1">
       <h3 className="text-[10px] font-semibold tracking-wide text-zinc-400 uppercase">cost by issue ({issues.length})</h3>
-      <div className="max-h-48 overflow-auto rounded-md border border-zinc-800">
+      <div className="min-h-0 flex-1 overflow-auto rounded-md border border-zinc-800">
         <table className="w-full text-[11px]">
           <thead className="sticky top-0 bg-zinc-900 text-zinc-400">
             <tr>

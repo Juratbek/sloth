@@ -27,8 +27,6 @@ export default function WatcherPanel({ overview, onSelect }: { overview: Overvie
         <UsageChart />
       </div>
 
-      <IssuesTable issues={overview.issues} config={overview.config} />
-
       {pending.length > 0 && (
         <section className="shrink-0 space-y-1">
           <h3 className="text-[10px] font-semibold tracking-wide text-zinc-400 uppercase">queued ({pending.length})</h3>
@@ -42,18 +40,22 @@ export default function WatcherPanel({ overview, onSelect }: { overview: Overvie
         </section>
       )}
 
-      <section className="flex min-h-0 flex-1 flex-col gap-1">
-        <h3 className="text-[10px] font-semibold tracking-wide text-zinc-400 uppercase">watcher log</h3>
-        <p className="text-[11px] text-zinc-500">
-          seen comments {watcher.seen} · reviewed heads {watcher.reviewed}
-        </p>
-        <pre
-          ref={logRef}
-          className="min-h-0 flex-1 overflow-auto rounded-md border border-zinc-800 bg-zinc-900/40 p-2 text-[11px] whitespace-pre-wrap text-zinc-400"
-        >
-          {watcher.logTail.join('\n') || '(empty)'}
-        </pre>
-      </section>
+      <div className="flex min-h-0 flex-1 flex-col gap-4 md:flex-row">
+        <IssuesTable issues={overview.issues} config={overview.config} />
+
+        <section className="flex min-h-0 min-w-0 flex-1 basis-0 flex-col gap-1">
+          <h3 className="text-[10px] font-semibold tracking-wide text-zinc-400 uppercase">watcher log</h3>
+          <p className="text-[11px] text-zinc-500">
+            seen comments {watcher.seen} · reviewed heads {watcher.reviewed}
+          </p>
+          <pre
+            ref={logRef}
+            className="min-h-0 flex-1 overflow-auto rounded-md border border-zinc-800 bg-zinc-900/40 p-2 text-[11px] whitespace-pre-wrap text-zinc-400"
+          >
+            {watcher.logTail.join('\n') || '(empty)'}
+          </pre>
+        </section>
+      </div>
     </div>
   );
 }
