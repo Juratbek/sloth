@@ -83,9 +83,11 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
   for (const f of fs.readdirSync(path.join(dir, 'inbox'))) remove(path.join(dir, 'inbox', f));
   await moveCard(issue, cfg().statusField.columns.inProgress.id);
   await run('git', ['-C', cfg().runnerRoot, 'fetch', '-q', 'origin'], 120_000);
-  const { models, chrome } = cfg();
-  log(`launch #${issue} on ${models.implement}${order ? ` (${order.slice(0, 120)})` : ''}`);
-  start(dir, dir, `/sloth:implement ${issue}${order ? ` ${order}` : ''}`, { issue }, path.join(dir, 'run.log'), { model: models.implement, chrome });
+  const { models, orchestrator, chrome } = cfg();
+  // An orchestrator session runs on its own model and hands the coding to an implementor subagent on `models.implement`.
+  const model = orchestrator ? models.orchestrator : models.implement;
+  log(`launch #${issue} on ${model}${orchestrator ? ` (orchestrator, implementor on ${models.implement})` : ''}${order ? ` (${order.slice(0, 120)})` : ''}`);
+  start(dir, dir, `/sloth:implement ${issue}${order ? ` ${order}` : ''}`, { issue }, path.join(dir, 'run.log'), { model, chrome });
   return true;
 }
 

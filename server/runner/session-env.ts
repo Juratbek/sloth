@@ -58,6 +58,8 @@ export function sessionEnv(dir: string, target: Target, model: string, chrome: b
     SLOTH_DEVELOPER_LOGINS: c.roles.developers.join(' '),
     SLOTH_TESTER_LOGINS: c.roles.testers.join(' '),
     SLOTH_MODEL: model,
+    SLOTH_ORCHESTRATOR: c.orchestrator ? '1' : '0',
+    SLOTH_IMPLEMENTOR_MODEL: c.models.implement,
     SLOTH_TESTER_MODEL: c.models.tester,
     SLOTH_REVIEWER_MODEL: c.models.reviewer,
     SLOTH_CHROME: chrome ? '1' : '0',

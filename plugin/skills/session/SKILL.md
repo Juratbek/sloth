@@ -28,6 +28,8 @@ directory.
 | `SLOTH_TESTER_LOGINS` | Space-separated **testers** — they answer questions and ask for status, never order (may be empty) |
 | `SLOTH_MODEL` | The model this session runs on; a subagent with no model of its own runs on it too |
 | `SLOTH_TESTER_MODEL` / `SLOTH_REVIEWER_MODEL` | The models the browser tester and the reviewer subagents run on (`opus`) |
+| `SLOTH_ORCHESTRATOR` | `1` when an implement session is an orchestrator: it never edits code itself, an implementor subagent does |
+| `SLOTH_IMPLEMENTOR_MODEL` | The model the implementor subagent runs on in orchestrator mode (`opus`) |
 | `SLOTH_CHROME` | `1` when the server attached Claude in Chrome (`--chrome`) — implement runs test in the browser |
 | `SLOTH_STACK` | Space-separated tools the server installed for this project on this machine (`postgresql redis node python java` at most); a project need not appear on it, but what does is on PATH |
 | `SLOTH_PREVIEW_HOURS` | Hours a finished implement run's app stays up behind a public link on its PR (see *Teardown*); `0` means previews are off — always tear down |

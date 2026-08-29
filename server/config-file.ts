@@ -76,13 +76,14 @@ function model(v: unknown, what: string): string | undefined {
 
 /**
  * One model per agent. A config from before per-agent models had `model` for every session and
- * `approvedModel` for the final review; those still load as they used to run.
+ * `approvedModel` for the final review; those still load as they used to run. The orchestrator did not
+ * exist then, so it never takes the legacy `model`.
  */
 function models(v: unknown, legacyModel: unknown, legacyApproved: unknown): AgentModels {
   const m = (v ?? {}) as Record<string, unknown>;
   const every = model(legacyModel, 'model');
-  const pick = (role: AgentRole) =>
-    model(m[role], `models.${role}`) ?? (role === 'final' ? model(legacyApproved, 'approvedModel') : every) ?? DEFAULT_MODELS[role];
+  const legacy = (role: AgentRole) => (role === 'final' ? model(legacyApproved, 'approvedModel') : role === 'orchestrator' ? undefined : every);
+  const pick = (role: AgentRole) => model(m[role], `models.${role}`) ?? legacy(role) ?? DEFAULT_MODELS[role];
   return Object.fromEntries(AGENT_ROLES.map((role) => [role, pick(role)])) as unknown as AgentModels;
 }
 
@@ -163,6 +164,7 @@ export function normalizeConfig(input: unknown): SlothConfig {
     boardSeconds: int(b.boardSeconds, d.boardSeconds, 30),
     commentSeconds: int(b.commentSeconds, d.commentSeconds, 30),
     models: models(b.models, b.model, b.approvedModel),
+    orchestrator: b.orchestrator === true,
     chrome: b.chrome !== false,
     autostart: b.autostart === true,
     previewHours: int(b.previewHours, d.previewHours, 0),

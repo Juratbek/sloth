@@ -52,6 +52,18 @@ describe('pickup (trigger 1)', () => {
     expect(called(/item-edit .*opt-wip/)).toHaveLength(2);
     expect(spawned[0].options.env.SLOTH_ISSUE).toBe('5');
     expect(spawned[0].options.env.SLOTH_COL_CODE_REVIEW_ID).toBe(COLUMNS.codeReview.id);
+    expect(spawned[0].args).toContain('opus');
+    expect(spawned[0].options.env.SLOTH_ORCHESTRATOR).toBe('0');
+  });
+  it('starts an orchestrator on its own model and names the implementor model', async () => {
+    configure({ orchestrator: true, models: { orchestrator: 'fable', implement: 'sonnet' } });
+    onGh(/project item-add/, 'ITEM');
+    await pickup([card(5, 'Todo')]);
+    const [s] = spawned;
+    expect(s.args[s.args.indexOf('--model') + 1]).toBe('fable');
+    expect(s.options.env.SLOTH_ORCHESTRATOR).toBe('1');
+    expect(s.options.env.SLOTH_IMPLEMENTOR_MODEL).toBe('sonnet');
+    expect(s.options.env.SLOTH_MODEL).toBe('fable');
     expect(exists(sessionDir('issue', 5), 'pid')).toBe(true);
     expect(exists(sessionDir('issue', 5), 'session_id')).toBe(true);
   });

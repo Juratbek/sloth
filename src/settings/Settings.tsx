@@ -34,7 +34,7 @@ const SECTIONS: { key: Key; label: string; component: ComponentType<SectionProps
   { key: 'stack', label: 'Stack', component: StackSection, defaults: () => pick('stack') },
   { key: 'team', label: 'Team', component: Team },
   { key: 'notifications', label: 'Notifications', component: NotificationsSection, defaults: () => pick('helpLogins', 'helpWebhook', 'webhookEvents') },
-  { key: 'models', label: 'Models', component: Models, defaults: () => ({ models: { ...DEFAULT_MODELS } }) },
+  { key: 'models', label: 'Models', component: Models, defaults: () => ({ models: { ...DEFAULT_MODELS }, ...pick('orchestrator') }) },
   { key: 'sessions', label: 'Sessions', component: Sessions, defaults: () => pick('maxActive', 'maxAlive', 'budgetMinutes', 'waitHours', 'reviewRounds', 'maxRetries', 'keepDays') },
   { key: 'remote', label: 'Remote access', component: Remote, defaults: () => pick('tunnel', 'publicUrl') },
   { key: 'machine', label: 'Machine', component: MachineSection, defaults: () => pick('autostart') },
