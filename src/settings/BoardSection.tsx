@@ -55,7 +55,7 @@ export default function BoardSection({ draft, patch }: SectionProps) {
       {!fields.data && fields.isFetching && <Loading what="columns" />}
       {fields.error && <Error>{String(fields.error)}</Error>}
       {fields.data && !status && <Error>This project has no Status field — add one on the board first.</Error>}
-      <Row label="Watched column" hint="Sloth picks unassigned cards up from here. It only ever reads this column.">
+      <Row label="Watched column" hint="Sloth picks cards up from here — every card but the ones labelled “Sloth: skip”. It only ever reads this column.">
         <Choose label="Watched column" value={columns.pickup.id} onChange={(id) => set('pickup', id)} options={options} placeholder="choose a column" />
       </Row>
       {OTHERS.map(({ role, label, hint }) => (

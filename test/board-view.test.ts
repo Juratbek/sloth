@@ -79,7 +79,7 @@ describe('buildBoardView', () => {
     // A human's final review still shows: Sloth reviewed it.
     const final = session({ id: 'final', kind: 'sloth:review', target: 90, watcher: dir('approved', 90, { issue: 5 }) });
     const v = view(
-      [card(1, 'Todo'), card(2, 'In Progress'), card(3, 'In Progress'), card(4, 'Code Review'), card(5, 'Approved', { assignees: ['bob'] }), card(6, 'Todo', { assignees: ['bob'] }), card(7, 'Done')],
+      [card(1, 'Todo'), card(2, 'In Progress'), card(3, 'In Progress'), card(4, 'Code Review'), card(5, 'Approved', { assignees: ['bob'] }), card(6, 'Todo', { labels: ['Sloth: skip'] }), card(7, 'Done')],
       [ran, final],
     );
     expect(issuesIn(v, 'pickup')).toEqual([1]);
@@ -87,7 +87,7 @@ describe('buildBoardView', () => {
     expect(issuesIn(v, 'codeReview')).toEqual([]);
     expect(issuesIn(v, 'approved')).toEqual([5]);
     expect(issuesIn(v, 'done')).toEqual([]);
-    // #3, #4, #7 moved by hand with no run; #6 claimed in pickup, so not Sloth's to take.
+    // #3, #4, #7 moved by hand with no run; #6 labelled Sloth: skip in pickup, so not Sloth's to take.
     expect(v.others).toBe(4);
     expect(v.elsewhere).toBe(0);
   });

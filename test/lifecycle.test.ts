@@ -111,7 +111,7 @@ describe('finished (trigger 6)', () => {
       7: [{ pr: 16, sha: 'g', head: 'sloth/issue-7-x', state: 'CLOSED' }],
       8: [{ pr: 17, sha: 'h', head: 'sloth/issue-8-x', state: 'CLOSED' }],
     });
-    await finished([card(6, COLUMNS.codeReview.name), card(7, COLUMNS.codeReview.name), card(8, COLUMNS.approved.name, { assignees: ['bob'] })]);
+    await finished([card(6, COLUMNS.codeReview.name), card(7, COLUMNS.codeReview.name), card(8, COLUMNS.approved.name, { labels: ['Sloth: skip'] })]);
     expect(called(/issue comment/)).toHaveLength(0);
   });
 
@@ -141,7 +141,7 @@ describe('failedChecks (trigger 7)', () => {
     expect(launches()).toEqual([]);
   });
 
-  it("leaves a human's PR, a green head, an assigned card and a live session alone", async () => {
+  it("leaves a human's PR, a green head, a skipped card and a live session alone", async () => {
     makeSession('issue', 4, { pid: alivePid() });
     wired({
       1: [{ pr: 10, sha: 'a', head: 'feature/x', checks: 'FAILURE' }],
@@ -151,7 +151,7 @@ describe('failedChecks (trigger 7)', () => {
     await failedChecks([
       card(1, COLUMNS.codeReview.name),
       card(2, COLUMNS.codeReview.name),
-      card(3, COLUMNS.codeReview.name, { assignees: ['bob'] }),
+      card(3, COLUMNS.codeReview.name, { labels: ['Sloth: skip'] }),
       card(4, COLUMNS.approved.name),
     ]);
     expect(launches()).toEqual([]);

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
-import { moveCard, pickupOrder, unassignedIn, wiredPrs } from './board';
+import { freeIn, moveCard, pickupOrder, wiredPrs } from './board';
 import type { BoardItem } from './board';
 import { comment } from './gh';
 import { limitExit } from './limits';
@@ -121,7 +121,7 @@ export async function reap(): Promise<void> {
  * so a second `/sloth:review` would only repeat it. Human-written PRs are what this trigger is for.
  */
 export async function reviews(board: BoardItem[]): Promise<void> {
-  const issues = unassignedIn(board, cfg().statusField.columns.codeReview.name);
+  const issues = freeIn(board, cfg().statusField.columns.codeReview.name);
   for (const { issue, pr, sha, head } of await wiredPrs(issues)) {
     if (OWN_BRANCH.test(head)) continue;
     const marker = statePath(MARKERS.review, `${pr}-${sha}`);
@@ -134,8 +134,8 @@ export async function reviews(board: BoardItem[]): Promise<void> {
  * Trigger 5 — Approved cards whose wired PR is open get one final review per PR head, with
  * `/sloth:review <pr> final` on `models.final`; a pass labels the issue `Fable: approved`, and a card
  * carrying that label is done — the marker of that head keeps it from being reviewed again. Neither a
- * GitHub approval nor an assignee excludes the PR: the column is the signal. A rejected assigned card goes
- * back to In Progress with its assignee intact, so the human keeps it (trigger 2 skips it). A labelled card
+ * GitHub approval nor a `Sloth: skip` label excludes the PR: the column is the signal. A rejected skipped card
+ * goes back to In Progress with its label intact, so the human keeps it (trigger 2 skips it). An approved card
  * whose *current* head has no marker was pushed to after the pass, so the label no longer describes what is
  * on the branch: it goes, and the new head is reviewed like any other. Checks decide the rest — a pending
  * rollup is worth waiting one tick for, and a red one belongs to trigger 7, which sends the session back to
@@ -162,7 +162,7 @@ export async function finalReviews(board: BoardItem[]): Promise<void> {
 
 /** Trigger 2 — In Progress cards with no live session: a reboot or a usage-limit retry, capped. */
 export async function retryStranded(board: BoardItem[]): Promise<void> {
-  for (const issue of unassignedIn(board, cfg().statusField.columns.inProgress.name)) {
+  for (const issue of freeIn(board, cfg().statusField.columns.inProgress.name)) {
     if (issueAlive(issue) || isBlocked(issueDir(issue))) continue;
     const retries = counter(issueDir(issue), 'retries');
     if (retries >= cfg().maxRetries) {

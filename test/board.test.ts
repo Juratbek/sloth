@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchBoard, moveCard, pickupOrder, unassignedIn, wiredPrs } from '../server/runner/board';
+import { fetchBoard, freeIn, moveCard, pickupOrder, wiredPrs } from '../server/runner/board';
 import { setDry } from '../server/runner/log';
 import { called, onGh, resetGh } from './gh-mock';
 import { configure, readLog } from './harness';
@@ -26,7 +26,7 @@ describe('fetchBoard', () => {
         node: {
           items: {
             pageInfo: { hasNextPage: true, endCursor: 'c1' },
-            nodes: [item(1, 'Todo', { assignees: { nodes: [{ login: 'bob' }] } }), { content: { __typename: 'PullRequest', number: 9 } }, item(2, 'Todo', { labels: { nodes: [{ name: 'bug' }] } })],
+            nodes: [item(1, 'Todo', { assignees: { nodes: [{ login: 'bob' }] }, labels: { nodes: [{ name: 'Sloth: skip' }] } }), { content: { __typename: 'PullRequest', number: 9 } }, item(2, 'Todo', { labels: { nodes: [{ name: 'bug' }] } })],
           },
         },
       },
@@ -36,7 +36,7 @@ describe('fetchBoard', () => {
     expect(board?.[0].assignees).toEqual(['bob']);
     expect(board?.[1].labels).toEqual(['bug']);
     expect(board?.map((i) => i.closed)).toEqual([false, false, true]);
-    expect(unassignedIn(board!, 'Todo')).toEqual([2]);
+    expect(freeIn(board!, 'Todo')).toEqual([2]);
   });
   it('ranks a card by the position of its option in the priority field', async () => {
     const options = { options: [{ id: 'p-high' }, { id: 'p-med' }, { id: 'p-low' }] };
@@ -50,7 +50,7 @@ describe('fetchBoard', () => {
               item(2, 'Todo'),
               item(3, 'Todo', {}, { optionId: 'p-high', field: options }),
               item(4, 'Todo', {}, { optionId: 'gone', field: options }),
-              item(5, 'Todo', { assignees: { nodes: [{ login: 'bob' }] } }, { optionId: 'p-high', field: options }),
+              item(5, 'Todo', { labels: { nodes: [{ name: 'Sloth: skip' }] } }, { optionId: 'p-high', field: options }),
             ],
           },
         },
@@ -59,7 +59,7 @@ describe('fetchBoard', () => {
     const board = (await fetchBoard())!;
     expect(board.map((i) => i.priority)).toEqual([2, undefined, 0, undefined, 0]);
     expect(called(/-F priority=Priority/)).toHaveLength(1);
-    // Ranked first, board order within a rank, unranked last — and never a card a human owns.
+    // Ranked first, board order within a rank, unranked last — and never a card labelled Sloth: skip.
     expect(pickupOrder(board, 'Todo')).toEqual([3, 1, 2, 4]);
   });
   it('asks for no priority value when the field is turned off', async () => {

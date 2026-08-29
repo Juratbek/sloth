@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { APPROVED_LABEL } from '../../../server/board-types';
+import { APPROVED_LABEL, SKIP_LABEL, skipped } from '../../../server/board-types';
 import type { ColumnRole } from '../../../server/config-types';
 import type { BoardCard } from '../../../server/types';
 import { STATUS_COLOR, duration, safeUrl, stepLabel, usd } from '../../lib/format';
@@ -15,8 +15,9 @@ function Out({ href, className, children }: { href: string; className: string; c
 
 /**
  * One card, two dense lines: the issue and what Sloth's newest run on it is doing, then only what
- * applies — cost, PR, preview, retries, the human who owns it, the final-review pass, how long a
- * parked card has been waiting. Clicking selects the run; the links open GitHub or the preview.
+ * applies — cost, PR, preview, retries, the assignee, the skip label that keeps Sloth off it, the
+ * final-review pass, how long a parked card has been waiting. Clicking selects the run; the links
+ * open GitHub or the preview.
  */
 export default function Card({ card, role, onSelect }: { card: BoardCard; role: ColumnRole; onSelect: (id: string) => void }) {
   const step = card.kind && stepLabel(card.kind, card.step);
@@ -26,8 +27,9 @@ export default function Card({ card, role, onSelect }: { card: BoardCard; role: 
   const cost = card.sessionId ? (card.cost === null ? '—' : usd(card.cost)) : undefined;
   const approved = role === 'approved' && card.labels.includes(APPROVED_LABEL);
   const owner = card.assignees[0];
+  const held = skipped(card);
   const waited = role === 'needsHelp' && card.since ? duration(Date.now() / 1000 - card.since) : undefined;
-  const second = cost || pr || previewLink || card.retries > 0 || owner || approved || waited;
+  const second = cost || pr || previewLink || card.retries > 0 || owner || held || approved || waited;
   const pick = card.sessionId ? () => onSelect(card.sessionId!) : undefined;
 
   return (
@@ -68,6 +70,7 @@ export default function Card({ card, role, onSelect }: { card: BoardCard; role: 
           {card.retries > 0 && <span className="text-amber-400">retries {card.retries}</span>}
           {waited && <span className="tabular-nums">waiting {waited}</span>}
           {approved && <span className="rounded bg-zinc-800 px-1 text-zinc-400">{APPROVED_LABEL}</span>}
+          {held && <span className="rounded bg-zinc-800 px-1 text-orange-400">{SKIP_LABEL}</span>}
           {owner && <span className="text-zinc-500">{owner}</span>}
         </div>
       )}

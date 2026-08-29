@@ -2,7 +2,7 @@ import path from 'node:path';
 import { cfg } from '../config';
 import { canAnswer, roleOf } from '../roles';
 import type { Role } from '../roles';
-import { unassignedIn } from './board';
+import { freeIn } from './board';
 import type { BoardItem } from './board';
 import { gh } from './gh';
 import { isDry, log, remove } from './log';
@@ -55,8 +55,8 @@ async function answerOn(issue: number): Promise<Answer | undefined> {
 export async function answered(board: BoardItem[]): Promise<void> {
   const col = cfg().statusField.columns;
   const parked = [
-    ...(col.needsHelp.name ? unassignedIn(board, col.needsHelp.name) : []),
-    ...unassignedIn(board, col.inProgress.name).filter((issue) => isBlocked(issueDir(issue))),
+    ...(col.needsHelp.name ? freeIn(board, col.needsHelp.name) : []),
+    ...freeIn(board, col.inProgress.name).filter((issue) => isBlocked(issueDir(issue))),
   ];
   for (const issue of parked) {
     if (issueAlive(issue)) continue;

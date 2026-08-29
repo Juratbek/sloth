@@ -5,7 +5,7 @@ import type { BoardItem } from './board';
 import { cleanup } from './cleanup';
 import { gh } from './gh';
 import { isDry, log, remove, write } from './log';
-import { APPROVED_LABEL, MARKERS, OWN_BRANCH, statePath, unapprove } from './markers';
+import { APPROVED_LABEL, MARKERS, OWN_BRANCH, skipped, statePath, unapprove } from './markers';
 import { stopPreview } from './preview';
 import { approvedDir, dirAlive, issueAlive } from './session-dirs';
 import { launch } from './spawn';
@@ -111,7 +111,7 @@ export async function finished(board: BoardItem[]): Promise<void> {
   }
 
   const handed = handedOverColumns();
-  const stranded = cards.filter((i) => !i.closed && !i.assignees.length && handed.includes(i.status));
+  const stranded = cards.filter((i) => !i.closed && !skipped(i) && handed.includes(i.status));
   if (stranded.length) await abandoned(stranded);
 }
 
@@ -125,7 +125,7 @@ export async function finished(board: BoardItem[]): Promise<void> {
  */
 export async function failedChecks(board: BoardItem[]): Promise<void> {
   const columns = handedOverColumns();
-  const cards = board.filter((i) => columns.includes(i.status) && !i.assignees.length);
+  const cards = board.filter((i) => columns.includes(i.status) && !skipped(i));
   if (!cards.length) return;
   for (const { issue, pr, sha, head, checks } of await wiredPrs(cards.map((i) => i.number), { unapprovedOnly: false })) {
     if (!OWN_BRANCH.test(head) || checks !== 'FAILURE') continue;

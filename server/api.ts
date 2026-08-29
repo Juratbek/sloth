@@ -11,6 +11,7 @@ import { guard, isLocal, remoteLink, rotateToken, sameOrigin, startTunnel, stopT
 import { agentDetail, overview, sessionDetail, watcherOf } from './sessions';
 import { serviceStatus } from './service';
 import { handleSetup } from './setup';
+import { ensureSkipLabel } from './runner/markers';
 import { ensureStack, handleStack } from './stack';
 import { check, update, versionInfo } from './update';
 import { usageSeries } from './usage';
@@ -165,6 +166,8 @@ export function monitorApi(): Plugin {
     startLoop();
     // Whatever the project's stack still lacks on this machine gets installed, so sessions can boot the app.
     void ensureStack();
+    // The skip label people hold cards back with has to exist in the repo before anyone can apply it.
+    void ensureSkipLabel();
     const http = server.httpServer;
     // The tunnel needs the port actually bound — Vite moves to the next one when the configured port is taken.
     const tunnel = () => {

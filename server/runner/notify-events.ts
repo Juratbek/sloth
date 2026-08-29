@@ -4,7 +4,7 @@ import { cfg } from '../config';
 import type { WebhookEvent } from '../config-types';
 import type { BoardItem } from './board';
 import { isDry, remove, write } from './log';
-import { APPROVED_LABEL, statePath } from './markers';
+import { APPROVED_LABEL, skipped, statePath } from './markers';
 import { notifies, notify } from './notify';
 
 /**
@@ -43,7 +43,7 @@ const STATES: State[] = [
   {
     event: 'needsHelp',
     of: (b) => inColumn(b, cfg().statusField.columns.needsHelp.name),
-    skip: (i) => i.assignees.length > 0,
+    skip: skipped,
     line: (i) => `Sloth needs help with #${i.number} ${i.title}`,
   },
   {
