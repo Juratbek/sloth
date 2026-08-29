@@ -59,7 +59,13 @@ export interface Roles {
  * or a full model id. Settings → Models edits it.
  */
 export interface AgentModels {
-  /** The implement session: claims the card, writes the code, opens the PR (triggers 1–3). */
+  /**
+   * The orchestrator an implement session runs on when `orchestrator` is on: it claims the card, briefs
+   * an implementor subagent (on `implement`), verifies, runs the tester and the reviewer, opens the PR —
+   * and never edits code itself.
+   */
+  orchestrator: string;
+  /** The implement session: claims the card, writes the code, opens the PR (triggers 1–3). With `orchestrator` on, the implementor subagent that writes the code. */
   implement: string;
   /** The tester subagent an implement session spawns to click through the change in Chrome. */
   tester: string;
@@ -74,7 +80,7 @@ export interface AgentModels {
 }
 export type AgentRole = keyof AgentModels;
 
-export const DEFAULT_MODELS: AgentModels = { implement: 'opus', tester: 'opus', reviewer: 'opus', review: 'opus', final: 'fable', status: 'opus' };
+export const DEFAULT_MODELS: AgentModels = { orchestrator: 'fable', implement: 'opus', tester: 'opus', reviewer: 'opus', review: 'opus', final: 'fable', status: 'opus' };
 export const AGENT_ROLES = Object.keys(DEFAULT_MODELS) as AgentRole[];
 
 export interface SlothConfig {
@@ -103,6 +109,12 @@ export interface SlothConfig {
   commentSeconds: number;
   /** One model per agent; a config from before this had `model` for every session and `approvedModel` for the final review. */
   models: AgentModels;
+  /**
+   * Run implement sessions as an orchestrator on `models.orchestrator` that delegates every code change
+   * to an implementor subagent on `models.implement`; off, the session on `models.implement` writes the
+   * code itself. Either way the tester and the reviewer are subagents on their own models.
+   */
+  orchestrator: boolean;
   /** Pass `--chrome` to implement sessions, so a tester subagent can exercise the change in the user's Chrome. */
   chrome: boolean;
   /** Start Sloth when this machine is logged into, through a macOS launch agent (`server/service.ts`). */
@@ -173,6 +185,7 @@ export const CONFIG_DEFAULTS = {
   boardSeconds: 300,
   commentSeconds: 120,
   models: DEFAULT_MODELS,
+  orchestrator: false,
   chrome: true,
   autostart: false,
   previewHours: 24,

@@ -9,6 +9,7 @@ describe('normalizeConfig', () => {
     expect(c.maxActive).toBe(CONFIG_DEFAULTS.maxActive);
     expect(c.previewHours).toBe(24);
     expect(c.models).toEqual(DEFAULT_MODELS);
+    expect(c.orchestrator).toBe(false);
     expect(c.chrome).toBe(true);
     expect(c.tunnel).toEqual(CONFIG_DEFAULTS.tunnel);
     expect(c.helpLogins).toEqual([]);
@@ -29,6 +30,14 @@ describe('normalizeConfig', () => {
     expect(c.models.implement).toBe('sonnet');
     expect(c.models.status).toBe('sonnet');
     expect(c.models.final).toBe('fable');
+    expect(c.models.orchestrator).toBe('fable');
+  });
+  it('keeps the orchestrator toggle and its model', () => {
+    const c = normalizeConfig(baseConfig({ orchestrator: true, models: { orchestrator: 'opus', implement: 'sonnet' } }));
+    expect(c.orchestrator).toBe(true);
+    expect(c.models.orchestrator).toBe('opus');
+    expect(c.models.implement).toBe('sonnet');
+    expect(normalizeConfig(baseConfig({ orchestrator: 'yes' })).orchestrator).toBe(false);
   });
   it('gives every login one role: admin first, then developer', () => {
     const c = normalizeConfig(baseConfig({ roles: { admin: 'Alice', developers: 'alice, bob, Bob', testers: ['bob', 'carol'] } }));

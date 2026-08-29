@@ -81,6 +81,8 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_MODEL` | The model this session runs on; a subagent with no model of its own runs on it too |
 | `SLOTH_TESTER_MODEL` | The model the browser tester subagent runs on (`opus`) |
 | `SLOTH_REVIEWER_MODEL` | The model the reviewer subagent runs on (`opus`) |
+| `SLOTH_ORCHESTRATOR` | `1` when the implement session is an orchestrator (`orchestrator` in the config): it runs on the orchestrator model and hands every code change to an implementor subagent |
+| `SLOTH_IMPLEMENTOR_MODEL` | The model the implementor subagent runs on in orchestrator mode — the config's `models.implement` (`opus`) |
 | `SLOTH_CHROME` | `1` when the session was started with `--chrome`; implement then tests the change in the browser |
 | `SLOTH_PREVIEW_HOURS` | How long a finished implement run's app stays up behind a public link on its PR; `0` means previews are off, always tear down |
 | `SLOTH_START`, `SLOTH_DEADLINE` | Epoch seconds: run start, hard deadline |
@@ -114,6 +116,9 @@ The **last message of the transcript is the report** — the monitor shows it.
 - Orders override everything, in any column, at any step: the admin's without limit, a developer's within the issue. A tester answers and asks; a login with no role never reaches a session — the server drops those comments.
 - An open PR on the issue whose branch is `sloth/issue-<n>-*` is resumed, not duplicated.
 - The reviewer subagent is spawned once and reused across rounds.
+- With `SLOTH_ORCHESTRATOR=1` the implement session never edits code: one implementor subagent (spawned once, reused
+  for every fix) makes every change, while the session keeps the issue, the board, verification, the tester, the
+  reviewer loop and the PR.
 - With `SLOTH_CHROME=1` the implement session spawns one tester subagent that drives the change in the user's Chrome
   (own tab, console and network checked) and fixes what it finds before the PR.
 - With `SLOTH_PREVIEW_HOURS` above 0 an implement run that reaches Code Review leaves its app, database and worktree up and

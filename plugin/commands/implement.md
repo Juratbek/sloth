@@ -19,6 +19,14 @@ skill (ids, moves, wired PR, `retry`) before Step 0, and follow them for the who
 **Everything project-specific comes from the project**, never from this command: `CLAUDE.md` / `AGENTS.md`,
 the repo's rules, its skills, its docs. This command only says *when* to consult them.
 
+**Orchestrator mode** (`SLOTH_ORCHESTRATOR=1`): this session is the orchestrator and **never edits code
+itself** — no `Edit`, no `Write`, no fix-up in the worktree. Every change to the code is made by **one
+implementor subagent** on `$SLOTH_IMPLEMENTOR_MODEL` (spawned in Step 3, reused for every fix), while this
+session keeps everything else: the issue and its thread, the board, the worktree and its git, verification
+(Step 4), the tester (Step 4.5), the commits and the PR (Step 5), the reviewer loop (Step 5.5), Step Q. The
+implementor never talks to GitHub or the board. Steps that read differently in this mode say so below;
+with `SLOTH_ORCHESTRATOR=0` (or unset) ignore them and do the work yourself.
+
 ## Step 0 — Parse, claim
 
 `$ARGUMENTS` holds, in any order:
@@ -80,7 +88,9 @@ gh issue view "$ISSUE" --repo "$SLOTH_REPO" --json comments \
   (Step 2), read the PR's review comments and unresolved threads, fix each one — or reply with the reasoning
   when it is wrong — and continue from Step 4. An open PR that is **not** Sloth's, with no order saying what
   to do about it, is Step Q.
-- Locate the code with Grep/Glob/Read, or an `Explore`-style subagent on `$SLOTH_MODEL`.
+- Locate the code with Grep/Glob/Read, or an `Explore`-style subagent on `$SLOTH_MODEL`. **Orchestrator:**
+  read only what you need to brief the implementor and to judge its work — the issue, the thread, the
+  project's rules, the design; locating and reading the code is the implementor's job.
 
 ## Step 2 — Worktree off the default branch
 
@@ -115,6 +125,32 @@ walk the design node by node against your markup and **name each value you match
 bug to fix, not a note. That written comparison becomes the PR's `## Design fidelity`. A design you cannot
 reach (missing asset, contradictory, screen absent) is Step Q, not a PR.
 
+### Step 3, orchestrator — the implementor subagent
+
+Spawn **one** implementor subagent (`Agent`, `subagent_type: "general-purpose"`,
+`model: "$SLOTH_IMPLEMENTOR_MODEL"`, `run_in_background: false`) and **reuse it for every later change**
+via `SendMessage` — a Step 4 failure, a tester finding, a reviewer finding, a review round-trip's comments,
+an order that changes the scope. Never a fresh implementor per fix: it already holds the code in context.
+
+Its brief carries everything it cannot read for itself, and nothing it can:
+
+- the worktree `$WT` — it works only there, on the branch already checked out, and never touches
+  `$SLOTH_RUNNER_ROOT`, a shared database or a port another session uses;
+- the issue's number and title, its body and the binding parts of the thread (answers, orders, extra
+  instructions), quoted — it has no `gh` access to the issue and must not use any;
+- the paths of any downloaded design files, and that the design is the spec (the paragraph above);
+- where the project's rules are (`CLAUDE.md` / `AGENTS.md`, the rules and skills they point at) — it reads
+  and follows them itself;
+- the scope: tightly the issue, no unrelated cleanup, no tests unless the issue or the repo asks;
+- the time it has: `$SLOTH_DEADLINE` minus what Steps 4–6 need (`session` skill);
+- what to return: the files changed and why, the exact checks it ran (the repo's `test` / `lint` / `build`
+  / `typecheck` scripts scoped to its change, per Step 4) with their outcome, the design-fidelity walk when
+  there is a design, and anything it could not do or found ambiguous — **as a question for you, never a
+  guess**. It writes no commits, no comments, no PR, no board moves: those are yours.
+
+Read its report, not its transcript. A failed check it could not fix, or a question it raised, is your Step
+Q — with the implementor's words, not a paraphrase. An answer from the thread goes back to it verbatim.
+
 ## Step 4 — Verify
 
 Run what the project declares, in this order of preference:
@@ -131,6 +167,11 @@ Run what the project declares, in this order of preference:
 
 Record the exact commands and their output: they become the PR's `## Verification`, which states precisely
 **what was verified and what was not**. A failing check you cannot fix is Step Q — do not push over it.
+
+**Orchestrator:** the declared checks (2) are the implementor's — take them from its report and do not
+re-run them unless the report is missing one. Bringing the app up and exercising the behaviour (1) is yours:
+that is how you judge the work. Anything that fails goes back to the implementor via `SendMessage` — the
+failing command and its output verbatim — and it reports again; you never patch it yourself.
 
 ## Step 4.5 — Test it in the browser (tester subagent)
 
@@ -152,7 +193,8 @@ that must be gone. Its task:
 4. Close the tab. Return raw data: the steps taken, pass / fail for each, every finding with what was seen,
    and what could not be tested and why.
 
-A finding is a bug: fix it, re-run the affected checks of Step 4, and ask the tester to re-test. Its report
+A finding is a bug: fix it (**orchestrator:** hand it to the implementor verbatim), re-run the affected
+checks of Step 4, and ask the tester to re-test. Its report
 is the browser part of the PR's `## Verification` — in words; **no image, gif or video is ever required**.
 A tester that cannot reach the screen at all is a failed Step 4 (Step Q when you cannot fix it). Skip this
 step only when the change has no screen — an API-only fix, a script — and say so in the PR.
@@ -181,7 +223,8 @@ report the verdict block verbatim.
 
 1. Round 1 via `Agent`; later rounds via `SendMessage`: "The PR has been updated — re-run the feedback-only review".
 2. `OK to merge: yes` → Step 6.
-3. Otherwise fix every bug and unmet requirement it lists, re-run Step 4, commit, push. Re-run the
+3. Otherwise fix every bug and unmet requirement it lists (**orchestrator:** send the verdict block to the
+   implementor verbatim and wait for its report), re-run Step 4, commit, push. Re-run the
    behavioural part of Step 4 and the tester (Step 4.5) only when the behaviour they exercised changed.
 4. `$SLOTH_REVIEW_ROUNDS` rounds without a pass → Step Q with the remaining findings; the PR stays a draft.
 
@@ -225,7 +268,10 @@ the question comment URL, whether an answer arrived, where the card is, and what
 - **Check the inbox at every step boundary.** Orders override everything here — the admin's without limit, a
   developer's within the issue (`session` skill).
 - Every comment starts with `$SLOTH_BOT_PREFIX`; **never write `$SLOTH_MENTION` in your own comments.**
-  The tester runs on `$SLOTH_TESTER_MODEL`, the reviewer on `$SLOTH_REVIEWER_MODEL`, any other subagent on `$SLOTH_MODEL`.
+  The tester runs on `$SLOTH_TESTER_MODEL`, the reviewer on `$SLOTH_REVIEWER_MODEL`, the implementor (orchestrator
+  mode only) on `$SLOTH_IMPLEMENTOR_MODEL`, any other subagent on `$SLOTH_MODEL`.
+- **Orchestrator mode never edits code in this session**: one implementor subagent, spawned once and reused,
+  makes every change; this session reads, verifies, tests, reviews, commits, and talks to GitHub and the board.
 - **The comment thread is part of the spec** — never re-ask what it answers.
 - **A referenced design is matched exactly**; a difference is a bug, an unreachable design is a question.
   The PR describes the match in words — images, gifs and videos are never required.
