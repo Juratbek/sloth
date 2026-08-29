@@ -16,8 +16,8 @@ process stops — there is no daemon. The first time you open the UI a **Get sta
 `claude` and `gh`, lets you pick the board, its columns, the repository and the checkout the sessions
 run from, then writes `~/.sloth/config.json`. The gear in the header opens **Settings**, where every value in
 that file — the board, the team, the caps, which model each agent runs on — can be changed; the wizard can be
-re-run from there. Its **About** section shows the version and commit Sloth runs (the patch version goes up with
-every PR merged into `main` — `.github/workflows/bump-version.yml` commits the bump), how far behind `origin` it is,
+re-run from there. Its **About** section shows the version and commit Sloth runs (`major.minor` from `package.json`,
+the patch the number of PRs merged into the branch, so it goes up with every merge by itself), how far behind `origin` it is,
 and an **Update** button: `git pull --ff-only`, `pnpm install`, `pnpm build`, then Sloth restarts itself with the
 same command line (running sessions are not touched; a `caffeinate` or `pnpm` wrapper exits with the old process).
 

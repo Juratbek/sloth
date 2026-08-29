@@ -26,7 +26,10 @@ export default function AboutSection() {
             : `${v.behind} commit${v.behind === 1 ? '' : 's'} behind ${where} (checked ${ago(v.checkedAt)} ago).`;
   return (
     <>
-      <Row label="Version" hint={v.date ? `Commit ${v.commit ?? '?'} on ${v.branch ?? 'detached HEAD'}, ${new Date(v.date).toLocaleString()}.` : undefined}>
+      <Row
+        label="Version"
+        hint={v.date ? `Commit ${v.commit ?? '?'} on ${v.branch ?? 'detached HEAD'}, ${new Date(v.date).toLocaleString()}. The patch is the number of PRs merged.` : undefined}
+      >
         <span className="font-mono text-sm text-zinc-200">
           {v.version || '?'}
           {v.commit && <span className="text-zinc-500"> · {v.commit}</span>}

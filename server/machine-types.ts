@@ -29,8 +29,9 @@ export interface UpdateStatus {
   /** The new process is starting; the page reloads once it answers. */
   restarting: boolean;
 }
-/** What Sloth this is: the version in package.json, the commit of the checkout, and how far behind the remote it is. */
+/** What Sloth this is: its version, the commit of the checkout, and how far behind the remote it is. */
 export interface VersionInfo {
+  /** `major.minor` from package.json and, for the patch, the number of PRs merged into the branch (`update.ts` `versionOf`). */
   version: string;
   commit?: string;
   date?: string;

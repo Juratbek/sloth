@@ -19,7 +19,7 @@ const REMOTE = 'origin';
 
 const status: UpdateStatus = { running: false, output: '', restarting: false };
 let lines: string[] = [];
-let local: Pick<VersionInfo, 'commit' | 'date' | 'branch' | 'dirty'> | undefined;
+let local: Pick<VersionInfo, 'version' | 'commit' | 'date' | 'branch' | 'dirty'> | undefined;
 let behind: number | undefined;
 let checkedAt: string | undefined;
 let checkError: string | undefined;
@@ -33,7 +33,7 @@ function git(args: string[], timeout = 60_000): Promise<{ ok: boolean; out: stri
   );
 }
 
-function version(): string {
+function packageVersion(): string {
   try {
     return String((JSON.parse(fs.readFileSync(path.join(SLOTH_ROOT, 'package.json'), 'utf8')) as { version?: string }).version ?? '');
   } catch {
@@ -41,20 +41,39 @@ function version(): string {
   }
 }
 
-/** The commit, branch and cleanliness of the checkout — read once, again after a check or an update. */
+/**
+ * The version Sloth shows: `major.minor` from package.json, and for the patch the number of PRs merged
+ * into the branch — so it goes up with every merge on its own, with no release commit and no CI to
+ * make one (GitHub Actions is not a given). PRs land as merge commits, and `--first-parent` counts only
+ * the ones on the branch's own line, not merges made inside a feature branch. Without a count (no git,
+ * not a clone) the version is package.json's, as it is.
+ */
+export const versionOf = (pkg: string, merges: number | undefined): string => {
+  const [major, minor] = pkg.split('.');
+  return merges === undefined || !major || !minor ? pkg : `${major}.${minor}.${merges}`;
+};
+
+/** The commit, branch, cleanliness and merge count of the checkout — read once, again after a check or an update. */
 async function readLocal(): Promise<NonNullable<typeof local>> {
-  const [head, branch, porcelain] = await Promise.all([
+  const [head, branch, porcelain, merges] = await Promise.all([
     git(['log', '-1', '--format=%h%n%cI']),
     git(['rev-parse', '--abbrev-ref', 'HEAD']),
     git(['status', '--porcelain', '--untracked-files=no']),
+    git(['rev-list', '--count', '--first-parent', '--merges', 'HEAD']),
   ]);
   const [commit, date] = head.ok ? head.out.split('\n') : [];
-  return { commit, date, branch: branch.ok && branch.out !== 'HEAD' ? branch.out : undefined, dirty: porcelain.ok && porcelain.out.length > 0 };
+  return {
+    version: versionOf(packageVersion(), merges.ok && /^\d+$/.test(merges.out) ? Number(merges.out) : undefined),
+    commit,
+    date,
+    branch: branch.ok && branch.out !== 'HEAD' ? branch.out : undefined,
+    dirty: porcelain.ok && porcelain.out.length > 0,
+  };
 }
 
 export async function versionInfo(): Promise<VersionInfo> {
   local ??= await readLocal();
-  return { version: version(), ...local, behind, checkedAt, checkError, update: { ...status, output: lines.join('\n') } };
+  return { ...local, behind, checkedAt, checkError, update: { ...status, output: lines.join('\n') } };
 }
 
 /** Fetches the remote and counts the commits this checkout is behind. One fetch at a time; callers share it. */
