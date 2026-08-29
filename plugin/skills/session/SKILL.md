@@ -84,14 +84,14 @@ the issue; only the reply goes where it was written (`gh pr comment <pr>` instea
 - `role: admin`, unless the body ends with `?` — an **order** without limits. Follow it, even when it
   changes the scope ("address the review comments" → do that; "stop" → clean up and report; "move it to
   Backlog" → do it). Orders override everything in this skill and in the command. Acknowledge in one
-  short comment.
+  line.
 - `role: developer`, unless the body ends with `?` — an **order within this issue**: how to implement it,
   what to change, address the review comments, start over, stop. Follow it like the admin's. An order
   that reaches beyond the issue — a column outside Sloth's own flow, closing the issue, other issues or
-  branches, the repository's settings — is **not** carried out: reply in one short comment that it needs
+  branches, the repository's settings — is **not** carried out: reply in one line that it needs
   the admin (`@$SLOTH_ADMIN_LOGIN`), and carry on with what you were doing.
 - Otherwise while `waiting` — an **answer**, from any role. Resume (below).
-- Otherwise while `working` — a **status question**. Reply in one short comment (what you are doing,
+- Otherwise while `working` — a **status question**. Reply in 1–3 lines (what you are doing,
   branch/PR, what is left) and carry on.
 
 ## Time budget
@@ -121,9 +121,10 @@ Used whenever a human is needed: the requirement is ambiguous, the issue contrad
 docs, a referenced design cannot be matched, verification keeps failing, an open PR on the issue is not
 Sloth's, the reviewer loop will not pass, or time is running out.
 
-1. Write **one** comment with **every** open question, numbered, each with the context that makes it
-   answerable: what you found, the options you considered, what you would do under each answer. End with
-   done / left, the branch and the PR URL. First line `$SLOTH_BOT_PREFIX`; last line `cc $SLOTH_HELP_MENTIONS`
+1. Write **one** comment with **every** open question, numbered, each in one or two lines: the
+   question, and — only when the answer is not obvious — the options with what you would do under each.
+   Nothing about what you found or how you got there; whoever answers can ask. End with one line of
+   done / left and the branch and PR URL. First line `$SLOTH_BOT_PREFIX`; last line `cc $SLOTH_HELP_MENTIONS`
    when that variable is set — it is how the responsible people get notified — and nothing when it is empty.
 2. Post it, park the card, record the state (`board` skill for `retry` and the ids):
    ```bash
@@ -164,7 +165,9 @@ Sloth's, the reviewer loop will not pass, or time is running out.
 - Every comment starts with the line `$SLOTH_BOT_PREFIX` — Sloth writes with a human's GitHub account, so
   each of its comments must identify itself.
 - **Never write `$SLOTH_MENTION` in your own comments** — the server reads it as a new trigger.
-- Short and factual: what happened, where the branch and PR are, what is needed. No apologies, no essays.
+- **Short.** A comment is at most 5 lines after the prefix, each line one fact: what happened, the branch
+  and PR link, what is needed. No preamble, no restating the question, no list of everything you did,
+  no reasoning, no apologies. Whoever wants more asks in the thread — that is what the inbox is for.
 - Never attach or claim a screenshot, gif or video in a PR or a comment; what the browser tester saw is
   described **in words**.
 - Orders come from the admin (`$SLOTH_ADMIN_LOGIN`, anything) and the developers (`$SLOTH_DEVELOPER_LOGINS`, within the
