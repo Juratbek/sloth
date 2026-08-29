@@ -130,12 +130,14 @@ export interface WiredPr {
   /** The head branch — `sloth/issue-<n>-…` marks a PR Sloth wrote itself. */
   head: string;
   state: PrState;
+  /** Still a draft on GitHub. Reviewed like any other — the column is the signal — but never merged. */
+  draft: boolean;
   checks: Checks;
   /** GitHub's word on whether the head merges cleanly into its base; `UNKNOWN` while it is still computing. */
   mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN';
 }
 export interface WiredOptions {
-  /** Which PR states to return; open PRs are never drafts. */
+  /** Which PR states to return. */
   states?: PrState[];
 }
 
@@ -145,8 +147,9 @@ const checksOf = (state: string | undefined): Checks =>
 const PR_FIELDS = 'number state isDraft headRefOid headRefName mergeable commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }';
 
 /**
- * The PRs wired to these issues — one aliased query for all of them; open and non-draft by default. A
- * GitHub approval on the PR changes nothing: the column a card sits in is the signal, never the review decision.
+ * The PRs wired to these issues — one aliased query for all of them; open ones by default, drafts included.
+ * A GitHub approval on the PR changes nothing, and neither does the draft flag: the column a card sits in is
+ * the signal, never the PR's own state.
  */
 export async function wiredPrs(issues: number[], { states = ['OPEN'] }: WiredOptions = {}): Promise<WiredPr[]> {
   if (!issues.length) return [];
@@ -156,13 +159,14 @@ export async function wiredPrs(issues: number[], { states = ['OPEN'] }: WiredOpt
     const data = await graphql(`{ repository(owner: "${owner}", name: "${name}") { ${parts} } }`);
     return Object.entries(data.repository ?? {}).flatMap(([key, value]: [string, any]) =>
       ((value?.closedByPullRequestsReferences?.nodes ?? []) as any[])
-        .filter((p) => states.includes(p.state) && (p.state !== 'OPEN' || !p.isDraft))
+        .filter((p) => states.includes(p.state))
         .map((p) => ({
           issue: Number(key.slice(1)),
           pr: p.number as number,
           sha: p.headRefOid as string,
           head: String(p.headRefName ?? ''),
           state: p.state as PrState,
+          draft: !!p.isDraft,
           checks: checksOf(p.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state),
           mergeable: p.mergeable === 'MERGEABLE' || p.mergeable === 'CONFLICTING' ? p.mergeable : 'UNKNOWN',
         })),

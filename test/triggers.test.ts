@@ -4,9 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setDry } from '../server/runner/log';
 import { handover, park, pickup, reap, retryStranded, reviews, stop } from '../server/runner/triggers';
 import { exitsOf } from '../server/runner/exits';
+import { sampleMachine, setReaders } from '../server/runner/machine';
 import { resetSpawn, spawned } from './child-process-mock';
 import { called, onGh, resetGh } from './gh-mock';
-import { COLUMNS, alivePid, card, configure, exists, makeSession, read, readLog, sessionDir, statePath, wipe } from './harness';
+import { COLUMNS, alivePid, calmMachine, card, configure, exists, makeSession, read, readLog, sessionDir, statePath, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
@@ -171,15 +172,16 @@ describe('park', () => {
 });
 
 describe('reviews (trigger 4)', () => {
-  it("reviews every Code Review card's PR once per head — Sloth's own, a human's, skipped or GitHub-approved — on the final model", async () => {
+  it("reviews every Code Review card's PR once per head — Sloth's own, a human's, skipped, GitHub-approved or a draft — on the final model", async () => {
     wired({
       1: [{ pr: 10, sha: 'aaa', head: 'sloth/issue-1-fix' }],
       2: [{ pr: 11, sha: 'bbb', head: 'feature/x', approved: true }],
       3: [{ pr: 12, sha: 'ccc', head: 'sloth/issue-3-y' }],
+      4: [{ pr: 13, sha: 'ddd', head: 'wip', draft: true }],
     });
-    const board = [card(1, 'Code Review'), card(2, 'Code Review'), card(3, 'Code Review', { labels: ['Sloth: skip'] })];
+    const board = [card(1, 'Code Review'), card(2, 'Code Review'), card(3, 'Code Review', { labels: ['Sloth: skip'] }), card(4, 'Code Review')];
     await reviews(board);
-    expect(launches()).toEqual(['/sloth:review 10 final', '/sloth:review 11 final', '/sloth:review 12 final']);
+    expect(launches()).toEqual(['/sloth:review 10 final', '/sloth:review 11 final', '/sloth:review 12 final', '/sloth:review 13 final']);
     expect(spawned[0].options.env.SLOTH_PR).toBe('10');
     expect(spawned[0].args).toContain('fable');
     expect(read(path.join(sessionDir('approved', 10), 'issue'))).toBe('1');
@@ -188,6 +190,28 @@ describe('reviews (trigger 4)', () => {
     resetSpawn();
     await reviews(board);
     expect(launches()).toEqual([]);
+  });
+  it('starts with every slot taken — the caps hold the builds, not the review — but not on a loaded machine', async () => {
+    for (const n of [1, 2, 3]) makeSession('issue', n, { pid: alivePid() });
+    wired({ 5: [{ pr: 10, sha: 'aaa', head: 'x' }] });
+    await reviews([card(5, 'Code Review')]);
+    expect(launches()).toEqual(['/sloth:review 10 final']);
+    expect(exists(statePath('approved', '10-aaa'))).toBe(true);
+    // The three builds are still alive, so a pickup keeps waiting where the review did not.
+    resetSpawn();
+    await pickup([card(6, 'Todo')]);
+    expect(launches()).toEqual([]);
+    expect(readLog().at(-1)).toMatch(/#6 queued \(slots full\)/);
+    setReaders({ memoryFree: () => 7, cpuTimes: () => ({ idle: 0, total: 0 }), diskTimes: () => ({ busy: {}, total: 0 }), windowMs: 0 });
+    await sampleMachine();
+    resetGh();
+    wired({ 7: [{ pr: 11, sha: 'bbb', head: 'y' }] });
+    await reviews([card(7, 'Code Review')]);
+    expect(launches()).toEqual([]);
+    expect(exists(statePath('approved', '11-bbb'))).toBe(false);
+    expect(readLog().at(-1)).toMatch(/review PR #11 queued \(machine busy: 7% memory free, under 10%\)/);
+    calmMachine();
+    await sampleMachine();
   });
   it('runs on models.final, and marks nothing in a dry run', async () => {
     configure({ models: { final: 'sonnet' } });

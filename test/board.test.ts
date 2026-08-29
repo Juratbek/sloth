@@ -92,7 +92,7 @@ describe('moveCard', () => {
 
 describe('wiredPrs', () => {
   const rollup = (state: string) => ({ commits: { nodes: [{ commit: { statusCheckRollup: { state } } } ] } });
-  it('keeps open, non-draft PRs by default — approved on GitHub or not — with their checks and mergeability', async () => {
+  it('keeps open PRs by default — draft or ready, approved on GitHub or not — with their checks and mergeability', async () => {
     onGh(/api graphql/, {
       data: {
         repository: {
@@ -103,8 +103,9 @@ describe('wiredPrs', () => {
       },
     });
     expect(await wiredPrs([1, 2, 3])).toEqual([
-      { issue: 1, pr: 10, sha: 'aaa', head: 'sloth/issue-1-x', state: 'OPEN', checks: 'FAILURE', mergeable: 'MERGEABLE' },
-      { issue: 3, pr: 13, sha: 'ddd', head: 'ok', state: 'OPEN', checks: 'PENDING', mergeable: 'CONFLICTING' },
+      { issue: 1, pr: 10, sha: 'aaa', head: 'sloth/issue-1-x', state: 'OPEN', draft: false, checks: 'FAILURE', mergeable: 'MERGEABLE' },
+      { issue: 2, pr: 11, sha: 'bbb', head: 'feat', state: 'OPEN', draft: true, checks: 'NONE', mergeable: 'UNKNOWN' },
+      { issue: 3, pr: 13, sha: 'ddd', head: 'ok', state: 'OPEN', draft: false, checks: 'PENDING', mergeable: 'CONFLICTING' },
     ]);
     // A repository that runs no checks reports no rollup at all — that is not a pending one.
     expect((await wiredPrs([2], { states: ['MERGED'] })).map((p) => [p.pr, p.state, p.checks])).toEqual([[12, 'MERGED', 'NONE']]);

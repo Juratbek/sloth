@@ -16,6 +16,7 @@ interface Pr {
   state?: 'OPEN' | 'MERGED' | 'CLOSED';
   checks?: string;
   mergeable?: string;
+  draft?: boolean;
 }
 
 /** Answers the wired-PR query with the PRs of the issues that query actually asked about. */
@@ -32,7 +33,7 @@ const wired = (prs: Record<number, Pr[]>) =>
                 nodes: list.map((p) => ({
                   number: p.pr,
                   state: p.state ?? 'OPEN',
-                  isDraft: false,
+                  isDraft: !!p.draft,
                   headRefOid: p.sha,
                   headRefName: p.head,
                   reviewDecision: null,
@@ -191,20 +192,23 @@ describe('autoMerge (trigger 8)', () => {
     expect(called(/pr merge/)).toHaveLength(0);
   });
 
-  it('holds a conflicting or failing PR and says why once', async () => {
+  it('holds a conflicting, failing or draft PR and says why once', async () => {
     configure({ autoMerge: 'rebase' });
     marker('approved', '22-bbb');
     marker('approved', '23-ccc');
+    marker('approved', '27-ggg');
     wired({
       1: [{ pr: 22, sha: 'bbb', head: 'sloth/issue-1-x', checks: 'SUCCESS', mergeable: 'CONFLICTING' }],
       2: [{ pr: 23, sha: 'ccc', head: 'sloth/issue-2-x', checks: 'FAILURE' }],
+      3: [{ pr: 27, sha: 'ggg', head: 'wip', checks: 'SUCCESS', draft: true }],
     });
-    const board = [approvedCard(1), approvedCard(2)];
+    const board = [approvedCard(1), approvedCard(2), approvedCard(3)];
     await autoMerge(board);
     await autoMerge(board);
     expect(called(/pr merge/)).toHaveLength(0);
     expect(readLog().filter((l) => /PR #22 is not merged: it conflicts/.test(l))).toHaveLength(1);
     expect(readLog().filter((l) => /PR #23 is not merged: its checks fail/.test(l))).toHaveLength(1);
+    expect(readLog().filter((l) => /PR #27 is not merged: it is still a draft/.test(l))).toHaveLength(1);
   });
 
   it('remembers a refused merge so it is not retried on the same head', async () => {

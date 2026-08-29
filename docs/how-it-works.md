@@ -26,8 +26,11 @@ board. When it finds work, it starts a Claude Code session to do it. That is all
    browser — its own seeded database, nothing shared — without checking anything out. The link lives 24
    hours (`previewHours`), or until the PR closes.
 5. **Another agent reviews the PR.** Every card in *Code Review* — Sloth's PR, or one you wrote and wired to
-   the issue — gets a fresh review from a second agent, on the review model (Fable, unless Settings → Models
-   says otherwise): `/sloth:review <pr> final`, once per version of the PR. It reads the issue and its thread,
+   the issue, a draft or marked ready — gets a fresh review from a second agent, on the review model (Fable,
+   unless Settings → Models says otherwise): `/sloth:review <pr> final`, once per version of the PR. This is
+   Sloth's first priority: the review starts before anything else in a tick and is never held back by the
+   session caps, only by a loaded machine, so finished work never waits on work that is still being built.
+   It reads the issue and its thread,
    the whole diff, the checks and the screenshots, and always leaves its verdict as a comment on the PR.
    Problems: it comments inline on each one and moves the card back to *In Progress*, and the session that
    wrote the PR is started again on the same branch to address them — a round-trip, the PR keeps its number.
@@ -95,14 +98,15 @@ Every comment Sloth writes starts with `**Sloth:**`.
 
 - **The `Sloth: skip` label means a human owns the card.** Sloth never works on a card carrying it, in
   any column; take the label off and the card is Sloth's again. Sloth creates the label in the repo at
-  start-up. The one exception is the review in *Code Review*: every open, non-draft PR wired to a card
-  there gets it, skipped or not. A rejection sends the card back to *In Progress* still labelled, so the
+  start-up. The one exception is the review in *Code Review*: every open PR wired to a card there gets
+  it, skipped or not, draft or not. A rejection sends the card back to *In Progress* still labelled, so the
   owner keeps it. Assignees do not matter to Sloth — an assigned card is worked like any other — and
   Sloth never assigns anyone.
 - **Sessions have a time budget** (60 minutes). A session that runs 5 minutes over is killed and
   its card goes to *Sloth needs help*. **Stop** in a running session's header does the same right away.
 - **At most 3 sessions work at once** (and 5 alive, counting the ones waiting for an answer).
-  Extra work waits for the next tick.
+  Extra work waits for the next tick — except a review of a card in *Code Review*, which starts anyway
+  and takes a slot the builds then wait for.
 - **A crashed session is restarted.** A card in *In Progress* with no session is relaunched, at
   most twice in a row. After that it goes to *Sloth needs help*, and the comment says how each run
   ended — the step it was on and what it reported on its way out (a session out of time says what
