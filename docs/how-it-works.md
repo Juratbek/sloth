@@ -21,29 +21,30 @@ board. When it finds work, it starts a Claude Code session to do it. That is all
    the reviewer finds (up to 4 rounds) — a PR that changes a screen and shows none is sent back. With the **orchestrator** on (the default, Settings → Models), the session
    itself never writes code: it runs on the orchestrator model (Fable by default), hands every change to
    an implementor agent on the implement model, and keeps the judging — verification, tester, reviewer, PR.
-4. **The card moves to *Code Review*.** The PR is marked ready. A human reviews it like any other PR.
-   The app the session tested stays running, and Sloth posts a **preview link** on the PR with how to
-   sign in: the reviewer opens the change in a browser — its own seeded database, nothing shared — without
-   checking anything out. The link lives 24 hours (`previewHours`), or until the PR closes.
-5. **A human's PR in Code Review gets a review from Sloth.** If you wrote the PR yourself and
-   wired it to the issue, Sloth reviews each new version once (`/sloth:review`). Sloth's own PRs
-   are not reviewed again here — the reviewer agent in step 3 already did that. When a review
-   finds bugs, it comments on the PR and moves the card back to *In Progress*.
-6. **You move the card to *Approved*.** Sloth gives the PR a final review — the same review as in
-   step 5, but on the final-review model (Fable, unless Settings → Models says otherwise), and this one
-   always leaves its verdict as a comment on the PR.
-   If it finds problems, the comment says what and the card goes back to *In Progress*. If not, the
-   comment says the PR passed, the card stays in *Approved*, the issue gets the label `Fable: approved`,
-   and the PR is ready to merge. That head is not reviewed again — a push to the branch after the pass
-   takes the label away and asks for a fresh look, and so does a check that turns red: the session that
-   wrote the PR is sent back to make the checks pass and pushes to the same branch.
-7. **The PR is merged.** By you, or by Sloth when you asked it to: set *Auto-merge* in Settings
-   (`autoMerge` — `squash`, `merge` or `rebase`) and a PR that passed its final review on the head that is
-   on the branch now, whose checks are green and which merges cleanly, is merged for you. It is off by
-   default. Merging closes the issue, and a closed issue is the end of the card: Sloth moves it to *Done*,
-   takes the preview, the servers, the database and the worktree down and deletes the branch. A PR closed
-   without being merged does the opposite — the issue is still open, so the card goes to *Sloth needs help*
-   with a comment saying its PR was closed.
+4. **The card moves to *Code Review*.** The PR is marked ready. The app the session tested stays running,
+   and Sloth posts a **preview link** on the PR with how to sign in: whoever opens it sees the change in a
+   browser — its own seeded database, nothing shared — without checking anything out. The link lives 24
+   hours (`previewHours`), or until the PR closes.
+5. **Another agent reviews the PR.** Every card in *Code Review* — Sloth's PR, or one you wrote and wired to
+   the issue — gets a fresh review from a second agent, on the review model (Fable, unless Settings → Models
+   says otherwise): `/sloth:review <pr> final`, once per version of the PR. It reads the issue and its thread,
+   the whole diff, the checks and the screenshots, and always leaves its verdict as a comment on the PR.
+   Problems: it comments inline on each one and moves the card back to *In Progress*, and the session that
+   wrote the PR is started again on the same branch to address them — a round-trip, the PR keeps its number.
+   Clean: the issue gets the label `Fable: approved` and the card moves to *Approved*. No human reads code
+   here unless they want to.
+6. **A human tests it in *Approved*.** Sloth comments on the issue that the card is ready to test, with the
+   preview link (the sign-in notes are on the PR); with no preview — your own PR, previews off — it points at
+   the PR to check out. That head is not reviewed again. A push to the branch after the pass takes the label
+   away and sends the card back to *Code Review* for a fresh look, and a check that turns red sends the
+   session that wrote the PR back to make the checks pass on the same branch.
+7. **The PR is merged.** By you, once it tests fine — or by Sloth when you asked it to: set *Auto-merge* in
+   Settings (`autoMerge` — `squash`, `merge` or `rebase`) and a PR that passed its review on the head that is
+   on the branch now, whose checks are green and which merges cleanly, is merged for you as soon as that is
+   true — nobody tests it first, so it is off by default. Merging closes the issue, and a closed issue is the
+   end of the card: Sloth moves it to *Done*, takes the preview, the servers, the database and the worktree
+   down and deletes the branch. A PR closed without being merged does the opposite — the issue is still open,
+   so the card goes to *Sloth needs help* with a comment saying its PR was closed.
 
 ## When the session gets stuck
 
@@ -55,7 +56,7 @@ URL) hears about the card too, within one board poll. Both are set in the wizard
 (`helpLogins` and `helpWebhook` in `config.json`); with neither, nobody is told.
 
 The webhook can hear about more than this one moment. **Settings → Notifications** has a toggle per
-event: a card reaching *Code Review*, a final review passing or failing, an issue Sloth closed and
+event: a card reaching *Code Review*, a review passing (with the preview link) or its pass taken back, an issue Sloth closed and
 filed away, a run stopped or parked, and a Claude usage limit pausing the watcher. Only the needs-help
 one is on to begin with, so a Sloth that was set up before this keeps saying exactly what it did.
 
@@ -94,10 +95,10 @@ Every comment Sloth writes starts with `**Sloth:**`.
 
 - **The `Sloth: skip` label means a human owns the card.** Sloth never works on a card carrying it, in
   any column; take the label off and the card is Sloth's again. Sloth creates the label in the repo at
-  start-up. The one exception is the final review in *Approved*: every open, non-draft PR wired to a
-  card there gets it, skipped or not. A rejection sends the card back to *In Progress* still labelled,
-  so the owner keeps it. Assignees do not matter to Sloth — an assigned card is worked like any other —
-  and Sloth never assigns anyone.
+  start-up. The one exception is the review in *Code Review*: every open, non-draft PR wired to a card
+  there gets it, skipped or not. A rejection sends the card back to *In Progress* still labelled, so the
+  owner keeps it. Assignees do not matter to Sloth — an assigned card is worked like any other — and
+  Sloth never assigns anyone.
 - **Sessions have a time budget** (60 minutes). A session that runs 5 minutes over is killed and
   its card goes to *Sloth needs help*. **Stop** in a running session's header does the same right away.
 - **At most 3 sessions work at once** (and 5 alive, counting the ones waiting for an answer).
@@ -119,7 +120,7 @@ Every comment Sloth writes starts with `**Sloth:**`.
 ├── runners/<repo>/      the checkout sessions start from
 ├── worktrees/<repo>/    one worktree per issue
 ├── sessions/<repo>/     one folder per session: its log, its state, its inbox
-└── state/               markers so nothing is done twice (reviewed, approved, finished, closed, checks,
+└── state/               markers so nothing is done twice (approved, handed, finished, closed, checks,
                          merged); the pause; the remote-access secret
 ```
 

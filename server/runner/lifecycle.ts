@@ -14,8 +14,8 @@ import { park } from './triggers';
 /**
  * The end of a card's life: what Sloth does once the work is over or the PR turns out not to be done
  * after all. Triggers 6, 7 and 8 — a closed issue is filed away and its leftovers swept up, a red check
- * on Sloth's own PR goes back to the session that wrote it, and a PR that passed its final review is
- * merged when the user asked for that.
+ * on Sloth's own PR goes back to the session that wrote it, and a PR that passed its review is merged
+ * when the user asked for that.
  */
 
 /** The columns Sloth still has something to do in — a card outside them is nobody's business here. */
@@ -76,7 +76,7 @@ async function file(item: BoardItem, prs: { pr: number; head: string }[]): Promi
 async function abandoned(cards: BoardItem[]): Promise<void> {
   const open = new Set<number>();
   const closed = new Map<number, number>();
-  for (const p of await wiredPrs(cards.map((i) => i.number), { unapprovedOnly: false, states: ['OPEN', 'CLOSED'] })) {
+  for (const p of await wiredPrs(cards.map((i) => i.number), { states: ['OPEN', 'CLOSED'] })) {
     if (p.state === 'OPEN') open.add(p.issue);
     else if (!closed.has(p.issue)) closed.set(p.issue, p.pr);
   }
@@ -106,7 +106,7 @@ export async function finished(board: BoardItem[]): Promise<void> {
   const closed = cards.filter((i) => i.closed && !fs.existsSync(statePath('finished', String(i.number))));
   if (closed.length) {
     // Merged only: the branch of a PR that was closed unmerged may still be someone's work in progress.
-    const merged = await wiredPrs(closed.map((i) => i.number), { unapprovedOnly: false, states: ['MERGED'] });
+    const merged = await wiredPrs(closed.map((i) => i.number), { states: ['MERGED'] });
     for (const item of closed) await file(item, merged.filter((p) => p.issue === item.number));
   }
 
@@ -121,13 +121,13 @@ export async function finished(board: BoardItem[]): Promise<void> {
  * command goes back to the branch, fixes it and pushes, and the PR keeps its number and its comments.
  * Once per `<pr>-<sha>`, so a fix that fails again is not re-launched until the head moves. A human's PR
  * is left alone — its author owns its checks. `launch` moves the card to In Progress itself; a card that
- * had already passed its final review loses that label first, since what is on the branch no longer has it.
+ * had already passed its review loses that label first, since what is on the branch no longer has it.
  */
 export async function failedChecks(board: BoardItem[]): Promise<void> {
   const columns = handedOverColumns();
   const cards = board.filter((i) => columns.includes(i.status) && !skipped(i));
   if (!cards.length) return;
-  for (const { issue, pr, sha, head, checks } of await wiredPrs(cards.map((i) => i.number), { unapprovedOnly: false })) {
+  for (const { issue, pr, sha, head, checks } of await wiredPrs(cards.map((i) => i.number))) {
     if (!OWN_BRANCH.test(head) || checks !== 'FAILURE') continue;
     const marker = statePath('checks', `${pr}-${sha}`);
     if (fs.existsSync(marker) || issueAlive(issue)) continue;
@@ -168,18 +168,19 @@ async function merge(pr: number, sha: string): Promise<void> {
 }
 
 /**
- * Trigger 8 — a PR that passed its final review is merged, with the `gh pr merge` method in `autoMerge`.
- * Off unless the user set one: merging is the last thing a human might want to keep. Everything has to
- * line up on the *current* head — the pass (`state/approved/<pr>-<sha>` plus the label), no review still
- * running, green or absent checks, and a clean merge — so a push after the pass, a red check or a conflict
- * all hold the merge until the card has been through trigger 5 (or 7) again.
+ * Trigger 8 — a PR that passed its review is merged, with the `gh pr merge` method in `autoMerge`. Off
+ * unless the user set one: it merges as soon as the review passed, so it skips the human test in Approved,
+ * which is the last thing a human might want to keep. Everything has to line up on the *current* head — the
+ * pass (`state/approved/<pr>-<sha>` plus the label), no review still running, green or absent checks, and a
+ * clean merge — so a push after the pass, a red check or a conflict all hold the merge until the card has
+ * been through trigger 4 (or 7) again.
  */
 export async function autoMerge(board: BoardItem[]): Promise<void> {
   const c = cfg();
   const column = c.statusField.columns.approved;
   if (!c.autoMerge || !column.id) return;
   const issues = board.filter((i) => i.status === column.name && i.labels.includes(APPROVED_LABEL)).map((i) => i.number);
-  for (const { pr, sha, checks, mergeable } of await wiredPrs(issues, { unapprovedOnly: false })) {
+  for (const { pr, sha, checks, mergeable } of await wiredPrs(issues)) {
     const head = `${pr}-${sha}`;
     if (!fs.existsSync(statePath(MARKERS.approved, head)) || dirAlive(approvedDir(pr))) continue;
     if (fs.existsSync(statePath('merged', head)) || fs.existsSync(statePath('merge-failed', head))) continue;

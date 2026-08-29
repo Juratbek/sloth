@@ -16,7 +16,7 @@ function Out({ href, className, children }: { href: string; className: string; c
 /**
  * One card, two dense lines: the issue and what Sloth's newest run on it is doing, then only what
  * applies — cost, PR, preview, retries, the assignee, the skip label that keeps Sloth off it, the
- * final-review pass, how long a parked card has been waiting. Clicking selects the run; the links
+ * review pass, how long a parked card has been waiting. Clicking selects the run; the links
  * open GitHub or the preview.
  */
 export default function Card({ card, role, onSelect }: { card: BoardCard; role: ColumnRole; onSelect: (id: string) => void }) {

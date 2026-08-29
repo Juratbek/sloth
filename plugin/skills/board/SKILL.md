@@ -21,8 +21,8 @@ Every id comes from the environment the server set for this session — never ha
 | `SLOTH_COL_PICKUP_ID` / `_NAME` | Column Sloth takes work from |
 | `SLOTH_COL_IN_PROGRESS_ID` / `_NAME` | Claimed / being worked on |
 | `SLOTH_COL_NEEDS_HELP_ID` / `_NAME` | Parked, waiting for a human (may be empty) |
-| `SLOTH_COL_CODE_REVIEW_ID` / `_NAME` | Handed to a human reviewer |
-| `SLOTH_COL_APPROVED_ID` / `_NAME` | Approved by a human — never move a card here (may be empty) |
+| `SLOTH_COL_CODE_REVIEW_ID` / `_NAME` | Handed over: the server runs `/sloth:review <pr> final` on every card here |
+| `SLOTH_COL_APPROVED_ID` / `_NAME` | Passed that review; a human tests it here. Only a passing `/sloth:review … final` moves a card in (may be empty) |
 | `SLOTH_COL_DONE_ID` / `_NAME` | Where a closed issue's card ends up — the server moves it; a session never needs to (may be empty) |
 | `SLOTH_COLUMNS` | **Every** Status column on the board, in board order: JSON `[{"id","name"}]` — the six above and all the others (Planning, Backlog…) |
 
@@ -104,7 +104,8 @@ OPT=$(jq -r --arg n "Planning" '.[] | select(.name | ascii_downcase == ($n | asc
 
 Empty `OPT` → the column does not exist (or `SLOTH_COLUMNS` is empty; then fall back to the field-list
 lookup below with that name). Never create a column; say in the thread which columns exist and stop.
-The only column a session never moves a card **into** on its own is `$SLOTH_COL_APPROVED_NAME`.
+The only column a session never moves a card **into** on its own is `$SLOTH_COL_APPROVED_NAME` — a card gets
+there one way, a passing `/sloth:review … final`.
 
 ## Re-derive an option id by column name
 

@@ -16,8 +16,8 @@ export const APPROVED_LABEL = 'Fable: approved';
 
 /**
  * The label a person puts on an issue to keep Sloth off it: a card carrying it is a human's, in any
- * column, and Sloth neither picks it up, relaunches it, reviews its PR nor fixes its checks. The one
- * exception is the final review in Approved — the column is the signal there. Sloth creates the label
+ * column, and Sloth neither picks it up, relaunches it nor fixes its checks. The one exception is the
+ * review in Code Review — the column is the signal there. Sloth creates the label
  * in the repo at start-up (`ensureSkipLabel`) so it is there to apply.
  */
 export const SKIP_LABEL = 'Sloth: skip';

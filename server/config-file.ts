@@ -79,8 +79,9 @@ function model(v: unknown, what: string): string | undefined {
 
 /**
  * One model per agent. A config from before per-agent models had `model` for every session and
- * `approvedModel` for the final review; those still load as they used to run. The orchestrator did not
- * exist then, so it never takes the legacy `model`.
+ * `approvedModel` for the final review (now the review of Code Review cards, `final`); those still load as
+ * they used to run. The orchestrator did not exist then, so it never takes the legacy `model`; a `review`
+ * key from the time human PRs got a review of their own is ignored.
  */
 function models(v: unknown, legacyModel: unknown, legacyApproved: unknown): AgentModels {
   const m = (v ?? {}) as Record<string, unknown>;
@@ -143,7 +144,7 @@ export function normalizeConfig(input: unknown): SlothConfig {
         // Optional: with no needs-help column a blocked session leaves the card and marks itself blocked.
         needsHelp: optional(columns.needsHelp, 'needsHelp'),
         codeReview: column(columns.codeReview, 'codeReview'),
-        // Optional: without it trigger 5 (the final review of Approved cards) never fires.
+        // Optional: without it a passing review leaves the card in Code Review and trigger 5 (the hand-over comment) never fires.
         approved: optional(columns.approved, 'approved'),
         // Optional: without it a closed issue's card stays where it is (trigger 6).
         done: optional(columns.done, 'done'),

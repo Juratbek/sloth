@@ -23,11 +23,10 @@ const AGENTS: { role: AgentRole; label: string; hint: string; orchestrated?: { l
     label: 'Reviewer loop',
     hint: 'The subagent that reviews the PR inside the implement session, for up to the configured review rounds, before the card reaches Code Review.',
   },
-  { role: 'review', label: 'PR review', hint: "Reviews a human's PR in Code Review, once per PR head, and comments on it." },
   {
     role: 'final',
-    label: 'Final review',
-    hint: "The last review before merge, of an Approved card's PR. Its verdict lands on the PR and a pass labels the issue.",
+    label: 'Code review',
+    hint: "The independent review of every PR in Code Review — Sloth's own and a human's — once per PR head. Its verdict lands on the PR; a pass moves the card to Approved for a human to test, a fail sends it back to In Progress.",
   },
   { role: 'status', label: 'Mentions', hint: 'Answers a mention on an issue or PR when no session is running on it — where is it, why is it waiting.' },
 ];

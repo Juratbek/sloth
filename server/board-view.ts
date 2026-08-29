@@ -16,7 +16,7 @@ import type { IssueCost, SessionSummary } from './types';
 const DONE_MS = DONE_DAYS * 86_400_000;
 
 /**
- * The newest run per issue. An implement run is named after its issue; a review or final review is
+ * The newest run per issue. An implement run is named after its issue; a review is
  * named after the PR and carries the issue beside it (`issueOf`), so a review that started after the
  * implement run is the one the card shows.
  */

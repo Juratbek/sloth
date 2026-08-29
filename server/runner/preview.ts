@@ -9,7 +9,7 @@ import type { PreviewState } from '../types';
 import { cleanup, serversUp } from './cleanup';
 import { gh } from './gh';
 import { isDry, log, nowSec, readFile, remove, write } from './log';
-import { body, fileOf, post, readPreviewFile, when } from './preview-link';
+import { body, fileOf, linkOf, post, readPreviewFile, when } from './preview-link';
 import { newKey, startProxy, type Proxy } from './preview-proxy';
 import { dirAlive, issueDir, runDirs, stateOf } from './session-dirs';
 
@@ -45,6 +45,12 @@ export function previewState(issue: number): PreviewState | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** The link a person can open the issue's preview at right now, if the tunnel has printed one. */
+export function previewLink(issue: number): string | undefined {
+  const s = previewState(issue);
+  return s?.url ? linkOf(s) : undefined;
 }
 
 async function announce(issue: number, url: string): Promise<void> {

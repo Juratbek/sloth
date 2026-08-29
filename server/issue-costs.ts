@@ -2,7 +2,7 @@ import type { IssueCost, SessionSummary } from './types';
 
 /**
  * The per-issue rollup the home panel shows. A session's directory says which issue it belongs to:
- * an implement run is named after it, a review or final review after the PR — with the issue written
+ * an implement run is named after it, a review after the PR — with the issue written
  * beside it at launch (`spawn.ts`). A transcript that belongs to neither (a run started by hand, a
  * review from before the `issue` file existed) is left out rather than guessed at.
  */

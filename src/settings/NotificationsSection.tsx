@@ -8,9 +8,9 @@ const LOGINS = /[\s,]+/;
 /** Every event the webhook can hear about, in the order a card meets them. */
 const EVENTS: { event: WebhookEvent; label: string; hint: string }[] = [
   { event: 'needsHelp', label: 'Needs help', hint: 'A card lands in the needs-help column: a session asked its questions and is waiting.' },
-  { event: 'codeReview', label: 'Code Review', hint: 'A card arrives in Code Review — the PR is ready for a human to look at.' },
-  { event: 'finalPassed', label: 'Final review passed', hint: 'An Approved card got the `Fable: approved` label: its PR is ready to merge.' },
-  { event: 'finalFailed', label: 'Final review failed', hint: 'A card lost that label again — the review found problems, or the branch moved on.' },
+  { event: 'codeReview', label: 'Code Review', hint: 'A card arrives in Code Review — its PR is open and waits for Sloth\'s review.' },
+  { event: 'finalPassed', label: 'Review passed', hint: 'A card reached Approved with the `Fable: approved` label: its PR passed the review and is ready for a human to test — the message carries the preview link.' },
+  { event: 'finalFailed', label: 'Review pass taken back', hint: 'A card lost that label again — the branch moved on after the pass, or its checks turned red.' },
   { event: 'merged', label: 'Issue closed', hint: 'A PR was merged and Sloth filed its card away in Done.' },
   { event: 'stopped', label: 'Run stopped', hint: 'A session was stopped — past its budget, from the monitor, or relaunched too many times.' },
   { event: 'usageLimit', label: 'Usage limit', hint: 'A Claude usage limit stopped a session and paused the watcher for 30 minutes.' },

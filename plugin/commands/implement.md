@@ -261,6 +261,11 @@ retry gh project item-edit --id "$ITEM_ID" --project-id "$SLOTH_PROJECT_ID" \
   --field-id "$SLOTH_STATUS_FIELD_ID" --single-select-option-id "$SLOTH_COL_CODE_REVIEW_ID"
 ```
 
+The server reviews the PR there (`/sloth:review … final`, another agent on its own model) and moves the card
+on: to `$SLOTH_COL_APPROVED_NAME` for a human to test, or back to `$SLOTH_COL_IN_PROGRESS_NAME` with the
+findings as review comments — a new run of this command then addresses them (Step 1, *Existing PR*). Never
+move the card to `$SLOTH_COL_APPROVED_NAME` yourself.
+
 With `SLOTH_PREVIEW_HOURS` above `0`, hand the running app over too: write `preview.json` as the **`session`**
 skill's *Teardown* says — the app's one local URL and how to sign in, both from the project's run skill — and
 leave the servers, database and worktree up. The server tunnels the app, posts the link on the PR and cleans up
@@ -302,7 +307,7 @@ the question comment URL, whether an answer arrived, where the card is, and what
 - **Never touch the checkout at `$SLOTH_RUNNER_ROOT`, a shared database, or a port another session uses.**
 - **Test in the browser when there is one** (Step 4.5): the tester subagent's run — and a PNG of every screen
   it verified — is part of every PR that touches a screen.
-- Do not push on a failed Step 4; do not hand a PR to a human before the reviewer loop passes; the PR ends
+- Do not push on a failed Step 4; do not hand a PR over before the reviewer loop passes; the PR ends
   ready for review, with `Closes #ISSUE`, no reviewer and no assignee.
 - Always clean up (Step 7), whether the run succeeds, waits out, or stops early — a preview hand-off (Step 6)
   is the one ending where the server cleans up instead.

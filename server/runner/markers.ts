@@ -15,7 +15,7 @@ import type { Kind } from './session-dirs';
 
 export const statePath = (...parts: string[]) => path.join(cfg().stateDir, ...parts);
 
-/** Where each review kind keeps its `<pr>-<sha>` "already reviewed this head" markers. */
+/** Where each review kind keeps its `<pr>-<sha>` "already reviewed this head" markers (`reviewed` is the older kind's, see `Kind`). */
 export const MARKERS: Record<Exclude<Kind, 'issue'>, string> = { review: 'reviewed', approved: 'approved' };
 
 /** The `<pr>-…` markers of one PR, whatever head they were written for. */
@@ -27,10 +27,10 @@ export function markerFiles(kind: Exclude<Kind, 'issue'>, pr: number): string[] 
   }
 }
 
-/** The branches `/sloth:implement` pushes to — its reviewer loop already vetted that head before the hand-off. */
+/** The branches `/sloth:implement` pushes to — the PRs whose checks and branches are Sloth's to fix and delete. */
 export const OWN_BRANCH = /^sloth\/issue-\d+/;
 
-/** The label `/sloth:review <pr> final` puts on a wired issue whose PR passed; a failing final review removes it. */
+/** The label `/sloth:review <pr> final` puts on a wired issue whose PR passed; a failing review removes it. */
 export { APPROVED_LABEL };
 
 /** The label a person puts on an issue to keep Sloth off it (`skipped` reads it off a card). */

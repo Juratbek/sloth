@@ -6,13 +6,14 @@ import type { BoardItem } from './board';
 import { comment } from './gh';
 import { limitExit } from './limits';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
-import { APPROVED_LABEL, MARKERS, OWN_BRANCH, markerFiles, statePath, unapprove } from './markers';
+import { APPROVED_LABEL, MARKERS, markerFiles, statePath, unapprove } from './markers';
 import { helpMentions, notify } from './notify';
 import { cleanup } from './cleanup';
 import { exitLine, exitReport, exitsOf, forgetExits, recordExit } from './exits';
-import { approvedDir, counter, dirAlive, dirOf, isBlocked, issueAlive, issueDir, pidAlive, pidOf, reviewDir, runDirs, startedAt, stateOf } from './session-dirs';
+import { previewLink } from './preview';
+import { approvedDir, counter, dirAlive, dirOf, isBlocked, issueAlive, issueDir, pidAlive, pidOf, runDirs, startedAt, stateOf } from './session-dirs';
 import type { Kind } from './session-dirs';
-import { launch, launchApproved, launchReview } from './spawn';
+import { launch, launchApproved } from './spawn';
 
 const KILL_GRACE = 5 * 60; // extra time before Sloth kills a session that is past its budget
 const LIMIT_PAUSE = 30 * 60; // how long the whole watcher sleeps after a usage-limit exit
@@ -88,7 +89,7 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
   }
   remove(path.join(dir, 'pid'));
   if (kind !== 'issue') {
-    log(`${kind === 'review' ? 'review' : 'final review'} PR #${target} stopped: ${reason}`);
+    log(`review PR #${target} stopped: ${reason}`);
     return true;
   }
   await cleanup(target);
@@ -131,47 +132,69 @@ export async function reap(): Promise<void> {
 }
 
 /**
- * Trigger 4 — Code Review cards whose wired PR is open and unapproved get one review per PR head.
- * Sloth's own PRs are skipped: the implement session's reviewer loop passed on exactly that head,
- * so a second `/sloth:review` would only repeat it. Human-written PRs are what this trigger is for.
+ * Trigger 4 — the review. Every Code Review card with an open, non-draft wired PR gets `/sloth:review <pr>
+ * final` on `models.final`, once per PR head: Sloth's own PR (its session's reviewer loop is not a second
+ * opinion) and a human's alike, `Sloth: skip` or not, a GitHub approval or not — the column is the signal.
+ * The verdict lands on the PR either way; a pass labels the issue `Fable: approved` and moves the card to
+ * Approved, where a human tests it, and a fail sends it back to In Progress, where trigger 2 relaunches the
+ * session on the findings (a rejected skipped card keeps its label, so the human keeps it). The marker of
+ * the head keeps it from being reviewed twice. An Approved card whose *current* head has no marker was
+ * pushed to after its pass, or put there by hand: the label no longer describes what is on the branch, so it
+ * goes and the card comes back to Code Review to be reviewed like any other — unless a session is already on
+ * the issue (trigger 7 sent it back to fix the checks), which moves the card itself. Checks decide the rest:
+ * a pending rollup is worth waiting one tick for, a red one belongs to trigger 7.
  */
 export async function reviews(board: BoardItem[]): Promise<void> {
-  const issues = freeIn(board, cfg().statusField.columns.codeReview.name);
-  for (const { issue, pr, sha, head } of await wiredPrs(issues)) {
-    if (OWN_BRANCH.test(head)) continue;
-    const marker = statePath(MARKERS.review, `${pr}-${sha}`);
-    if (fs.existsSync(marker) || dirAlive(reviewDir(pr))) continue;
-    if (launchReview(pr, issue) && !isDry()) write(marker, '');
+  const col = cfg().statusField.columns;
+  const inApproved = (i: BoardItem) => !!col.approved.id && i.status === col.approved.name;
+  const cards = board.filter((i) => i.status === col.codeReview.name || inApproved(i));
+  for (const { issue, pr, sha, checks } of await wiredPrs(cards.map((i) => i.number))) {
+    const marker = statePath(MARKERS.approved, `${pr}-${sha}`);
+    if (fs.existsSync(marker) || dirAlive(approvedDir(pr))) continue;
+    const card = cards.find((i) => i.number === issue);
+    if (card && inApproved(card)) {
+      if (issueAlive(issue)) continue;
+      if (card.labels.includes(APPROVED_LABEL)) await unapprove(issue, `PR #${pr} was pushed to after its review passed`);
+      log(`#${issue} back to ${col.codeReview.name}: PR #${pr} head ${sha.slice(0, 7)} has not been reviewed`);
+      if (!(await moveCard(issue, col.codeReview.id))) continue;
+    }
+    if (checks === 'PENDING') {
+      log(`review PR #${pr} waits for its checks`);
+      continue;
+    }
+    if (checks === 'FAILURE') continue;
+    if (launchApproved(pr, issue) && !isDry()) write(marker, '');
   }
 }
 
 /**
- * Trigger 5 — Approved cards whose wired PR is open get one final review per PR head, with
- * `/sloth:review <pr> final` on `models.final`; a pass labels the issue `Fable: approved`, and a card
- * carrying that label is done — the marker of that head keeps it from being reviewed again. Neither a
- * GitHub approval nor a `Sloth: skip` label excludes the PR: the column is the signal. A rejected skipped card
- * goes back to In Progress with its label intact, so the human keeps it (trigger 2 skips it). An approved card
- * whose *current* head has no marker was pushed to after the pass, so the label no longer describes what is
- * on the branch: it goes, and the new head is reviewed like any other. Checks decide the rest — a pending
- * rollup is worth waiting one tick for, and a red one belongs to trigger 7, which sends the session back to
- * fix it. No Approved column configured → nothing to do.
+ * Trigger 5 — the hand-over to a human. An Approved card whose PR passed the review on its current head gets
+ * one comment on the issue: the card is ready for testing, with the preview link when the app the session
+ * left running is up behind one (how to sign in is on the PR, under the same link), or the PR to check out
+ * when there is none — a human's PR, previews off, an app that could not be left up. Once per PR head
+ * (`state/handed/<pr>-<sha>`), so a head that comes back after a push and passes again is announced again.
+ * No Approved column configured → nothing to do.
  */
-export async function finalReviews(board: BoardItem[]): Promise<void> {
-  const column = cfg().statusField.columns.approved;
+export async function handover(board: BoardItem[]): Promise<void> {
+  const c = cfg();
+  const column = c.statusField.columns.approved;
   if (!column.id) return;
-  const cards = board.filter((i) => i.status === column.name);
-  for (const { issue, pr, sha, checks } of await wiredPrs(cards.map((i) => i.number), { unapprovedOnly: false })) {
-    const marker = statePath(MARKERS.approved, `${pr}-${sha}`);
-    if (fs.existsSync(marker) || dirAlive(approvedDir(pr))) continue;
-    if (checks === 'PENDING') {
-      log(`final review PR #${pr} waits for its checks`);
+  const issues = board.filter((i) => i.status === column.name && i.labels.includes(APPROVED_LABEL)).map((i) => i.number);
+  for (const { issue, pr, sha } of await wiredPrs(issues)) {
+    const marker = statePath('handed', `${pr}-${sha}`);
+    if (fs.existsSync(marker) || !fs.existsSync(statePath(MARKERS.approved, `${pr}-${sha}`)) || dirAlive(approvedDir(pr))) continue;
+    const link = previewLink(issue);
+    const where = link
+      ? `Test it here: ${link} — how to sign in is on the PR, under the same link.`
+      : `No preview for this one — check the PR out to test it: https://github.com/${c.repo}/pull/${pr}`;
+    const body = `${c.botPrefix} PR #${pr} passed the review — the card is in **${column.name}**, ready for a human to test.\n${where}`;
+    if (isDry()) {
+      log(`dry-run: would tell #${issue} it is ready to test${link ? ` at ${link}` : ''}`);
       continue;
     }
-    if (checks === 'FAILURE') continue;
-    if (cards.find((i) => i.number === issue)?.labels.includes(APPROVED_LABEL)) {
-      await unapprove(issue, `PR #${pr} was pushed to after its final review passed`);
-    }
-    if (launchApproved(pr, issue) && !isDry()) write(marker, '');
+    await comment(c.repo, issue, body);
+    log(`#${issue} ready to test${link ? ` at ${link}` : ' (no preview)'} — PR #${pr}`);
+    write(marker, '');
   }
 }
 

@@ -15,8 +15,8 @@ export const MATCH: Record<ColumnRole, RegExp> = {
 export const OTHERS: { role: ColumnRole; label: string; hint: string }[] = [
   { role: 'inProgress', label: 'In Progress', hint: 'where a card goes while a session works on it' },
   { role: 'needsHelp', label: 'Needs help', hint: 'where a blocked session parks its card' },
-  { role: 'codeReview', label: 'Code Review', hint: 'where a card goes once its PR is open' },
-  { role: 'approved', label: 'Approved', hint: 'cards you approve get a final review of their PR' },
+  { role: 'codeReview', label: 'Code Review', hint: 'where a card goes once its PR is open — Sloth reviews it there' },
+  { role: 'approved', label: 'Approved', hint: 'where a card goes once its PR passed the review — ready for you to test' },
   { role: 'done', label: 'Done', hint: 'where a card goes once its issue is closed — a merged PR closes it' },
 ];
 

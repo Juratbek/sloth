@@ -42,10 +42,10 @@ describe('sidebar search', () => {
     expect(
       matches(
         session({
-          kind: 'issue',
+          kind: 'sloth:review',
           watcher: { kind: 'approved' } as SessionSummary['watcher'],
         }),
-        'final review',
+        'review',
       ),
     ).toBe(true);
   });
