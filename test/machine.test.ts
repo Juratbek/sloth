@@ -10,18 +10,26 @@ import { calmMachine, card, configure, readLog, wipe } from './harness';
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
 
-/** A machine with `memory` percent available whose CPU is `idle` percent idle over every window. */
-function machine(memory: number, idle: number) {
+/**
+ * A machine with `memory` percent available whose CPU is `idle` percent idle over every window and whose
+ * busiest disk is `disk` percent idle — the other disk sits idle, so the busiest one is what counts.
+ */
+function machine(memory: number, idle: number, disk = 100) {
   let tick = 0;
+  let diskTick = 0;
   setReaders({
     memoryFree: () => memory,
     cpuTimes: () => ({ idle: (tick++ * 1000 * idle) / 100, total: (tick - 1) * 1000 + 1 }),
+    diskTimes: () => {
+      const total = diskTick++ * 1000;
+      return { busy: { sda: (total * (100 - disk)) / 100, sdb: 0 }, total };
+    },
     windowMs: 0,
   });
 }
 
 beforeEach(() => {
-  configure({ minFreeMemory: 10, minIdleCpu: 5 });
+  configure({ minFreeMemory: 10, minIdleCpu: 5, minIdleDisk: 10 });
   wipe();
   resetGh();
   resetSpawn();
@@ -30,21 +38,29 @@ beforeEach(() => {
 afterEach(() => calmMachine());
 
 describe('the machine limit', () => {
-  it('holds new sessions while memory or CPU is short, and says which', async () => {
+  it('holds new sessions while memory, CPU or disk is short, and says which', async () => {
     machine(7, 50);
     await sampleMachine();
     expect(machineHold()).toBe('machine busy: 7% memory free, under 10%');
     machine(40, 3);
     await sampleMachine();
     expect(machineHold()).toBe('machine busy: 3% CPU idle, under 5%');
-    machine(40, 50);
+    machine(40, 50, 4);
+    await sampleMachine();
+    expect(machineHold()).toBe('machine busy: 4% disk idle, under 10%');
+    machine(40, 50, 60);
     await sampleMachine();
     expect(machineHold()).toBeUndefined();
-    expect(machineLoad()).toMatchObject({ memoryFree: 40, cpuIdle: 50 });
+    expect(machineLoad()).toMatchObject({ memoryFree: 40, cpuIdle: 50, diskIdle: 60 });
+  });
+  it('a machine with no disk reading counts as idle', async () => {
+    calmMachine();
+    await sampleMachine();
+    expect(machineLoad()).toMatchObject({ diskIdle: 100 });
   });
   it('a 0 turns a check off', async () => {
-    configure({ minFreeMemory: 0, minIdleCpu: 0 });
-    machine(1, 0);
+    configure({ minFreeMemory: 0, minIdleCpu: 0, minIdleDisk: 0 });
+    machine(1, 0, 0);
     await sampleMachine();
     expect(machineHold()).toBeUndefined();
   });

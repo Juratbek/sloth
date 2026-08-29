@@ -6,16 +6,24 @@ import type { MachineLoad } from '../types';
 
 /**
  * How much of the machine is left for a new session. Sloth holds new work back when the memory
- * left drops under `minFreeMemory` percent or the CPU idle under `minIdleCpu` percent — a claude run
- * with its subagents, a booted app and a browser is what pushes a busy PC over the edge.
+ * left drops under `minFreeMemory` percent, the CPU idle under `minIdleCpu` percent or the disk idle
+ * under `minIdleDisk` percent — a claude run with its subagents, a booted app and a browser is what
+ * pushes a busy PC over the edge, and on a spinning disk the I/O of a few of them at once is what
+ * pins Task Manager's disk at 100%.
  */
 export interface Readers {
   /** Memory available to a new process, in percent of the total. */
   memoryFree: () => number;
   /** Aggregate CPU times so far; idle over a window is the difference of two samples. */
   cpuTimes: () => { idle: number; total: number };
-  /** How long the first reading after a start watches the CPU, ms. */
+  /** Milliseconds each disk has spent busy so far, by disk, and a clock in ms to measure the window by. */
+  diskTimes: () => DiskTimes;
+  /** How long the first reading after a start watches the CPU and disk, ms. */
   windowMs?: number;
+}
+export interface DiskTimes {
+  busy: Record<string, number>;
+  total: number;
 }
 
 /**
@@ -52,7 +60,56 @@ export function cpuTimes(): { idle: number; total: number } {
   return { idle, total };
 }
 
-const REAL: Readers = { memoryFree: memoryFreePercent, cpuTimes, windowMs: 500 };
+const ms = (n: number) => (Number.isFinite(n) ? n : 0);
+
+/**
+ * How long each whole disk has been busy, as the OS counts it: `io_ticks` in `/proc/diskstats` on Linux,
+ * the block-storage drivers' read and write time on macOS (`ioreg`), the perf counters' busy time on
+ * Windows — the same figure Task Manager's *Disk* column comes from. Nothing anywhere else, which reads
+ * as an idle disk.
+ */
+export function diskTimes(): DiskTimes {
+  const busy: Record<string, number> = {};
+  try {
+    if (process.platform === 'linux') {
+      // major minor name reads … writes … ios_in_progress io_ticks …; whole disks only, not partitions or loops.
+      for (const line of fs.readFileSync('/proc/diskstats', 'utf8').split('\n')) {
+        const f = line.trim().split(/\s+/);
+        const name = f[2];
+        if (!name || f.length < 13 || !/^(sd[a-z]+|hd[a-z]+|vd[a-z]+|xvd[a-z]+|nvme\d+n\d+|mmcblk\d+)$/.test(name)) continue;
+        busy[name] = ms(Number(f[12]));
+      }
+    } else if (process.platform === 'darwin') {
+      const out = execFileSync('ioreg', ['-r', '-c', 'IOBlockStorageDriver', '-w0'], { encoding: 'utf8', timeout: 2000 });
+      let n = 0;
+      for (const [, stats] of out.matchAll(/"Statistics" = \{([^}]*)\}/g)) {
+        const ns = (key: string) => Number(new RegExp(`"Total Time \\(${key}\\)"=(\\d+)`).exec(stats)?.[1] ?? 0);
+        busy[`disk${n++}`] = ms((ns('Read') + ns('Write')) / 1e6);
+      }
+    } else if (process.platform === 'win32') {
+      // Raw counters: PercentIdleTime and the timestamp are both in 100ns ticks, so busy = timestamp - idle.
+      const out = execFileSync(
+        'powershell',
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          "Get-CimInstance Win32_PerfRawData_PerfDisk_PhysicalDisk | Where-Object Name -ne '_Total' | ForEach-Object { $_.Name + '|' + $_.PercentIdleTime + '|' + $_.Timestamp_Sys100NS }",
+        ],
+        { encoding: 'utf8', timeout: 5000, windowsHide: true },
+      );
+      for (const line of out.split(/\r?\n/)) {
+        const [name, idle, stamp] = line.trim().split('|');
+        if (name && idle && stamp) busy[name] = ms((Number(stamp) - Number(idle)) / 1e4);
+      }
+    }
+  } catch {
+    /* no reading: the disk counts as idle */
+  }
+  return { busy, total: performance.now() };
+}
+
+const REAL: Readers = { memoryFree: memoryFreePercent, cpuTimes, diskTimes, windowMs: 500 };
 let readers = REAL;
 /** Tests stand in their own readers; `undefined` puts the real ones back. */
 export function setReaders(r?: Readers): void {
@@ -61,36 +118,51 @@ export function setReaders(r?: Readers): void {
   last = undefined;
 }
 
-let previous: { idle: number; total: number } | undefined;
+let previous: { cpu: { idle: number; total: number }; disk: DiskTimes } | undefined;
 let last: MachineLoad | undefined;
+
+/** The idle percent of the busiest disk over the window between two readings; 100 with no disk at all. */
+function diskIdlePercent(before: DiskTimes, now: DiskTimes): number {
+  const elapsed = now.total - before.total;
+  if (elapsed <= 0) return 100;
+  let busiest = 0;
+  for (const [name, ticks] of Object.entries(now.busy)) {
+    const was = before.busy[name];
+    if (was === undefined) continue;
+    busiest = Math.max(busiest, ticks - was);
+  }
+  return Math.max(0, Math.min(100, Math.round(100 - (busiest / elapsed) * 100)));
+}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * One reading per tick, before anything may launch. The CPU idle is averaged over the window since
- * the previous tick — the first reading after a start measures a short window of its own.
+ * One reading per tick, before anything may launch. The CPU and disk idle are averaged over the window
+ * since the previous tick — the first reading after a start measures a short window of its own.
  */
 export async function sampleMachine(): Promise<MachineLoad> {
-  const { minFreeMemory, minIdleCpu } = cfg();
+  const { minFreeMemory, minIdleCpu, minIdleDisk } = cfg();
   let before = previous;
   if (!before) {
-    before = readers.cpuTimes();
-    if (minIdleCpu > 0 && readers.windowMs) await sleep(readers.windowMs);
+    before = { cpu: readers.cpuTimes(), disk: readers.diskTimes() };
+    if ((minIdleCpu > 0 || minIdleDisk > 0) && readers.windowMs) await sleep(readers.windowMs);
   }
-  const now = readers.cpuTimes();
+  const now = { cpu: readers.cpuTimes(), disk: readers.diskTimes() };
   previous = now;
-  const total = now.total - before.total;
-  const cpuIdle = total > 0 ? Math.round(((now.idle - before.idle) / total) * 100) : 100;
+  const total = now.cpu.total - before.cpu.total;
+  const cpuIdle = total > 0 ? Math.round(((now.cpu.idle - before.cpu.idle) / total) * 100) : 100;
+  const diskIdle = diskIdlePercent(before.disk, now.disk);
   const memoryFree = readers.memoryFree();
   const holds: string[] = [];
   if (minFreeMemory > 0 && memoryFree < minFreeMemory) holds.push(`${memoryFree}% memory free, under ${minFreeMemory}%`);
   if (minIdleCpu > 0 && cpuIdle < minIdleCpu) holds.push(`${cpuIdle}% CPU idle, under ${minIdleCpu}%`);
-  last = { memoryFree, cpuIdle, at: Date.now(), hold: holds.length ? `machine busy: ${holds.join(', ')}` : undefined };
+  if (minIdleDisk > 0 && diskIdle < minIdleDisk) holds.push(`${diskIdle}% disk idle, under ${minIdleDisk}%`);
+  last = { memoryFree, cpuIdle, diskIdle, at: Date.now(), hold: holds.length ? `machine busy: ${holds.join(', ')}` : undefined };
   return last;
 }
 
 /** The last reading; nothing before the first tick. */
 export const machineLoad = (): MachineLoad | undefined => last;
 
-/** Why a session must not start now — the machine has too little memory or CPU left — or nothing. */
+/** Why a session must not start now — the machine has too little memory, CPU or disk left — or nothing. */
 export const machineHold = (): string | undefined => last?.hold;

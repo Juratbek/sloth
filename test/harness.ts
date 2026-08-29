@@ -7,7 +7,8 @@ import type { SlothConfig } from '../server/config-types';
 import { setReaders } from '../server/runner/machine';
 
 /** A machine with room to spare, so no test's launch depends on the load of the one running it. */
-export const calmMachine = () => setReaders({ memoryFree: () => 50, cpuTimes: () => ({ idle: 0, total: 0 }), windowMs: 0 });
+export const calmMachine = () =>
+  setReaders({ memoryFree: () => 50, cpuTimes: () => ({ idle: 0, total: 0 }), diskTimes: () => ({ busy: {}, total: 0 }), windowMs: 0 });
 
 /** The throwaway home `test/setup.ts` made for this process. */
 export const root = (): string => process.env.SLOTH_TEST_ROOT!;

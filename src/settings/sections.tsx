@@ -102,6 +102,9 @@ export function Sessions({ draft, patch }: SectionProps) {
       <Row label="Min idle CPU %" hint="No session starts while less than this much of the CPU is idle, averaged since the previous tick. 0 turns the check off.">
         <NumberInput min={0} value={draft.minIdleCpu} onChange={(minIdleCpu) => patch({ minIdleCpu })} />
       </Row>
+      <Row label="Min idle disk %" hint="No session starts while the busiest disk is idle less than this much of the time since the previous tick — the opposite of Task Manager's Disk column. 0 turns the check off.">
+        <NumberInput min={0} value={draft.minIdleDisk} onChange={(minIdleDisk) => patch({ minIdleDisk })} />
+      </Row>
       <Row label="Budget minutes" hint="A session's time budget. Five minutes past it the session is killed, cleaned up and its card parked.">
         <NumberInput value={draft.budgetMinutes} onChange={(budgetMinutes) => patch({ budgetMinutes })} />
       </Row>
