@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 export function Button({
   children,
@@ -71,8 +71,30 @@ export function TextInput({ value, onChange, placeholder }: { value: string; onC
   return <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className={inputStyle} spellCheck={false} />;
 }
 
+// Keeps its own text so the field can be emptied while typing; a controlled `type="number"`
+// bound straight to a number snaps back to "0" the moment the text is cleared.
 export function NumberInput({ value, onChange, min = 1 }: { value: number; onChange: (v: number) => void; min?: number }) {
-  return <input type="number" min={min} value={value} onChange={(e) => onChange(Number(e.target.value))} className={inputStyle} />;
+  const [text, setText] = useState(String(value));
+  useEffect(() => {
+    if (Number(text) !== value) setText(String(value));
+  }, [value]);
+  return (
+    <input
+      type="number"
+      inputMode="numeric"
+      min={min}
+      value={text}
+      onChange={(e) => {
+        const next = e.target.value;
+        setText(next);
+        if (next.trim() !== '' && Number.isFinite(Number(next))) onChange(Number(next));
+      }}
+      onBlur={() => {
+        if (text.trim() === '' || !Number.isFinite(Number(text))) setText(String(value));
+      }}
+      className={inputStyle}
+    />
+  );
 }
 
 export function Select({
