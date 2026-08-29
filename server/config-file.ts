@@ -32,6 +32,9 @@ const text = (v: unknown): string | undefined => (typeof v === 'string' && v.tri
 const int = (v: unknown, fallback: number, min = 1) =>
   Number.isFinite(Number(v)) && Number(v) >= min ? Math.floor(Number(v)) : fallback;
 
+/** A whole percent, 0–100; anything else is the default. */
+const percent = (v: unknown, fallback: number) => Math.min(100, int(v, fallback, 0));
+
 /** GitHub logins from a list or a comma / space separated string; a leading `@` is dropped. */
 export function logins(v: unknown): string[] {
   const raw = Array.isArray(v) ? v.map(String) : typeof v === 'string' ? v.split(/[\s,]+/) : [];
@@ -157,6 +160,8 @@ export function normalizeConfig(input: unknown): SlothConfig {
     botPrefix: text(b.botPrefix) ?? d.botPrefix,
     maxActive: int(b.maxActive, d.maxActive),
     maxAlive: int(b.maxAlive, d.maxAlive),
+    minFreeMemory: percent(b.minFreeMemory, d.minFreeMemory),
+    minIdleCpu: percent(b.minIdleCpu, d.minIdleCpu),
     budgetMinutes: int(b.budgetMinutes, d.budgetMinutes),
     waitHours: int(b.waitHours, d.waitHours),
     reviewRounds: int(b.reviewRounds, d.reviewRounds),

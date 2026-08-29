@@ -4,6 +4,10 @@ import { CONFIG_PATH, reloadConfig, type ResolvedConfig } from '../server/config
 import type { BoardItem } from '../server/runner/board';
 import { writeConfigFile, normalizeConfig } from '../server/config-file';
 import type { SlothConfig } from '../server/config-types';
+import { setReaders } from '../server/runner/machine';
+
+/** A machine with room to spare, so no test's launch depends on the load of the one running it. */
+export const calmMachine = () => setReaders({ memoryFree: () => 50, cpuTimes: () => ({ idle: 0, total: 0 }), windowMs: 0 });
 
 /** The throwaway home `test/setup.ts` made for this process. */
 export const root = (): string => process.env.SLOTH_TEST_ROOT!;
@@ -53,6 +57,7 @@ export function configure(overrides: Record<string, unknown> = {}): ResolvedConf
   writeConfigFile(CONFIG_PATH, config);
   const c = reloadConfig();
   for (const dir of [c.runnerRoot, c.worktreesDir, c.sessionsDir, c.stateDir]) fs.mkdirSync(dir, { recursive: true });
+  calmMachine();
   return c;
 }
 

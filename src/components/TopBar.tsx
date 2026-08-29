@@ -91,6 +91,7 @@ export default function TopBar({
   const waiting = sessions.filter((s) => s.status === 'waiting').length;
   const full = working >= config.maxActive;
   const limitPaused = watcher.pausedUntil && watcher.pausedUntil * 1000 > Date.now();
+  const machine = watcher.loop.machine;
   // Only a bucket that is nearly spent is worth a pill.
   const low = Object.entries(rateLimit ?? {}).find(([, b]) => b.remaining < b.limit * 0.1);
 
@@ -104,6 +105,11 @@ export default function TopBar({
         value={`${working}${full ? `/${config.maxActive}` : ''} working · ${waiting} waiting`}
         tone={full ? 'amber' : 'emerald'}
       />
+      {machine?.hold && (
+        <span title={`${machine.hold} — running sessions go on; new ones wait for the next tick`}>
+          <Pill label="machine" value={`${machine.memoryFree}% memory · ${machine.cpuIdle}% CPU idle`} tone="amber" />
+        </span>
+      )}
       <span className="hidden md:contents">
         <Pill label="pickup" value={config.pickupColumn} />
         <Pill label="board" value={nextAt(watcher.loop.nextBoard)} />
