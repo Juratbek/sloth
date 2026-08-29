@@ -15,7 +15,7 @@ export default function SessionView({ id, config }: { id: string; config: Monito
   const [agentId, setAgentId] = useState<string | null>(null);
 
   if (error) return <div className="p-6 text-red-400">Session unavailable: {String(error)}</div>;
-  if (!data) return <div className="p-6 text-zinc-500">Loading session…</div>;
+  if (!data) return <div className="p-6 text-zinc-400">Loading session…</div>;
 
   const openAgent = (a: string) => {
     setAgentId(a);
@@ -38,7 +38,7 @@ export default function SessionView({ id, config }: { id: string; config: Monito
               setTab(value);
               setAgentId(null);
             }}
-            className={`px-3 py-1.5 text-xs ${tab === value ? 'border-b-2 border-sky-500 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}
+            className={`px-3 py-1.5 text-xs ${tab === value ? 'border-b-2 border-sky-500 text-zinc-100' : 'text-zinc-400 hover:text-zinc-300'}`}
           >
             {text}
           </button>

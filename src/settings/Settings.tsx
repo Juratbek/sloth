@@ -80,12 +80,12 @@ export default function Settings({ config, onClose, onWizard }: { config: SlothC
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-3 border-b border-zinc-800 px-4 py-2">
         <span className="text-sm font-semibold text-zinc-100">Sloth</span>
-        <span className="text-xs text-zinc-500">
-          Settings <span className="mx-1 text-zinc-700">/</span> <span className="text-zinc-300">{section.label}</span>
+        <span className="text-xs text-zinc-400">
+          Settings <span className="mx-1 text-zinc-500">/</span> <span className="text-zinc-300">{section.label}</span>
         </span>
         <span className="flex-1" />
         {section.defaults && (
-          <button onClick={() => patch(section.defaults!(draft))} className="text-xs text-zinc-500 hover:text-zinc-200">
+          <button onClick={() => patch(section.defaults!(draft))} className="text-xs text-zinc-400 hover:text-zinc-200">
             ↺ Restore defaults
           </button>
         )}
@@ -104,16 +104,16 @@ export default function Settings({ config, onClose, onWizard }: { config: SlothC
             </button>
           ))}
           <span className="hidden flex-1 md:block" />
-          <button onClick={() => leave(onWizard)} className={`${navItem} text-zinc-500 hover:text-zinc-200`} title="Walk through the setup again, step by step">
+          <button onClick={() => leave(onWizard)} className={`${navItem} text-zinc-400 hover:text-zinc-200`} title="Walk through the setup again, step by step">
             Setup wizard
           </button>
-          <button onClick={() => leave(onClose)} className={`${navItem} text-zinc-500 hover:text-zinc-200`}>
+          <button onClick={() => leave(onClose)} className={`${navItem} text-zinc-400 hover:text-zinc-200`}>
             ← Back
           </button>
         </nav>
 
         <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <div className="mx-auto w-full max-w-2xl px-6 py-6">
+          <div className="w-full max-w-[1240px] px-6 py-6">
             <h1 className="text-lg font-semibold text-zinc-100">{section.label}</h1>
             <div className="mt-2 divide-y divide-zinc-900">
               <Section draft={draft} patch={patch} />
@@ -121,7 +121,7 @@ export default function Settings({ config, onClose, onWizard }: { config: SlothC
           </div>
           {dirty && (
             <div className="sticky bottom-0 mt-auto border-t border-zinc-800 bg-zinc-950/95 backdrop-blur">
-              <div className="mx-auto flex w-full max-w-2xl items-center gap-2 px-6 py-3 text-xs">
+              <div className="flex w-full max-w-[1240px] items-center gap-2 px-6 py-3 text-xs">
                 {leaving ? (
                   <>
                     <span className="text-amber-300">Leave without saving?</span>

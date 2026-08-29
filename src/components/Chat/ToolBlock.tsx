@@ -54,14 +54,14 @@ export default function ToolBlock({
   onOpenAgent?: (agentId: string) => void;
 }) {
   const state = !result ? '·' : result.isError ? '✗' : '✓';
-  const tone = !result ? 'text-zinc-600' : result.isError ? 'text-red-400' : 'text-emerald-400';
+  const tone = !result ? 'text-zinc-500' : result.isError ? 'text-red-400' : 'text-emerald-400';
   const agentId = block.agentId;
   return (
     <details className="rounded-md border border-zinc-800 bg-zinc-900/40">
       <summary className="flex items-center gap-2 px-2 py-1 text-xs hover:bg-zinc-900">
         <span className={tone}>{state}</span>
         <span className="shrink-0 font-medium text-zinc-300">{block.name}</span>
-        <span className="truncate font-mono text-[11px] text-zinc-500">{summaryOf(block.name, block.input)}</span>
+        <span className="truncate font-mono text-[11px] text-zinc-400">{summaryOf(block.name, block.input)}</span>
         {agentId && onOpenAgent && (
           <button
             className="ml-auto shrink-0 rounded border border-zinc-700 px-1.5 py-0.5 text-[11px] text-zinc-300 hover:bg-zinc-800"
@@ -81,7 +81,7 @@ export default function ToolBlock({
         </pre>
         {result && (
           <pre
-            className={`max-h-72 overflow-auto border-t border-zinc-800 pt-2 text-[11px] break-words whitespace-pre-wrap ${result.isError ? 'text-red-300' : 'text-zinc-500'}`}
+            className={`max-h-72 overflow-auto border-t border-zinc-800 pt-2 text-[11px] break-words whitespace-pre-wrap ${result.isError ? 'text-red-300' : 'text-zinc-400'}`}
           >
             {result.content}
             {result.truncated && '\n… truncated'}

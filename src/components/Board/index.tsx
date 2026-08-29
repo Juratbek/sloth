@@ -10,7 +10,7 @@ const SHORT: Partial<Record<ColumnRole, string>> = { needsHelp: 'Help' };
 /** A count of cards the view leaves out. Counted, never listed — this view is Sloth's pipeline. */
 const Left = ({ label, count, title }: { label: string; count: number; title: string }) =>
   count ? (
-    <span title={title} className="rounded border border-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">
+    <span title={title} className="rounded border border-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">
       {label} · {count}
     </span>
   ) : null;
@@ -32,18 +32,18 @@ export default function BoardPage({ board, onSelect, onClose }: { board?: BoardV
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-3 border-b border-zinc-800 px-4 py-2">
         <span className="text-sm font-semibold text-zinc-100">Sloth</span>
-        <span className="text-xs text-zinc-500">
-          Board {board && <span className="ml-1 text-zinc-600">as of {clock(board.asOf)}</span>}
+        <span className="text-xs text-zinc-400">
+          Board {board && <span className="ml-1 text-zinc-500">as of {clock(board.asOf)}</span>}
         </span>
         <span className="flex-1" />
         {board && <Left label="not Sloth's" count={board.others} title="Cards on Sloth's columns that Sloth has no run on and that are not waiting in pickup — a person's work." />}
         {board && <Left label="elsewhere" count={board.elsewhere} title="Cards on Status options Sloth has no column for." />}
-        <button onClick={onClose} className="text-xs text-zinc-500 hover:text-zinc-200">
+        <button onClick={onClose} className="text-xs text-zinc-400 hover:text-zinc-200">
           ← Back
         </button>
       </header>
 
-      {!board && <p className="flex flex-1 items-center justify-center p-6 text-sm text-zinc-500">The board has not been read yet — it fills in after the first tick.</p>}
+      {!board && <p className="flex flex-1 items-center justify-center p-6 text-sm text-zinc-400">The board has not been read yet — it fills in after the first tick.</p>}
 
       {board && (
         <>
@@ -53,7 +53,7 @@ export default function BoardPage({ board, onSelect, onClose }: { board?: BoardV
                 key={c.role}
                 onClick={() => setTab(c.role)}
                 className={`rounded border px-1.5 py-0.5 text-[10px] ${
-                  c.role === active?.role ? 'border-zinc-600 bg-zinc-900 text-zinc-200' : 'border-zinc-800 text-zinc-500'
+                  c.role === active?.role ? 'border-zinc-600 bg-zinc-900 text-zinc-200' : 'border-zinc-800 text-zinc-400'
                 }`}
               >
                 {SHORT[c.role] ?? c.name} {c.cards.length}

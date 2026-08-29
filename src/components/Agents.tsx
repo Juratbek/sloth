@@ -8,11 +8,11 @@ const tools = (counts: Record<string, number>) =>
     .join(' · ');
 
 export default function Agents({ agents, onOpen }: { agents: AgentSummary[]; onOpen: (agentId: string) => void }) {
-  if (!agents.length) return <p className="p-4 text-sm text-zinc-500">This session started no subagents.</p>;
+  if (!agents.length) return <p className="p-4 text-sm text-zinc-400">This session started no subagents.</p>;
   return (
     <div className="min-h-0 flex-1 overflow-auto">
       <table className="w-full text-left text-xs">
-        <thead className="sticky top-0 bg-zinc-950 text-[11px] text-zinc-500 uppercase">
+        <thead className="sticky top-0 bg-zinc-950 text-[11px] text-zinc-400 uppercase">
           <tr>
             {['Description', 'Type', 'Model', 'Turns', 'Context', 'New input', 'Cache reads', 'Out', 'Duration', 'Tools', 'Last text'].map(
               (h) => (
@@ -39,8 +39,8 @@ export default function Agents({ agents, onOpen }: { agents: AgentSummary[]; onO
               <td className="px-3 py-2 text-zinc-400">{k(a.usage.cacheRead)}</td>
               <td className="px-3 py-2 text-zinc-400">{k(a.usage.output)}</td>
               <td className="px-3 py-2 text-zinc-400">{elapsed({ ...a, live: false })}</td>
-              <td className="max-w-56 truncate px-3 py-2 text-zinc-500">{tools(a.toolCounts)}</td>
-              <td className="max-w-96 px-3 py-2 text-zinc-500">
+              <td className="max-w-56 truncate px-3 py-2 text-zinc-400">{tools(a.toolCounts)}</td>
+              <td className="max-w-96 px-3 py-2 text-zinc-400">
                 <span className="line-clamp-2">{a.lastText}</span>
               </td>
             </tr>

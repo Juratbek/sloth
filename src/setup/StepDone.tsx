@@ -78,7 +78,7 @@ export default function StepDone({
       <dl className="divide-y divide-zinc-900 rounded-md border border-zinc-800">
         {rows.map(([label, value]) => (
           <div key={label} className="flex gap-4 px-3 py-1.5">
-            <dt className="w-32 shrink-0 text-xs text-zinc-500">{label}</dt>
+            <dt className="w-32 shrink-0 text-xs text-zinc-400">{label}</dt>
             <dd className="min-w-0 flex-1 truncate text-sm text-zinc-200">{value}</dd>
           </div>
         ))}

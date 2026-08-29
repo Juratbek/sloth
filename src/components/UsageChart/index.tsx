@@ -10,7 +10,7 @@ export default function UsageChart({ days = 7 }: { days?: number }) {
   const { data, error } = useUsage(days);
 
   if (error) return <p className="text-sm text-red-400">{String(error)}</p>;
-  if (!data) return <p className="text-sm text-zinc-500">Loading usage…</p>;
+  if (!data) return <p className="text-sm text-zinc-400">Loading usage…</p>;
 
   const { buckets, cost, byModel } = data;
   const max = niceMax(Math.max(...buckets.map(totalOf)));
@@ -22,12 +22,12 @@ export default function UsageChart({ days = 7 }: { days?: number }) {
   return (
     <section className="space-y-1">
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        <h3 className="text-[10px] font-semibold tracking-wide text-zinc-500 uppercase">
+        <h3 className="text-[10px] font-semibold tracking-wide text-zinc-400 uppercase">
           token usage · last {days} days
         </h3>
         <span className="flex flex-wrap items-baseline gap-x-2 text-[11px] text-zinc-400">
           <span className="text-base font-semibold text-zinc-100">{usd(cost)}</span>
-          <span className="text-zinc-500">API estimate</span>
+          <span className="text-zinc-400">API estimate</span>
           {byModel
             .filter((m) => m.cost !== null)
             .map((m) => (

@@ -31,7 +31,7 @@ const AGENTS: { role: AgentRole; label: string; hint: string }[] = [
 export function Models({ draft, patch }: SectionProps) {
   return (
     <>
-      <p className="py-3 text-xs text-zinc-500">
+      <p className="py-3 text-xs text-zinc-400">
         Which model each of Sloth's agents runs on: a Claude Code alias or a full model id, passed as <code>--model</code>. A change
         applies to sessions started after the save; running ones keep theirs.
       </p>

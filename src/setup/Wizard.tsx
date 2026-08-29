@@ -42,10 +42,10 @@ export default function Wizard({ existing, onClose }: { existing: SlothConfig | 
     <div className="flex h-full flex-col overflow-y-auto">
       <header className="flex items-center gap-3 border-b border-zinc-800 px-4 py-2">
         <span className="text-sm font-semibold text-zinc-100">Sloth</span>
-        <span className="text-xs text-zinc-500">{existing ? 'Setup wizard' : 'Get started'}</span>
+        <span className="text-xs text-zinc-400">{existing ? 'Setup wizard' : 'Get started'}</span>
         <span className="flex-1" />
         {onClose && (
-          <button onClick={onClose} className="text-xs text-zinc-500 hover:text-zinc-200">
+          <button onClick={onClose} className="text-xs text-zinc-400 hover:text-zinc-200">
             Close
           </button>
         )}
@@ -54,7 +54,7 @@ export default function Wizard({ existing, onClose }: { existing: SlothConfig | 
       <div className="mx-auto w-full max-w-2xl px-6 py-8">
         <ol className="mb-6 flex flex-wrap gap-x-3 gap-y-1 text-xs">
           {steps.map((s, i) => (
-            <li key={s} className={i === step ? 'text-zinc-100' : i < step ? 'text-zinc-500' : 'text-zinc-700'}>
+            <li key={s} className={i === step ? 'text-zinc-100' : i < step ? 'text-zinc-400' : 'text-zinc-500'}>
               {i + 1}. {LABELS[s]}
             </li>
           ))}

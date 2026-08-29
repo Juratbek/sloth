@@ -31,7 +31,7 @@ export default function WatcherPanel({ overview, onSelect }: { overview: Overvie
 
       {pending.length > 0 && (
         <section className="shrink-0 space-y-1">
-          <h3 className="text-[10px] font-semibold tracking-wide text-zinc-500 uppercase">queued ({pending.length})</h3>
+          <h3 className="text-[10px] font-semibold tracking-wide text-zinc-400 uppercase">queued ({pending.length})</h3>
           <div className="flex flex-wrap gap-1">
             {pending.map((t) => (
               <span key={t} className="rounded border border-amber-900 bg-amber-950/40 px-1.5 py-0.5 text-[11px] text-amber-300">
@@ -43,8 +43,8 @@ export default function WatcherPanel({ overview, onSelect }: { overview: Overvie
       )}
 
       <section className="flex min-h-0 flex-1 flex-col gap-1">
-        <h3 className="text-[10px] font-semibold tracking-wide text-zinc-500 uppercase">watcher log</h3>
-        <p className="text-[11px] text-zinc-600">
+        <h3 className="text-[10px] font-semibold tracking-wide text-zinc-400 uppercase">watcher log</h3>
+        <p className="text-[11px] text-zinc-500">
           seen comments {watcher.seen} · reviewed heads {watcher.reviewed}
         </p>
         <pre

@@ -33,10 +33,10 @@ function Row({ s, active, onSelect }: { s: SessionSummary; active: boolean; onSe
         <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_COLOR[s.status]} ${s.status === 'running' ? 'animate-pulse' : ''}`} />
         <span className="text-sm font-medium text-zinc-100">{label(s)}</span>
         {step && <span className="rounded bg-zinc-800 px-1 text-[10px] text-zinc-400">{step}</span>}
-        <span className="ml-auto text-[11px] text-zinc-500">{elapsed(s)}</span>
+        <span className="ml-auto text-[11px] text-zinc-400">{elapsed(s)}</span>
       </div>
       {s.title && <div className="mt-0.5 truncate pl-4 text-xs text-zinc-400">{s.title}</div>}
-      <div className="mt-0.5 flex gap-2 pl-4 text-[11px] text-zinc-500">
+      <div className="mt-0.5 flex gap-2 pl-4 text-[11px] text-zinc-400">
         <span>ctx {k(s.contextTokens)}</span>
         <span>↑{k(s.usage.output)}</span>
         {s.agents.length > 0 && <span>{s.agents.length} agents</span>}
@@ -64,13 +64,13 @@ export default function Sidebar({
         if (!rows.length) return null;
         return (
           <section key={g.title}>
-            <h2 className="sticky top-0 bg-zinc-950 px-3 py-1.5 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
+            <h2 className="sticky top-0 bg-zinc-950 px-3 py-1.5 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">
               {g.title} · {rows.length}
             </h2>
             {g.byDay
               ? groupByDay(rows).map((d) => (
                   <div key={d.day}>
-                    <h3 className="border-b border-zinc-900 bg-zinc-950/80 px-3 py-1 text-[10px] font-medium text-zinc-600">
+                    <h3 className="border-b border-zinc-900 bg-zinc-950/80 px-3 py-1 text-[10px] font-medium text-zinc-500">
                       {d.day} · {d.rows.length}
                     </h3>
                     {d.rows.map((s) => (
@@ -82,7 +82,7 @@ export default function Sidebar({
           </section>
         );
       })}
-      {!sessions.length && <p className="p-4 text-sm text-zinc-500">No transcripts yet.</p>}
+      {!sessions.length && <p className="p-4 text-sm text-zinc-400">No transcripts yet.</p>}
     </aside>
   );
 }

@@ -25,8 +25,8 @@ function Body({ data, error, install }: { data?: Remote; error: unknown; install
     return (
       <>
         <img src={data.qr} alt="QR code that opens this Sloth" className="mx-auto w-64 rounded-md bg-white p-2" />
-        <p className="text-center font-mono text-[11px] break-all text-zinc-500">{data.url}</p>
-        <p className="text-xs text-zinc-500">
+        <p className="text-center font-mono text-[11px] break-all text-zinc-400">{data.url}</p>
+        <p className="text-xs text-zinc-400">
           Scanning signs the phone in: whoever has this code can read every session and press Tick and Pause.
           <b className="text-zinc-400"> New link</b> replaces the code and signs every phone out.
         </p>
@@ -37,7 +37,7 @@ function Body({ data, error, install }: { data?: Remote; error: unknown; install
     return (
       <>
         <Spinner text={`Installing ${tool?.command} with Homebrew — usually a minute or two.`} />
-        <pre className="max-h-40 overflow-auto rounded-md border border-zinc-800 bg-zinc-900/40 p-2 text-[10px] break-words whitespace-pre-wrap text-zinc-500">
+        <pre className="max-h-40 overflow-auto rounded-md border border-zinc-800 bg-zinc-900/40 p-2 text-[10px] break-words whitespace-pre-wrap text-zinc-400">
           {run.output || '…'}
         </pre>
       </>
@@ -55,7 +55,7 @@ function Body({ data, error, install }: { data?: Remote; error: unknown; install
             {run.error ? 'Try again' : `Install ${tool.command}`}
           </button>
         ) : (
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-zinc-400">
             Install it by hand (developers.cloudflare.com) or set <code>publicUrl</code> in the config, then restart Sloth.
           </p>
         )}
@@ -84,7 +84,7 @@ export default function RemoteDialog({ onClose }: { onClose: () => void }) {
       >
         <div className="flex items-center">
           <h2 className="text-sm font-semibold text-zinc-100">Open on your phone</h2>
-          <button onClick={onClose} aria-label="Close" className="ml-auto text-zinc-500 hover:text-zinc-200">
+          <button onClick={onClose} aria-label="Close" className="ml-auto text-zinc-400 hover:text-zinc-200">
             ✕
           </button>
         </div>

@@ -10,10 +10,10 @@ export default function IssuesTable({ issues, config }: { issues: IssueCost[]; c
   if (!issues.length) return null;
   return (
     <section className="shrink-0 space-y-1">
-      <h3 className="text-[10px] font-semibold tracking-wide text-zinc-500 uppercase">cost by issue ({issues.length})</h3>
+      <h3 className="text-[10px] font-semibold tracking-wide text-zinc-400 uppercase">cost by issue ({issues.length})</h3>
       <div className="max-h-48 overflow-auto rounded-md border border-zinc-800">
         <table className="w-full text-[11px]">
-          <thead className="sticky top-0 bg-zinc-900 text-zinc-500">
+          <thead className="sticky top-0 bg-zinc-900 text-zinc-400">
             <tr>
               <th className="px-2 py-1 text-left font-medium">issue</th>
               <th className="hidden px-2 py-1 text-left font-medium sm:table-cell">title</th>

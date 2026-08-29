@@ -14,7 +14,7 @@ export function Row({ label, hint, children, wide }: { label: string; hint?: Rea
     <div className="flex items-start gap-6 py-4">
       <div className="min-w-0 flex-1">
         <p className="text-sm text-zinc-100">{label}</p>
-        {hint && <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">{hint}</p>}
+        {hint && <p className="mt-0.5 text-xs leading-relaxed text-zinc-400">{hint}</p>}
       </div>
       <div className={`flex shrink-0 justify-end ${wide ? 'w-80' : 'w-56'}`}>{children}</div>
     </div>

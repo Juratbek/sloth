@@ -68,7 +68,7 @@ export default function RepositorySection({ draft, patch }: SectionProps) {
           </Button>
         </div>
       </Row>
-      <p className="pt-4 pb-1 text-xs text-zinc-500">
+      <p className="pt-4 pb-1 text-xs text-zinc-400">
         Where Sloth keeps its files. Changing a path does not move what is already there, and running sessions keep the paths they
         started with.
       </p>
