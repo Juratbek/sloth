@@ -106,7 +106,7 @@ export default function Settings({
         )}
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+      <div className="mx-auto flex min-h-0 w-full max-w-[1240px] flex-1 flex-col md:flex-row">
         <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-zinc-800 p-2 md:w-56 md:flex-col md:border-r md:border-b-0 md:p-3">
           {SECTIONS.map((s) => (
             <button
@@ -128,7 +128,7 @@ export default function Settings({
         </nav>
 
         <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <div className="w-full max-w-[1240px] px-6 py-6">
+          <div className="w-full px-6 py-6">
             <h1 className="text-lg font-semibold text-zinc-100">{section.label}</h1>
             <div className="mt-2 divide-y divide-zinc-900">
               <Section draft={draft} patch={patch} />
@@ -136,7 +136,7 @@ export default function Settings({
           </div>
           {dirty && (
             <div className="sticky bottom-0 mt-auto border-t border-zinc-800 bg-zinc-950/95 backdrop-blur">
-              <div className="flex w-full max-w-[1240px] items-center gap-2 px-6 py-3 text-xs">
+              <div className="flex w-full items-center gap-2 px-6 py-3 text-xs">
                 {leaving ? (
                   <>
                     <span className="text-amber-300">Leave without saving?</span>
