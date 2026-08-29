@@ -9,6 +9,7 @@ import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
 import { APPROVED_LABEL, MARKERS, OWN_BRANCH, markerFiles, statePath, unapprove } from './markers';
 import { helpMentions, notify } from './notify';
 import { cleanup } from './cleanup';
+import { exitLine, exitReport, exitsOf, forgetExits, recordExit } from './exits';
 import { approvedDir, counter, dirAlive, dirOf, isBlocked, issueAlive, issueDir, pidAlive, pidOf, reviewDir, runDirs, startedAt, stateOf } from './session-dirs';
 import type { Kind } from './session-dirs';
 import { launch, launchApproved, launchReview } from './spawn';
@@ -21,12 +22,14 @@ export const pausedUntil = () => readNumber(statePath('paused_until'));
 /**
  * Hands the issue to a human: one comment, then the needs-help column. Every way a run ends badly comes
  * through here — the budget, a stop from the monitor, too many relaunches, a PR closed unmerged — so this
- * is where the `stopped` webhook event is raised.
+ * is where the `stopped` webhook event is raised. `details` is markdown under the reason — the record of
+ * how each run ended (`exits.ts`), so the human learns why without opening the logs; the record is
+ * forgotten once it is posted.
  */
-export async function park(issue: number, reason: string): Promise<void> {
+export async function park(issue: number, reason: string, details = ''): Promise<void> {
   const c = cfg();
   const cc = helpMentions();
-  const body = `${c.botPrefix} ${reason} A developer needs to look at it: answer in this thread and Sloth continues, or move the card back to **${c.statusField.columns.pickup.name}** to start over.${cc ? `\n\ncc ${cc}` : ''}`;
+  const body = `${c.botPrefix} ${reason} A developer needs to look at it: answer in this thread and Sloth continues, or move the card back to **${c.statusField.columns.pickup.name}** to start over.${details ? `\n\n${details}` : ''}${cc ? `\n\ncc ${cc}` : ''}`;
   if (isDry()) {
     log(`dry-run: would park #${issue} — ${reason}`);
     return;
@@ -39,6 +42,7 @@ export async function park(issue: number, reason: string): Promise<void> {
     log(`#${issue} parked in place (no needs-help column configured)`);
   }
   remove(path.join(issueDir(issue), 'retries'));
+  forgetExits(issueDir(issue));
   await notify('stopped', { issue, text: `Sloth stopped work on #${issue}: ${reason}` });
 }
 
@@ -72,6 +76,8 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
     log(`dry-run: would stop ${name}: ${reason}`);
     return true;
   }
+  // What the run was doing when it was killed is all the human will get: it never prints a final report.
+  if (kind === 'issue') recordExit(dir, `stopped by Sloth: ${reason}`);
   // Detached, so the run leads its own group: the negative pid takes its subagents and servers with it.
   for (const t of [-pid!, pid!]) {
     try {
@@ -87,11 +93,15 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
   }
   await cleanup(target);
   log(`#${target} stopped: ${reason}`);
-  await park(target, why);
+  await park(target, why, exitReport(dir));
   return true;
 }
 
-/** Forgets dead sessions, notices usage-limit exits, kills and cleans up hung ones. */
+/**
+ * Forgets dead sessions, notices usage-limit exits, kills and cleans up hung ones. An issue run that died
+ * while still `working` finished nothing: how it ended is recorded before trigger 2 relaunches it and
+ * `launch` wipes its state, so the comment that finally parks the card can say what each run got to.
+ */
 export async function reap(): Promise<void> {
   for (const { kind, target, dir } of runDirs()) {
     const pidFile = path.join(dir, 'pid');
@@ -99,7 +109,12 @@ export async function reap(): Promise<void> {
     const name = `${kind}-${target}`;
     if (!dirAlive(dir)) {
       remove(pidFile);
-      if (!limitExit(readFile(path.join(dir, 'run.log')))) continue;
+      if (!limitExit(readFile(path.join(dir, 'run.log')))) {
+        if (kind === 'issue' && (stateOf(dir).state ?? 'working') === 'working') {
+          log(`${name} ended without finishing — ${exitLine(recordExit(dir, 'the session ended on its own'))}`);
+        }
+        continue;
+      }
       log(`${name} stopped on a usage limit — pausing ${LIMIT_PAUSE / 60} min, card untouched`);
       write(statePath('paused_until'), String(nowSec() + LIMIT_PAUSE));
       await notify('usageLimit', {
@@ -164,9 +179,11 @@ export async function finalReviews(board: BoardItem[]): Promise<void> {
 export async function retryStranded(board: BoardItem[]): Promise<void> {
   for (const issue of freeIn(board, cfg().statusField.columns.inProgress.name)) {
     if (issueAlive(issue) || isBlocked(issueDir(issue))) continue;
-    const retries = counter(issueDir(issue), 'retries');
+    const dir = issueDir(issue);
+    const retries = counter(dir, 'retries');
     if (retries >= cfg().maxRetries) {
-      await park(issue, `the run for this issue stopped without finishing ${retries} times in a row.`);
+      const runs = exitsOf(dir).length || retries;
+      await park(issue, `the run for this issue stopped without finishing ${runs} times in a row.`, exitReport(dir));
       continue;
     }
     if (!(await launch(issue))) break;
@@ -179,6 +196,9 @@ export async function pickup(board: BoardItem[]): Promise<void> {
   for (const issue of pickupOrder(board, cfg().statusField.columns.pickup.name)) {
     if (issueAlive(issue)) continue;
     if (!(await launch(issue))) break;
-    if (!isDry()) remove(path.join(issueDir(issue), 'retries'));
+    if (!isDry()) {
+      remove(path.join(issueDir(issue), 'retries'));
+      forgetExits(issueDir(issue));
+    }
   }
 }

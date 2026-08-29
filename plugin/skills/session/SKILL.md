@@ -110,7 +110,9 @@ REMAIN=$(( SLOTH_DEADLINE - $(date +%s) ))     # seconds
 
 If what is left cannot cover finishing the step plus handing over, stop: commit what works and park with a
 "done / left" summary instead of running out silently. The server kills a `working` session that runs past
-`SLOTH_BUDGET_MIN + 5` minutes.
+`SLOTH_BUDGET_MIN + 5` minutes. Whatever ends a session, its **last message** is what the server quotes on the
+issue when it parks the card after a run that finished nothing — make it say what is done, what is left, and
+why you stopped.
 
 After an answer arrives, the budget becomes `max(remaining, 30 min)`:
 

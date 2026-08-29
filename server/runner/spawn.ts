@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process';
 import { PLUGIN_DIR, cfg } from '../config';
 import { moveCard } from './board';
 import { mcpConfig } from './browser';
+import { runHeader } from './exits';
 import { run } from './gh';
 import { isDry, log, remove, write } from './log';
 import { stopPreview } from './preview';
@@ -59,6 +60,8 @@ function start(bookDir: string, sessionDir: string, prompt: string, target: Targ
   write(path.join(bookDir, 'session_id'), sessionId);
   // No browser at all unless one was asked for and this machine has Chrome: the session then knows it has none.
   const mcp = chrome ? mcpConfig(bookDir, path.join(sessionDir, 'screenshots')) : undefined;
+  // One header per run: the log keeps every attempt, and `lastRun` finds where the newest one begins.
+  fs.appendFileSync(logFile, runHeader(model));
   const fd = fs.openSync(logFile, 'a');
   const child = spawn(
     'claude',

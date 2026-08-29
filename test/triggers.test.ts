@@ -3,6 +3,7 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setDry } from '../server/runner/log';
 import { finalReviews, park, pickup, reap, retryStranded, reviews, stop } from '../server/runner/triggers';
+import { exitsOf } from '../server/runner/exits';
 import { resetSpawn, spawned } from './child-process-mock';
 import { called, onGh, resetGh } from './gh-mock';
 import { COLUMNS, alivePid, card, configure, exists, makeSession, read, readLog, sessionDir, statePath, wipe } from './harness';
@@ -47,8 +48,13 @@ beforeEach(() => {
 describe('pickup (trigger 1)', () => {
   it('launches the watched column in board order, assigned or not, and moves the cards to In Progress', async () => {
     onGh(/project item-add/, 'ITEM');
+    makeSession('issue', 5, { retries: '1', 'exits.json': [{ at: 1, how: 'x', tail: '' }] });
     await pickup([card(5, 'Todo'), card(6, 'Todo', { labels: ['Sloth: skip'] }), card(7, 'Backlog'), card(8, 'Todo', { assignees: ['bob'] })]);
     expect(launches()).toEqual(['/sloth:implement 5', '/sloth:implement 8']);
+    // A fresh pickup starts the count over: no retries, no record of old runs; the log opens with a run header.
+    expect(exists(sessionDir('issue', 5), 'retries')).toBe(false);
+    expect(exists(sessionDir('issue', 5), 'exits.json')).toBe(false);
+    expect(read(path.join(sessionDir('issue', 5), 'run.log'))).toMatch(/^=== sloth run .* · fable ===\n$/);
     expect(called(/item-edit .*opt-wip/)).toHaveLength(2);
     expect(spawned[0].options.env.SLOTH_ISSUE).toBe('5');
     expect(spawned[0].options.env.SLOTH_COL_CODE_REVIEW_ID).toBe(COLUMNS.codeReview.id);
@@ -127,6 +133,26 @@ describe('retryStranded (trigger 2)', () => {
     makeSession('issue', 4, { blocked: '1' });
     await retryStranded([card(4, 'In Progress')]);
     expect(launches()).toEqual([]);
+  });
+  it('tells the human how every run ended when it parks, then forgets the record', async () => {
+    const exits = [
+      { at: 1_000_000, how: 'the session ended on its own', step: '4', note: 'running the tester', tail: 'Out of time.\nDone: the API. Left: the UI.' },
+      { at: 1_003_600, how: 'the session ended on its own', step: '2', note: 'reading the issue', tail: '' },
+    ];
+    makeSession('issue', 4, { retries: '2', 'exits.json': exits });
+    await retryStranded([card(4, 'In Progress')]);
+    const [c] = called(/issue comment 4 /);
+    expect(c.line).toMatch(/stopped without finishing 2 times/);
+    expect(c.line).toContain('Run 1 of 2 — the session ended on its own at step 4 (running the tester), 1970-01-12 13:46 UTC');
+    expect(c.line).toContain('Done: the API. Left: the UI.');
+    expect(c.line).toContain('Run 2 of 2 — the session ended on its own at step 2 (reading the issue)');
+    expect(c.line).toContain('printed nothing');
+    expect(exists(sessionDir('issue', 4), 'exits.json')).toBe(false);
+  });
+  it('counts the recorded runs when they outnumber the relaunches', async () => {
+    makeSession('issue', 4, { retries: '2', 'exits.json': [{ at: 1, how: 'x', tail: '' }, { at: 2, how: 'x', tail: '' }, { at: 3, how: 'x', tail: '' }] });
+    await retryStranded([card(4, 'In Progress')]);
+    expect(called(/issue comment 4 .*stopped without finishing 3 times/)).toHaveLength(1);
   });
 });
 
@@ -211,6 +237,18 @@ describe('reap', () => {
     expect(exists(sessionDir('review', 5), 'pid')).toBe(false);
     expect(Number(read(statePath('paused_until')))).toBeGreaterThan(Date.now() / 1000 + 1700);
     expect(exists(statePath('reviewed', '5-abc'))).toBe(true);
+  });
+  it('records how a working issue run ended, from its state and its last output', async () => {
+    const log = '=== sloth run 2026-08-29T10:00:00.000Z · opus ===\nfirst run: usage limit reached\n=== sloth run 2026-08-29T11:00:00.000Z · opus ===\nOut of time. Left: the UI.\n';
+    makeSession('issue', 1, { pid: '2000000000', 'state.json': { state: 'working', step: '4', note: 'running the tester' }, 'run.log': log });
+    makeSession('issue', 2, { pid: '2000000000', 'state.json': { state: 'done' }, 'run.log': 'all done\n' });
+    makeSession('review', 5, { pid: '2000000000', 'run.log': 'died\n' });
+    await reap();
+    expect(exists(statePath('paused_until'))).toBe(false); // the limit line belongs to the previous run
+    expect(exitsOf(sessionDir('issue', 1))).toMatchObject([{ how: 'the session ended on its own', step: '4', note: 'running the tester', tail: 'Out of time. Left: the UI.' }]);
+    expect(exitsOf(sessionDir('issue', 2))).toEqual([]);
+    expect(exitsOf(sessionDir('review', 5))).toEqual([]);
+    expect(readLog().at(-1)).toMatch(/issue-1 ended without finishing — the session ended on its own at step 4 \(running the tester\)/);
   });
   it('drops the review marker when a review died on the limit, so the head is reviewed again', async () => {
     makeSession('review', 5, { pid: '2000000000', 'run.log': 'usage limit reached\n' });

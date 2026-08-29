@@ -28,7 +28,7 @@ The short version; the tick-by-tick account is in [docs/how-it-works.md](docs/ho
 | # | When | What Sloth does |
 |---|---|---|
 | 1 | An issue sits in the watched column | Moves it to In Progress and starts `/sloth:implement <n>`, most important card first (`priorityField`) |
-| 2 | An issue sits in In Progress with no live session | Relaunches it, at most `maxRetries` times in a row |
+| 2 | An issue sits in In Progress with no live session | Relaunches it, at most `maxRetries` times in a row; the comment that then parks the card says how each run ended — its last step and its own final report — so nobody has to open `run.log` to learn why |
 | 3 | Someone on the team mentions `@sloth` in a comment — on an issue, or on the PR that closes it | Delivers it to the live session; with no session, an order (admin or developer) starts one and anything else gets a status reply, on the thread it was written in. A login with no role is ignored; a PR linked to no issue gets told so |
 | 4 | An issue in Code Review has an open, non-draft, unapproved wired PR **written by a human** | Runs `/sloth:review <pr>`, once per PR head. Sloth's own PRs were already vetted by their session's reviewer loop |
 | 5 | An issue in Approved — `Sloth: skip` or not — has an open, non-draft wired PR and no `Fable: approved` label for its current head | Runs `/sloth:review <pr> final` on the final-review model (`models.final`, `fable` by default), once per PR head; the verdict is posted on the PR either way, and a pass labels the issue `Fable: approved`, which keeps that head from being reviewed again. Pending checks wait a tick; red ones are row 7's |
