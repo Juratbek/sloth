@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import type { SessionStatus, SessionSummary } from '../../server/types';
 import { STATUS_COLOR, dayLabel, elapsed, k, label, stepLabel } from '../lib/format';
+import { inputStyle } from '../setup/ui';
 
 const GROUPS: { title: string; statuses: SessionStatus[]; byDay?: boolean }[] = [
   { title: 'Live', statuses: ['running', 'waiting'] },
@@ -8,6 +10,13 @@ const GROUPS: { title: string; statuses: SessionStatus[]; byDay?: boolean }[] = 
 ];
 
 const endedAt = (s: SessionSummary) => s.lastAt ?? s.startedAt ?? '';
+
+/** Case-insensitive match on what the row shows: its label ("issue #42"), title and issue number. */
+export function matches(s: SessionSummary, query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return [label(s), s.title ?? '', s.target ? `#${s.target}` : ''].some((t) => t.toLowerCase().includes(q));
+}
 
 /** Sessions bucketed by the local day they ended, newest day first — the server orders by start, which can differ. */
 function groupByDay(rows: SessionSummary[]) {
@@ -57,32 +66,48 @@ export default function Sidebar({
   selected: string | null;
   onSelect: (id: string) => void;
 }) {
+  const [query, setQuery] = useState('');
+  const shown = sessions.filter((s) => matches(s, query));
   return (
-    <aside className={`${open ? 'block' : 'hidden'} w-full shrink-0 overflow-y-auto border-r border-zinc-800 md:block md:w-80`}>
-      {GROUPS.map((g) => {
-        const rows = sessions.filter((s) => g.statuses.includes(s.status));
-        if (!rows.length) return null;
-        return (
-          <section key={g.title}>
-            <h2 className="sticky top-0 bg-zinc-950 px-3 py-1.5 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">
-              {g.title} · {rows.length}
-            </h2>
-            {g.byDay
-              ? groupByDay(rows).map((d) => (
-                  <div key={d.day}>
-                    <h3 className="border-b border-zinc-900 bg-zinc-950/80 px-3 py-1 text-[10px] font-medium text-zinc-500">
-                      {d.day} · {d.rows.length}
-                    </h3>
-                    {d.rows.map((s) => (
-                      <Row key={s.id} s={s} active={s.id === selected} onSelect={() => onSelect(s.id)} />
-                    ))}
-                  </div>
-                ))
-              : rows.map((s) => <Row key={s.id} s={s} active={s.id === selected} onSelect={() => onSelect(s.id)} />)}
-          </section>
-        );
-      })}
-      {!sessions.length && <p className="p-4 text-sm text-zinc-400">No transcripts yet.</p>}
+    <aside className={`${open ? 'flex' : 'hidden'} w-full shrink-0 flex-col border-r border-zinc-800 md:flex md:w-80`}>
+      <div className="border-b border-zinc-900 p-2">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search sessions"
+          aria-label="Search sessions"
+          className={inputStyle}
+          spellCheck={false}
+        />
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {GROUPS.map((g) => {
+          const rows = shown.filter((s) => g.statuses.includes(s.status));
+          if (!rows.length) return null;
+          return (
+            <section key={g.title}>
+              <h2 className="sticky top-0 bg-zinc-950 px-3 py-1.5 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">
+                {g.title} · {rows.length}
+              </h2>
+              {g.byDay
+                ? groupByDay(rows).map((d) => (
+                    <div key={d.day}>
+                      <h3 className="border-b border-zinc-900 bg-zinc-950/80 px-3 py-1 text-[10px] font-medium text-zinc-500">
+                        {d.day} · {d.rows.length}
+                      </h3>
+                      {d.rows.map((s) => (
+                        <Row key={s.id} s={s} active={s.id === selected} onSelect={() => onSelect(s.id)} />
+                      ))}
+                    </div>
+                  ))
+                : rows.map((s) => <Row key={s.id} s={s} active={s.id === selected} onSelect={() => onSelect(s.id)} />)}
+            </section>
+          );
+        })}
+        {!sessions.length && <p className="p-4 text-sm text-zinc-400">No transcripts yet.</p>}
+        {sessions.length > 0 && !shown.length && <p className="p-4 text-sm text-zinc-400">No sessions match “{query.trim()}”.</p>}
+      </div>
     </aside>
   );
 }
