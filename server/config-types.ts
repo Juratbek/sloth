@@ -111,7 +111,7 @@ export interface SlothConfig {
   models: AgentModels;
   /**
    * Run implement sessions as an orchestrator on `models.orchestrator` that delegates every code change
-   * to an implementor subagent on `models.implement`; off, the session on `models.implement` writes the
+   * to an implementor subagent on `models.implement` (the default); off, the session on `models.implement` writes the
    * code itself. Either way the tester and the reviewer are subagents on their own models.
    */
   orchestrator: boolean;
@@ -185,7 +185,7 @@ export const CONFIG_DEFAULTS = {
   boardSeconds: 300,
   commentSeconds: 120,
   models: DEFAULT_MODELS,
-  orchestrator: false,
+  orchestrator: true,
   chrome: true,
   autostart: false,
   previewHours: 24,

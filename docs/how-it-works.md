@@ -13,7 +13,7 @@ board. When it finds work, it starts a Claude Code session to do it. That is all
    `CLAUDE.md` and rules, writes the fix, and runs your tests. Then it starts the app and a **tester
    agent** opens it in your Chrome and clicks through the change like a user would; what it finds
    gets fixed. Then it opens a draft PR that says `Closes #42`. Before handing it over, it asks a reviewer agent to check the PR and fixes what
-   the reviewer finds (up to 4 rounds). With the **orchestrator** on (Settings → Models), the session
+   the reviewer finds (up to 4 rounds). With the **orchestrator** on (the default, Settings → Models), the session
    itself never writes code: it runs on the orchestrator model (Fable by default), hands every change to
    an implementor agent on the implement model, and keeps the judging — verification, tester, reviewer, PR.
 4. **The card moves to *Code Review*.** The PR is marked ready. A human reviews it like any other PR.

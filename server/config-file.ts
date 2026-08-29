@@ -164,7 +164,7 @@ export function normalizeConfig(input: unknown): SlothConfig {
     boardSeconds: int(b.boardSeconds, d.boardSeconds, 30),
     commentSeconds: int(b.commentSeconds, d.commentSeconds, 30),
     models: models(b.models, b.model, b.approvedModel),
-    orchestrator: b.orchestrator === true,
+    orchestrator: b.orchestrator !== false,
     chrome: b.chrome !== false,
     autostart: b.autostart === true,
     previewHours: int(b.previewHours, d.previewHours, 0),

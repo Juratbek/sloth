@@ -52,8 +52,18 @@ describe('pickup (trigger 1)', () => {
     expect(called(/item-edit .*opt-wip/)).toHaveLength(2);
     expect(spawned[0].options.env.SLOTH_ISSUE).toBe('5');
     expect(spawned[0].options.env.SLOTH_COL_CODE_REVIEW_ID).toBe(COLUMNS.codeReview.id);
-    expect(spawned[0].args).toContain('opus');
-    expect(spawned[0].options.env.SLOTH_ORCHESTRATOR).toBe('0');
+    // The default: an orchestrator on Fable, the implementor subagent on Opus.
+    expect(spawned[0].args).toContain('fable');
+    expect(spawned[0].options.env.SLOTH_ORCHESTRATOR).toBe('1');
+    expect(spawned[0].options.env.SLOTH_IMPLEMENTOR_MODEL).toBe('opus');
+  });
+  it('runs one plain session on the implement model with the orchestrator off', async () => {
+    configure({ orchestrator: false });
+    onGh(/project item-add/, 'ITEM');
+    await pickup([card(5, 'Todo')]);
+    const [s] = spawned;
+    expect(s.args[s.args.indexOf('--model') + 1]).toBe('opus');
+    expect(s.options.env.SLOTH_ORCHESTRATOR).toBe('0');
   });
   it('starts an orchestrator on its own model and names the implementor model', async () => {
     configure({ orchestrator: true, models: { orchestrator: 'fable', implement: 'sonnet' } });
