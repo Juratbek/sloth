@@ -7,6 +7,7 @@ import { comments } from './comments';
 import { autoMerge, failedChecks, finished } from './lifecycle';
 import { isDry, log, nowSec, setDry } from './log';
 import { boardEvents } from './notify-events';
+import { sampleMachine } from './machine';
 import { isPaused } from './pause';
 import { previews } from './preview';
 import { prune } from './retention';
@@ -48,6 +49,13 @@ async function runTick({ board = false, comments: wantComments = false, dryRun =
     // A user pause stops the launching triggers only: replies and deliveries are not new work.
     const userPaused = isPaused();
     if (userPaused) log('paused — no new work (reap, inbox delivery and status replies still run)');
+    // Both kinds of tick may launch (an order does, from a comment): read the machine before either.
+    else {
+      const machine = await sampleMachine();
+      if (machine.hold && machine.hold !== state.machine?.hold) log(`${machine.hold} — no new sessions until it clears`);
+      else if (!machine.hold && state.machine?.hold) log('machine load cleared — new sessions may start');
+      state.machine = machine;
+    }
     if (wantComments) {
       state.lastComment = Date.now();
       await comments();

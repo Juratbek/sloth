@@ -144,10 +144,22 @@ export interface MonitorConfig {
   models: AgentModels;
 }
 
+/** The last reading of the machine's memory and CPU (`runner/machine.ts`), taken before a tick may launch. */
+export interface MachineLoad {
+  /** Memory a new process could take, percent of the total. */
+  memoryFree: number;
+  /** CPU idle over the window since the previous reading, percent. */
+  cpuIdle: number;
+  at: number;
+  /** Set while the reading holds new sessions back — the reason, as the log prints it. */
+  hold?: string;
+}
+
 /** What the in-process board loop is doing, for the header pills. */
 export interface LoopStatus {
   running: boolean;
   ticking: boolean;
+  machine?: MachineLoad;
   lastBoard?: number;
   lastComment?: number;
   nextBoard?: number;

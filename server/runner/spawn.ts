@@ -11,6 +11,10 @@ import { isDry, log, remove, write } from './log';
 import { stopPreview } from './preview';
 import { APPEND_PROMPT, sessionEnv, type Target } from './session-env';
 import { approvedDir, issueDir, reviewDir, slotsFull } from './session-dirs';
+import { machineHold } from './machine';
+
+/** Why nothing may start right now: every slot taken, or the machine too loaded to take one more run. */
+const held = (): string | undefined => (slotsFull() ? 'slots full' : machineHold());
 
 const trusted = new Set<string>();
 /** Claude Code exits silently in an untrusted directory, so headless runs need the flag pre-set. */
@@ -71,8 +75,9 @@ function start(bookDir: string, sessionDir: string, prompt: string, target: Targ
 /** Trigger 1 / 2 / 3: implement an issue. A fresh run clears the previous run's state and inbox. */
 export async function launch(issue: number, order?: string): Promise<boolean> {
   const dir = issueDir(issue);
-  if (slotsFull()) {
-    log(`#${issue} queued (slots full)`);
+  const why = held();
+  if (why) {
+    log(`#${issue} queued (${why})`);
     return false;
   }
   if (isDry()) {
@@ -98,8 +103,9 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
 /** Trigger 4: review one PR version. */
 export function launchReview(pr: number, issue: number): boolean {
   const dir = reviewDir(pr);
-  if (slotsFull()) {
-    log(`review PR #${pr} queued (slots full)`);
+  const why = held();
+  if (why) {
+    log(`review PR #${pr} queued (${why})`);
     return false;
   }
   if (isDry()) {
@@ -122,8 +128,9 @@ export function launchReview(pr: number, issue: number): boolean {
  */
 export function launchApproved(pr: number, issue: number): boolean {
   const c = cfg();
-  if (slotsFull()) {
-    log(`final review PR #${pr} queued (slots full)`);
+  const why = held();
+  if (why) {
+    log(`final review PR #${pr} queued (${why})`);
     return false;
   }
   if (isDry()) {

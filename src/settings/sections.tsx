@@ -96,6 +96,12 @@ export function Sessions({ draft, patch }: SectionProps) {
       <Row label="Max alive sessions" hint="Running plus parked sessions waiting for an answer, before Sloth stops picking cards up.">
         <NumberInput value={draft.maxAlive} onChange={(maxAlive) => patch({ maxAlive })} />
       </Row>
+      <Row label="Min free memory %" hint="No session starts while less than this much of the machine's memory is available. Running sessions go on; 0 turns the check off.">
+        <NumberInput min={0} value={draft.minFreeMemory} onChange={(minFreeMemory) => patch({ minFreeMemory })} />
+      </Row>
+      <Row label="Min idle CPU %" hint="No session starts while less than this much of the CPU is idle, averaged since the previous tick. 0 turns the check off.">
+        <NumberInput min={0} value={draft.minIdleCpu} onChange={(minIdleCpu) => patch({ minIdleCpu })} />
+      </Row>
       <Row label="Budget minutes" hint="A session's time budget. Five minutes past it the session is killed, cleaned up and its card parked.">
         <NumberInput value={draft.budgetMinutes} onChange={(budgetMinutes) => patch({ budgetMinutes })} />
       </Row>

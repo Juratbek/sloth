@@ -4,13 +4,13 @@ import useFollowBottom from '../hooks/use-follow-bottom';
 import IssuesTable from './IssuesTable';
 import UsageChart from './UsageChart';
 
-/** Queue as the log tells it: a "queued (slots full)" line stands until the same target is launched. */
+/** Queue as the log tells it: a "queued (slots full)" / "queued (machine busy …)" line stands until the same target is launched. */
 function queued(logTail: string[]): string[] {
   const pending = new Set<string>();
   for (const line of logTail) {
     const target = /(?:(?:final )?review PR )?#(\d+)/.exec(line)?.[0];
     if (!target) continue;
-    if (/queued \(slots full\)/.test(line)) pending.add(target);
+    if (/queued \((slots full|machine busy)/.test(line)) pending.add(target);
     else if (/^\[[^\]]+\] (launch|review PR|final review PR) /.test(line)) pending.delete(target);
   }
   return [...pending];
