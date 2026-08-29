@@ -15,7 +15,7 @@ function Row({ id, check }: { id: string; check: SetupCheck }) {
       <span className={`text-sm ${check.ok ? 'text-emerald-400' : 'text-red-400'}`}>{check.ok ? '✓' : '✗'}</span>
       <div className="min-w-0 flex-1">
         <p className="text-sm text-zinc-100">{label}</p>
-        <p className="truncate text-xs text-zinc-500">{check.version ?? check.login ?? check.error ?? ''}</p>
+        <p className="truncate text-xs text-zinc-400">{check.version ?? check.login ?? check.error ?? ''}</p>
       </div>
       {!check.ok && (
         <a href={href} target="_blank" rel="noreferrer" className="shrink-0 text-xs text-zinc-400 underline hover:text-zinc-200">

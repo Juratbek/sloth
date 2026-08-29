@@ -49,7 +49,7 @@ export default function StepRunner({
         <Button disabled={!ready || clone.isPending} onClick={() => clone.mutate({ repo, path: runnerRoot })}>
           {clone.isPending ? 'Cloning…' : 'Clone it'}
         </Button>
-        <span className="text-xs text-zinc-500">
+        <span className="text-xs text-zinc-400">
           {clone.data?.ok
             ? `Ready at ${clone.data.path}`
             : clone.error

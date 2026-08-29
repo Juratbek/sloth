@@ -17,7 +17,7 @@ function Pill({ label, value, tone = 'zinc' }: { label?: string; value: string; 
   };
   return (
     <span className={`rounded-md border px-2 py-0.5 text-xs ${tones[tone]}`}>
-      {label && <span className="text-zinc-500">{label} </span>}
+      {label && <span className="text-zinc-400">{label} </span>}
       {value}
     </span>
   );

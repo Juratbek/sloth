@@ -38,14 +38,14 @@ export default function App() {
     navigate(pathFor('monitor', id ?? undefined));
   };
 
-  if (local && config.isPending) return <div className="p-6 text-zinc-500">Loading…</div>;
+  if (local && config.isPending) return <div className="p-6 text-zinc-400">Loading…</div>;
   // No config file yet ⇒ the get-started wizard is the whole app, whatever the URL says.
   if (local && !config.data) return <Wizard existing={null} />;
   if (page === 'wizard') return <Wizard existing={config.data!} onClose={() => go('settings')} />;
   if (page === 'settings') return <Settings config={config.data!} onClose={() => go('monitor')} onWizard={() => go('wizard')} />;
 
   if (error) return <div className="p-6 text-red-400">Monitor API unreachable: {String(error)}</div>;
-  if (!data) return <div className="p-6 text-zinc-500">Loading…</div>;
+  if (!data) return <div className="p-6 text-zinc-400">Loading…</div>;
   if (page === 'board') return <BoardPage board={data.board} onSelect={show} onClose={() => go('monitor')} />;
 
   return (

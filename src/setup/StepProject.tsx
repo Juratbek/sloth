@@ -20,7 +20,7 @@ export default function StepProject({
       <p className="text-sm text-zinc-400">Which GitHub project board should Sloth watch?</p>
       {error && <Error>{String(error)}</Error>}
       {!data && isFetching && <Loading what="projects" />}
-      {data?.length === 0 && <p className="text-sm text-zinc-500">No open Projects (v2) found for this account.</p>}
+      {data?.length === 0 && <p className="text-sm text-zinc-400">No open Projects (v2) found for this account.</p>}
       <div className="max-h-[46vh] space-y-2 overflow-y-auto pr-1">
         {data?.map((p) => (
           <Choice

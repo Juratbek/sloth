@@ -67,7 +67,7 @@ export function Team({ draft, patch }: SectionProps) {
   const roles = (p: Partial<typeof draft.roles>) => patch({ roles: { ...draft.roles, ...p } });
   return (
     <>
-      <p className="py-3 text-xs text-zinc-500">
+      <p className="py-3 text-xs text-zinc-400">
         Who may talk to Sloth in comments. A mention from any other GitHub login is ignored, and their comments do not count as
         answers.
       </p>

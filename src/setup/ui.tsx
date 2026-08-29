@@ -47,9 +47,9 @@ export function Choice({
       <span className={`h-2.5 w-2.5 shrink-0 rounded-full border ${selected ? 'border-emerald-400 bg-emerald-400' : 'border-zinc-600'}`} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm text-zinc-100">{title}</span>
-        {subtitle && <span className="block truncate text-xs text-zinc-500">{subtitle}</span>}
+        {subtitle && <span className="block truncate text-xs text-zinc-400">{subtitle}</span>}
       </span>
-      {right && <span className="shrink-0 text-xs text-zinc-500">{right}</span>}
+      {right && <span className="shrink-0 text-xs text-zinc-400">{right}</span>}
     </button>
   );
 }
@@ -59,7 +59,7 @@ export function Field({ label, hint, children }: { label: string; hint?: ReactNo
     <label className="block space-y-1">
       <span className="block text-xs font-medium text-zinc-400">{label}</span>
       {children}
-      {hint && <span className="block text-[11px] text-zinc-600">{hint}</span>}
+      {hint && <span className="block text-[11px] text-zinc-500">{hint}</span>}
     </label>
   );
 }
@@ -99,4 +99,4 @@ export function Select({
 }
 
 export const Error = ({ children }: { children: ReactNode }) => <p className="text-sm text-red-400">{children}</p>;
-export const Loading = ({ what }: { what: string }) => <p className="text-sm text-zinc-500">Loading {what}…</p>;
+export const Loading = ({ what }: { what: string }) => <p className="text-sm text-zinc-400">Loading {what}…</p>;

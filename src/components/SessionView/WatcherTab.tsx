@@ -5,7 +5,7 @@ import { Card, Row } from './Usage';
 
 export default function WatcherTab({ watcher }: { watcher?: WatcherSession }) {
   const { ref } = useFollowBottom<HTMLPreElement>(true, watcher?.runLogTail);
-  if (!watcher) return <p className="p-4 text-sm text-zinc-500">No watcher session dir is linked to this transcript.</p>;
+  if (!watcher) return <p className="p-4 text-sm text-zinc-400">No watcher session dir is linked to this transcript.</p>;
   const st = watcher.state;
   return (
     <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
@@ -36,7 +36,7 @@ export default function WatcherTab({ watcher }: { watcher?: WatcherSession }) {
       </div>
       {st?.note && <p className="text-sm text-zinc-300">{st.note}</p>}
       <section>
-        <h3 className="mb-1 text-[10px] font-semibold tracking-wide text-zinc-500 uppercase">run.log (tail)</h3>
+        <h3 className="mb-1 text-[10px] font-semibold tracking-wide text-zinc-400 uppercase">run.log (tail)</h3>
         <pre
           ref={ref}
           className="max-h-96 overflow-auto rounded-md border border-zinc-800 bg-zinc-900/40 p-2 text-[11px] whitespace-pre-wrap text-zinc-400"

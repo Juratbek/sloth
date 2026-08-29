@@ -34,7 +34,7 @@ export default function Chat({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-3 border-b border-zinc-900 px-4 py-1 text-[11px] text-zinc-500">
+      <div className="flex items-center gap-3 border-b border-zinc-900 px-4 py-1 text-[11px] text-zinc-400">
         <span>{visible.length} messages</span>
         <label className="ml-auto flex cursor-pointer items-center gap-1.5">
           <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} />
@@ -45,7 +45,7 @@ export default function Chat({
         {visible.map((m) => (
           <MessageItem key={m.uuid} message={m} results={results} onOpenAgent={onOpenAgent} />
         ))}
-        {!visible.length && <p className="text-sm text-zinc-500">No messages yet.</p>}
+        {!visible.length && <p className="text-sm text-zinc-400">No messages yet.</p>}
       </div>
     </div>
   );

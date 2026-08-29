@@ -43,17 +43,17 @@ export default function Card({ card, role, onSelect }: { card: BoardCard; role: 
       className={`rounded-md border border-zinc-800 bg-zinc-900/40 px-2 py-1.5 ${pick ? 'cursor-pointer hover:bg-zinc-900' : ''}`}
     >
       <div className="flex items-center gap-1.5">
-        <span className="shrink-0 text-[11px] tabular-nums text-zinc-500">#{card.issue}</span>
+        <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">#{card.issue}</span>
         <span className="truncate text-xs text-zinc-200">{card.title}</span>
         {card.status && (
           <span className="ml-auto flex shrink-0 items-center gap-1">
-            {step && <span className="text-[10px] text-zinc-500">{step}</span>}
+            {step && <span className="text-[10px] text-zinc-400">{step}</span>}
             <span className={`h-1.5 w-1.5 rounded-full ${STATUS_COLOR[card.status]} ${card.status === 'running' ? 'animate-pulse' : ''}`} />
           </span>
         )}
       </div>
       {second && (
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[10px] text-zinc-500">
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[10px] text-zinc-400">
           {cost && <span className="tabular-nums text-zinc-400">{cost}</span>}
           {pr && (
             <Out href={pr} className="text-sky-400">
@@ -68,7 +68,7 @@ export default function Card({ card, role, onSelect }: { card: BoardCard; role: 
           {card.retries > 0 && <span className="text-amber-400">retries {card.retries}</span>}
           {waited && <span className="tabular-nums">waiting {waited}</span>}
           {approved && <span className="rounded bg-zinc-800 px-1 text-zinc-400">{APPROVED_LABEL}</span>}
-          {owner && <span className="text-zinc-600">{owner}</span>}
+          {owner && <span className="text-zinc-500">{owner}</span>}
         </div>
       )}
     </div>

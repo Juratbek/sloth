@@ -9,7 +9,7 @@ const STEP: Record<string, string> = { pull: 'Pulling…', install: 'Installing�
 export default function AboutSection() {
   const { query, check, update } = useVersion(true);
   const v = query.data;
-  if (!v) return <p className="py-3 text-xs text-zinc-500">{query.isError ? `Version unavailable: ${String(query.error)}` : 'Loading…'}</p>;
+  if (!v) return <p className="py-3 text-xs text-zinc-400">{query.isError ? `Version unavailable: ${String(query.error)}` : 'Loading…'}</p>;
   const u = v.update;
   const busy = u.running || u.restarting;
   const where = `origin/${v.branch ?? 'main'}`;
@@ -32,7 +32,7 @@ export default function AboutSection() {
       >
         <span className="font-mono text-sm text-zinc-200">
           {v.version || '?'}
-          {v.commit && <span className="text-zinc-500"> · {v.commit}</span>}
+          {v.commit && <span className="text-zinc-400"> · {v.commit}</span>}
           {v.dirty && (
             <span className="ml-1 text-amber-400" title="Tracked files are changed in the checkout; a pull may refuse.">
               · local changes

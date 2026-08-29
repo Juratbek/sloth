@@ -49,7 +49,7 @@ export default function StackPanel({ root, value, onChange }: { root?: string; v
             {running ? 'Installing…' : `Install ${missing.map((t) => t.label).join(', ')}`}
           </Button>
         )}
-        <span className="text-xs text-zinc-500">
+        <span className="text-xs text-zinc-400">
           {!data
             ? ''
             : required.length === 0
@@ -68,7 +68,7 @@ function Mode({ selected, onClick, children }: { selected: boolean; onClick: () 
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-md border px-2.5 py-1 ${selected ? 'border-indigo-500 text-zinc-100' : 'border-zinc-800 text-zinc-500 hover:text-zinc-200'}`}
+      className={`rounded-md border px-2.5 py-1 ${selected ? 'border-indigo-500 text-zinc-100' : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'}`}
     >
       {children}
     </button>
@@ -77,16 +77,16 @@ function Mode({ selected, onClick, children }: { selected: boolean; onClick: () 
 
 function Row({ tool, required, auto, onToggle }: { tool: StackTool; required: boolean; auto: boolean; onToggle: () => void }) {
   const mark = !required ? '·' : tool.installed ? '✓' : '✗';
-  const color = !required ? 'text-zinc-600' : tool.installed ? 'text-emerald-400' : 'text-red-400';
+  const color = !required ? 'text-zinc-500' : tool.installed ? 'text-emerald-400' : 'text-red-400';
   return (
     <label className={`flex items-center gap-3 rounded-md border border-zinc-800 px-3 py-2 ${auto ? '' : 'cursor-pointer'}`}>
       <input type="checkbox" checked={required} disabled={auto} onChange={onToggle} className="accent-indigo-500" />
       <span className={`w-3 text-sm ${color}`}>{mark}</span>
       <span className="min-w-0 flex-1">
         <span className="text-sm text-zinc-100">{tool.label}</span>
-        <span className="ml-2 truncate text-xs text-zinc-500">{tool.installed ? (tool.version ?? tool.command) : `${tool.command} not found`}</span>
+        <span className="ml-2 truncate text-xs text-zinc-400">{tool.installed ? (tool.version ?? tool.command) : `${tool.command} not found`}</span>
       </span>
-      {tool.detected && <span className="text-[10px] uppercase tracking-wide text-zinc-500">in the checkout</span>}
+      {tool.detected && <span className="text-[10px] uppercase tracking-wide text-zinc-400">in the checkout</span>}
     </label>
   );
 }

@@ -16,7 +16,7 @@ function Stats({ s }: { s: SessionDetail }) {
           ` · subagents: new ${k(newInput(a))} · cache reads ${k(a.cacheRead)} · out ${k(a.output)} (${s.agents.length})`}
       </p>
       {s.byModel.length > 1 && (
-        <p className="text-zinc-500">
+        <p className="text-zinc-400">
           {s.byModel.map((m) => `${m.model.replace(/^claude-/, '')} ${m.requests}× ↑${k(m.output)}`).join(' · ')}
         </p>
       )}
@@ -38,9 +38,9 @@ function PreviewLine({ issue, preview }: { issue: number; preview: NonNullable<S
           preview
         </a>
       ) : (
-        <span className="text-zinc-500">preview starting…</span>
+        <span className="text-zinc-400">preview starting…</span>
       )}
-      <span className="text-[11px] text-zinc-500">{untilLabel(preview.expiresAt)}</span>
+      <span className="text-[11px] text-zinc-400">{untilLabel(preview.expiresAt)}</span>
       <button
         onClick={() => stop.mutate(issue)}
         disabled={stop.isPending}
@@ -82,29 +82,29 @@ function StopButton({ s }: { s: SessionDetail }) {
 
 function WatcherLine({ s }: { s: SessionDetail }) {
   const w = s.watcher;
-  if (!w) return <p className="text-xs text-zinc-600">No watcher session dir linked.</p>;
+  if (!w) return <p className="text-xs text-zinc-500">No watcher session dir linked.</p>;
   const st = w.state;
   return (
     <div className="space-y-1 text-xs text-zinc-400">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="text-zinc-500">{w.name}</span>
+        <span className="text-zinc-400">{w.name}</span>
         {st?.step && (
           <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[11px]" title={`step ${st.step}`}>
             {stepLabel(w.kind, st.step)}
           </span>
         )}
-        {st?.branch && <span className="font-mono text-[11px] text-zinc-500">{st.branch}</span>}
+        {st?.branch && <span className="font-mono text-[11px] text-zinc-400">{st.branch}</span>}
         {safeUrl(st?.pr) && (
           <a href={safeUrl(st?.pr)} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">
             {st!.pr!.replace(/.*\//, 'PR #')}
           </a>
         )}
-        {st?.servers && <span className="text-[11px] text-zinc-500">servers: {st.servers}</span>}
+        {st?.servers && <span className="text-[11px] text-zinc-400">servers: {st.servers}</span>}
         <PreviewLine issue={w.target} preview={w.preview} />
         {w.retries > 0 && <span className="text-amber-400">retries {w.retries}</span>}
         {w.blocked && <span className="text-red-400">blocked</span>}
         {w.inbox.length > 0 && <span className="text-sky-400">inbox {w.inbox.length}</span>}
-        <span className="text-zinc-600">updated {ago(w.updatedAt)} ago</span>
+        <span className="text-zinc-500">updated {ago(w.updatedAt)} ago</span>
       </div>
       {st?.note && <p className="text-zinc-400">{st.note}</p>}
     </div>
@@ -124,12 +124,12 @@ export default function Header({ s, config }: { s: SessionDetail; config: Monito
           </a>
         )}
         <span className="rounded border border-zinc-700 px-1.5 py-0.5 text-[11px] text-zinc-300">{s.status}</span>
-        <span className="text-[11px] text-zinc-500">{elapsed(s)}</span>
+        <span className="text-[11px] text-zinc-400">{elapsed(s)}</span>
         <StopButton s={s} />
-        <span className="ml-auto hidden font-mono text-[11px] text-zinc-600 sm:inline">{s.id}</span>
+        <span className="ml-auto hidden font-mono text-[11px] text-zinc-500 sm:inline">{s.id}</span>
       </div>
       <Stats s={s} />
-      <p className="truncate font-mono text-xs text-zinc-500">{s.prompt}</p>
+      <p className="truncate font-mono text-xs text-zinc-400">{s.prompt}</p>
       <WatcherLine s={s} />
       <ToolChips counts={s.toolCounts} />
     </header>

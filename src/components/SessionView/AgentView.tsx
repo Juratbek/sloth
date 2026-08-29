@@ -12,7 +12,7 @@ export default function AgentView({ id, agentId, onBack }: { id: string; agentId
         </button>
         <span className="text-sm font-medium text-zinc-100">{data?.description ?? agentId}</span>
         {data && (
-          <span className="text-[11px] text-zinc-500">
+          <span className="text-[11px] text-zinc-400">
             {data.subagentType ?? 'agent'} · {data.model ?? '—'} · {data.turns} turns · context {k(data.contextTokens)} ·
             new input {k(newInput(data.usage))} · cache reads {k(data.usage.cacheRead)} · out {k(data.usage.output)} ·{' '}
             {elapsed({ ...data, live: false })}
@@ -20,7 +20,7 @@ export default function AgentView({ id, agentId, onBack }: { id: string; agentId
         )}
       </div>
       {error && <p className="p-4 text-sm text-red-400">{String(error)}</p>}
-      {!data && !error && <p className="p-4 text-sm text-zinc-500">Loading…</p>}
+      {!data && !error && <p className="p-4 text-sm text-zinc-400">Loading…</p>}
       {data && <Chat messages={data.messages} live={false} />}
     </div>
   );
