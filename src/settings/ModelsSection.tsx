@@ -16,7 +16,7 @@ const AGENTS: { role: AgentRole; label: string; hint: string; orchestrated?: { l
   {
     role: 'tester',
     label: 'Browser tester',
-    hint: 'The subagent an implement session spawns to click through the change in your Chrome. Only used while Test in Chrome is on.',
+    hint: 'The subagent an implement session spawns to click through the change in a headless Chrome and screenshot it for the PR. Only used while Test in Chrome is on.',
   },
   {
     role: 'reviewer',

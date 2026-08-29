@@ -12,7 +12,7 @@ what the commit convention is, how designs are read — all of that comes from t
 
 | Path | What |
 |---|---|
-| `commands/implement.md` | `/sloth:implement <issue> [order]` — claim → worktree → fix → verify → browser tester → PR → reviewer loop → Code Review |
+| `commands/implement.md` | `/sloth:implement <issue> [order]` — claim → worktree → fix → verify → browser tester + screenshots → PR → reviewer loop → Code Review |
 | `commands/review.md` | `/sloth:review <pr> [feedback-only\|final]` — verdict block, inline comments, card back to In Progress; `final` always posts the verdict on the PR and labels a passing issue `Fable: approved` |
 | `commands/status.md` | `/sloth:status <issue> <comment-id>` — answer a mention when no session is running |
 | `skills/board/SKILL.md` | Board reads and moves with the ids from the environment, wired-PR lookup, `retry` |
@@ -83,7 +83,9 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_REVIEWER_MODEL` | The model the reviewer subagent runs on (`opus`) |
 | `SLOTH_ORCHESTRATOR` | `1` when the implement session is an orchestrator (`orchestrator` in the config): it runs on the orchestrator model and hands every code change to an implementor subagent |
 | `SLOTH_IMPLEMENTOR_MODEL` | The model the implementor subagent runs on in orchestrator mode — the config's `models.implement` (`opus`) |
-| `SLOTH_CHROME` | `1` when the session was started with `--chrome`; implement then tests the change in the browser |
+| `SLOTH_CHROME` | `1` when the server attached a headless Chrome through Playwright MCP (`browser_*` tools); implement then tests the change in it and screenshots it |
+| `SLOTH_SCREENSHOTS_DIR` | Where the tester saves its PNGs — `$SLOTH_SESSION_DIR/screenshots`, also Playwright's output dir |
+| `SLOTH_ASSETS_BRANCH` | The branch screenshots are pushed to so the PR can embed them (`sloth-assets`); never a code branch |
 | `SLOTH_PREVIEW_HOURS` | How long a finished implement run's app stays up behind a public link on its PR; `0` means previews are off, always tear down |
 | `SLOTH_START`, `SLOTH_DEADLINE` | Epoch seconds: run start, hard deadline |
 | `SLOTH_BUDGET_MIN` | Minutes in a full budget (60) |
@@ -104,6 +106,7 @@ Inside `$SLOTH_SESSION_DIR`:
 | `blocked` | Touched when the run is parked and must not be retried; removed on resume |
 | `asked_at` | Epoch seconds of the question comment |
 | `dev.pid`, `redis.pid`, `demo.db` | Pids / database name of anything the session started, for the server's cleanup |
+| `screenshots/*.png` | The tester's screenshots of the screens it verified; pushed to `$SLOTH_ASSETS_BRANCH` by `publish_shots` (`session` skill) and embedded in the PR's `## Screenshots` |
 | `preview.json` | `{url, login}` — an implement run that handed its PR over with `SLOTH_PREVIEW_HOURS` above 0 leaves its app running and names the one local URL it answers on and how to sign in; the server tunnels it, posts the link on the PR and tears the run down after that many hours |
 
 The **last message of the transcript is the report** — the monitor shows it.
@@ -119,8 +122,10 @@ The **last message of the transcript is the report** — the monitor shows it.
 - With `SLOTH_ORCHESTRATOR=1` the implement session never edits code: one implementor subagent (spawned once, reused
   for every fix) makes every change, while the session keeps the issue, the board, verification, the tester, the
   reviewer loop and the PR.
-- With `SLOTH_CHROME=1` the implement session spawns one tester subagent that drives the change in the user's Chrome
-  (own tab, console and network checked) and fixes what it finds before the PR.
+- With `SLOTH_CHROME=1` the implement session spawns one tester subagent that drives the change in a headless
+  Chrome of its own — its own empty profile, nobody else's browser — with the snapshot, console and network
+  checked, saves a PNG per screen it verified into `$SLOTH_SCREENSHOTS_DIR`, and fixes what it finds before the PR.
 - With `SLOTH_PREVIEW_HOURS` above 0 an implement run that reaches Code Review leaves its app, database and worktree up and
   writes `preview.json`; the server does the teardown, hours later. Every other ending tears down in the session.
-- No image, gif or video is ever required in a PR: verification, the tester's run and design fidelity are described in words.
+- A Sloth PR that changes a screen carries `## Screenshots` — the tester's PNGs, pushed to `$SLOTH_ASSETS_BRANCH`
+  and embedded — and the reviewer sends back one that does not. A change with no screen says so in that section.

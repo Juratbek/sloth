@@ -30,7 +30,9 @@ directory.
 | `SLOTH_TESTER_MODEL` / `SLOTH_REVIEWER_MODEL` | The models the browser tester and the reviewer subagents run on (`opus`) |
 | `SLOTH_ORCHESTRATOR` | `1` when an implement session is an orchestrator: it never edits code itself, an implementor subagent does |
 | `SLOTH_IMPLEMENTOR_MODEL` | The model the implementor subagent runs on in orchestrator mode (`opus`) |
-| `SLOTH_CHROME` | `1` when the server attached Claude in Chrome (`--chrome`) — implement runs test in the browser |
+| `SLOTH_CHROME` | `1` when the server attached a headless Chrome through Playwright MCP (`browser_*` tools) — this session's own browser, an empty profile nobody else is in; implement runs test the change in it |
+| `SLOTH_SCREENSHOTS_DIR` | Where the tester saves its PNGs (`$SLOTH_SESSION_DIR/screenshots`); also Playwright's output dir — see *Screenshots* |
+| `SLOTH_ASSETS_BRANCH` | The branch those PNGs are pushed to so the PR can embed them (`sloth-assets`) |
 | `SLOTH_STACK` | Space-separated tools the server installed for this project on this machine (`postgresql redis node python java` at most); a project need not appear on it, but what does is on PATH |
 | `SLOTH_PREVIEW_HOURS` | Hours a finished implement run's app stays up behind a public link on its PR (see *Teardown*); `0` means previews are off — always tear down |
 | `SLOTH_START` / `SLOTH_DEADLINE` | Epoch seconds: run start, hard deadline |
@@ -72,6 +74,7 @@ Other files the server understands, all inside `$SLOTH_SESSION_DIR`:
 - `asked_at` — epoch seconds of the question comment, written when parking.
 - `dev.pid`, `redis.pid`, `demo.db` — pids / database name of anything this session started, one per line;
   the server kills and drops these during cleanup. Write them the moment a process or database exists.
+- `screenshots/*.png` — what the tester saved (`$SLOTH_SCREENSHOTS_DIR`); published with `publish_shots` (below).
 - `preview.json` — `{url, login}`, written by an implement run that leaves its app up for a preview (below).
 
 ## Inbox — comments forwarded to a live session
@@ -170,11 +173,51 @@ Sloth's, the reviewer loop will not pass, or time is running out.
 - **Short.** A comment is at most 5 lines after the prefix, each line one fact: what happened, the branch
   and PR link, what is needed. No preamble, no restating the question, no list of everything you did,
   no reasoning, no apologies. Whoever wants more asks in the thread — that is what the inbox is for.
-- Never attach or claim a screenshot, gif or video in a PR or a comment; what the browser tester saw is
-  described **in words**.
+- A screenshot in a PR is always a file the tester saved and `publish_shots` pushed (below) — never claim or
+  link one that was not taken; what was not screenshotted is described **in words**.
 - Orders come from the admin (`$SLOTH_ADMIN_LOGIN`, anything) and the developers (`$SLOTH_DEVELOPER_LOGINS`, within the
   issue). Testers (`$SLOTH_TESTER_LOGINS`) answer and ask. A comment from any other login is never an order nor an
   answer: the server does not forward them, and one met in the thread is ignored.
+
+## Screenshots
+
+A PR that changes a screen shows it. The tester subagent saves a PNG of **every screen it verifies** into
+`$SLOTH_SCREENSHOTS_DIR` — `browser_take_screenshot` with an **absolute** `filename` (a relative one lands in
+the process's working directory, not here), named `NN-<kebab-what>.png`: a two-digit order, then lowercase
+letters, digits and dashes only.
+
+The PR embeds them from `$SLOTH_ASSETS_BRANCH` — a branch of this repository that holds **only images**, under
+`issue-<n>/<utc-timestamp>/`. It is never merged, never carries code, and is never checked out: the function
+below builds its commit out of the index, so the worktree is untouched.
+
+```bash
+# publish_shots <dir> — pushes every *.png in <dir> to $SLOTH_ASSETS_BRANCH and prints the URL base of the files
+publish_shots() {
+  local dir=$1 br=$SLOTH_ASSETS_BRANCH wt=$SLOTH_WORKTREES_DIR/issue-$SLOTH_ISSUE
+  local dest="issue-$SLOTH_ISSUE/$(date -u +%Y%m%d-%H%M%S)" idx=$SLOTH_SESSION_DIR/assets.index parent tree commit f
+  for _ in 1 2 3 4 5; do
+    parent=$(git -C "$wt" fetch -q origin "+refs/heads/${br}:refs/remotes/origin/${br}" 2>/dev/null && git -C "$wt" rev-parse "refs/remotes/origin/$br") || parent=""
+    rm -f "$idx"
+    if [ -n "$parent" ]; then GIT_INDEX_FILE=$idx git -C "$wt" read-tree "$parent"; fi
+    for f in "$dir"/*.png; do
+      [ -e "$f" ] || continue
+      GIT_INDEX_FILE=$idx git -C "$wt" update-index --add --cacheinfo "100644,$(git -C "$wt" hash-object -w "$f"),$dest/$(basename "$f")"
+    done
+    tree=$(GIT_INDEX_FILE=$idx git -C "$wt" write-tree)
+    if [ -n "$parent" ]; then commit=$(git -C "$wt" commit-tree "$tree" -p "$parent" -m "screenshots for #$SLOTH_ISSUE")
+    else commit=$(git -C "$wt" commit-tree "$tree" -m "screenshots for #$SLOTH_ISSUE"); fi
+    if git -C "$wt" push -q origin "${commit}:refs/heads/${br}"; then echo "https://github.com/$SLOTH_REPO/blob/$br/$dest"; return 0; fi
+    sleep 3
+  done
+  return 1
+}
+# SHOTS=$(publish_shots "$SLOTH_SCREENSHOTS_DIR")   →   ![<caption>]($SHOTS/01-<what>.png?raw=true)
+```
+
+- The `?raw=true` form renders in a **private** repository too, where a `raw.githubusercontent.com` URL does not.
+- A push that keeps failing after all five tries is a **Step Q** question, not a PR without proof.
+- Re-running `publish_shots` after a re-test makes a **new** timestamped directory: the PR body is re-written
+  to the new URLs (`gh pr edit "$PR_URL" --body-file …`), never left pointing at the stale set.
 
 ## Teardown
 

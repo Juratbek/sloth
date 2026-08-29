@@ -11,9 +11,14 @@ board. When it finds work, it starts a Claude Code session to do it. That is all
    your checkout.
 3. **The session does the work.** It reads the issue and its comments, follows your project's
    `CLAUDE.md` and rules, writes the fix, and runs your tests. Then it starts the app and a **tester
-   agent** opens it in your Chrome and clicks through the change like a user would; what it finds
-   gets fixed. Then it opens a draft PR that says `Closes #42`. Before handing it over, it asks a reviewer agent to check the PR and fixes what
-   the reviewer finds (up to 4 rounds). With the **orchestrator** on (the default, Settings → Models), the session
+   agent** opens it in a headless Chrome of its own — its own empty profile, nobody else's browser —
+   clicks through the change like a user would, and **screenshots every screen it checks**; what it finds
+   gets fixed. Then it opens a draft PR that says `Closes #42`. The PR carries those screenshots: they are
+   pushed to a `sloth-assets` branch of the repository, which holds images only and is never merged, so
+   nothing lands in your code — and the PR body embeds them under `## Screenshots`, proof of the work next
+   to the description. This needs Google Chrome installed on the machine Sloth runs on; without one the
+   session says so in the PR instead. Before handing it over, it asks a reviewer agent to check the PR and fixes what
+   the reviewer finds (up to 4 rounds) — a PR that changes a screen and shows none is sent back. With the **orchestrator** on (the default, Settings → Models), the session
    itself never writes code: it runs on the orchestrator model (Fable by default), hands every change to
    an implementor agent on the implement model, and keeps the judging — verification, tester, reviewer, PR.
 4. **The card moves to *Code Review*.** The PR is marked ready. A human reviews it like any other PR.

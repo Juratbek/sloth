@@ -25,7 +25,7 @@ export function General({ draft, patch }: SectionProps) {
       </Row>
       <Row
         label="Test in Chrome"
-        hint="Start implement sessions with --chrome, so a tester subagent can click through the change in your Chrome before the PR opens."
+        hint="Give implement sessions a headless Chrome (Playwright), so a tester subagent can click through the change and screenshot it for the PR before it opens. Needs Google Chrome on this machine."
       >
         <Toggle checked={draft.chrome} onChange={(chrome) => patch({ chrome })} label="Test in Chrome" />
       </Row>

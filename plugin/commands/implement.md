@@ -1,5 +1,5 @@
 ---
-description: Implement a GitHub issue end-to-end in an isolated worktree — claim the card, fix, verify, test it in the browser, open a PR, pass a reviewer-agent loop, hand the card to Code Review; when blocked, ask on the issue and wait for the answer
+description: Implement a GitHub issue end-to-end in an isolated worktree — claim the card, fix, verify, test and screenshot it in a headless Chrome, open a PR, pass a reviewer-agent loop, hand the card to Code Review; when blocked, ask on the issue and wait for the answer
 argument-hint: <issue-number|url> [extra instructions or an order]
 allowed-tools: Bash, Read, Edit, Write, Grep, Glob, Skill, Agent, ToolSearch, SendMessage
 ---
@@ -178,26 +178,35 @@ failing command and its output verbatim — and it reports again; you never patc
 When `SLOTH_CHROME=1` and the change has a screen a user can reach, spawn **one** tester subagent
 (`Agent`, `subagent_type: "general-purpose"`, `model: "$SLOTH_TESTER_MODEL"`, `run_in_background: false`) and
 reuse it for every re-test via `SendMessage`. The app is already up from Step 4: give the tester its URL,
-how to log in (from the project's run skill), the exact behaviour the issue describes, and the old behaviour
-that must be gone. Its task:
+how to log in (from the project's run skill), the exact behaviour the issue describes, the old behaviour that
+must be gone, and `$SLOTH_SCREENSHOTS_DIR`. Its task:
 
-1. Load the browser tools with **one** `ToolSearch` call: `tabs_context_mcp, tabs_create_mcp, navigate,
-   computer, read_page, find, read_console_messages, read_network_requests, tabs_close_mcp`. If they are
-   missing, report `browser tools unavailable` and stop — Step 4 stays the verification.
-2. Open a **new** tab at the URL and pass that tab id in every call — other sessions share this Chrome.
-   Screenshot before each click and confirm it is your app on your screen; never click anything that opens
-   a JS dialog (`confirm` / `alert`), it freezes the browser for everyone.
+1. Load the browser tools with **one** `ToolSearch` call for the `browser_*` Playwright tools:
+   `browser_navigate, browser_snapshot, browser_click, browser_type, browser_fill_form, browser_press_key,
+   browser_select_option, browser_wait_for, browser_take_screenshot, browser_console_messages,
+   browser_network_requests, browser_handle_dialog, browser_close`. If they are missing, report
+   `browser tools unavailable` and stop — Step 4 stays the verification.
+2. The browser is **this session's own** headless Chrome: an empty profile, nobody else in it, nothing logged
+   in. Log in the way the run skill says. Act from `browser_snapshot` refs (`[ref=eN]`), never from pixels; a
+   `confirm` / `alert` is answered with `browser_handle_dialog`, not avoided.
 3. Drive the issue's behaviour as the user would: the new behaviour works, the old one is gone, the
-   surrounding flow still works. After each screen read the console and the network log; uncaught
-   exceptions and failed app requests are findings.
-4. Close the tab. Return raw data: the steps taken, pass / fail for each, every finding with what was seen,
-   and what could not be tested and why.
+   surrounding flow still works. After each screen read `browser_console_messages` and
+   `browser_network_requests`; uncaught exceptions and failed app requests are findings.
+4. **Screenshot every screen it verifies** — `browser_take_screenshot` with
+   `filename: "$SLOTH_SCREENSHOTS_DIR/NN-<kebab-what>.png"`: an **absolute** path (a relative one lands in the
+   process's working directory, where nothing will find it), a two-digit order, then lowercase letters, digits
+   and dashes only. The screen the issue is about in its new state, each state the issue names, and the flow
+   around it — at least one, rarely more than six. One screenshot per state, not one per click.
+5. `browser_close`. Return raw data: the steps taken, pass / fail for each, every finding with what was seen,
+   what could not be tested and why, and the list of screenshot files, each with a one-line caption saying
+   what it shows.
 
 A finding is a bug: fix it (**orchestrator:** hand it to the implementor verbatim), re-run the affected
-checks of Step 4, and ask the tester to re-test. Its report
-is the browser part of the PR's `## Verification` — in words; **no image, gif or video is ever required**.
-A tester that cannot reach the screen at all is a failed Step 4 (Step Q when you cannot fix it). Skip this
-step only when the change has no screen — an API-only fix, a script — and say so in the PR.
+checks of Step 4, and ask the tester to re-test — **and to re-screenshot what changed**, deleting the stale
+PNGs first (`rm -f`) so the set in `$SLOTH_SCREENSHOTS_DIR` is only what is true now. Its report is the
+browser part of the PR's `## Verification`; its files become the PR's `## Screenshots` (Step 5). A tester that
+cannot reach the screen at all is a failed Step 4 (Step Q when you cannot fix it). Skip this step only when
+the change has no screen — an API-only fix, a script — and say so in the PR.
 
 ## Step 5 — Commit, push, draft PR
 
@@ -206,13 +215,23 @@ Then:
 
 ```bash
 git push -u origin "$BRANCH"
+# with PNGs in $SLOTH_SCREENSHOTS_DIR — publish_shots is in the `session` skill; not into $BASE, that is the base branch
+SHOTS=$(publish_shots "$SLOTH_SCREENSHOTS_DIR")
 gh pr create --repo "$SLOTH_REPO" --base "$BASE" --head "$BRANCH" --draft \
   --title "<type>: <what changed>" --body-file "$SESSION_DIR/pr-body.md"
 ```
 
 Body: `Closes #ISSUE`, the root cause, what changed, `## Verification` (Step 4's commands and what they
-showed, the tester's browser run from Step 4.5, plus anything left unverified) and, for a design-driven fix, `## Design fidelity`. **No reviewer
+showed, the tester's browser run from Step 4.5, plus anything left unverified), then `## Screenshots`
+directly after it, and, for a design-driven fix, `## Design fidelity`. **No reviewer
 request, no assignee** — a human picks it up from the board. Record `PR` / `PR_URL` in `state.json`.
+
+`## Screenshots` is **never absent**. One of three:
+
+- The tester saved PNGs — one `![<caption>]($SHOTS/<file>?raw=true)` per screenshot, in file order, with its
+  caption from Step 4.5 as the line above the image or as the alt text. Never a file that was not taken.
+- The change has no screen (API-only, a script) — the single line `No screen changed — nothing to show.`
+- `SLOTH_CHROME=0`, no browser was attached — the single line `No browser attached to this session.`
 
 ## Step 5.5 — Reviewer-agent loop (max `$SLOTH_REVIEW_ROUNDS`)
 
@@ -226,6 +245,10 @@ report the verdict block verbatim.
 3. Otherwise fix every bug and unmet requirement it lists (**orchestrator:** send the verdict block to the
    implementor verbatim and wait for its report), re-run Step 4, commit, push. Re-run the
    behavioural part of Step 4 and the tester (Step 4.5) only when the behaviour they exercised changed.
+   When a fix changed **what a screen shows**, the tester re-screenshots it, the new set is published again
+   (`SHOTS=$(publish_shots "$SLOTH_SCREENSHOTS_DIR")`, `session` skill — it writes a fresh timestamped
+   directory) and the PR body is re-written to those URLs:
+   `gh pr edit "$PR_URL" --body-file "$SESSION_DIR/pr-body.md"`. A body left pointing at the old set is wrong.
 4. `$SLOTH_REVIEW_ROUNDS` rounds without a pass → Step Q with the remaining findings; the PR stays a draft.
 
 Check the clock before each round (`session` skill). Without time for a round plus Step 6, go to Step Q.
@@ -258,7 +281,7 @@ Teardown per the `session` skill: stop this session's processes and database, re
 with `SERVERS=preview`; the server takes the environment down later. The branch stays on the remote.
 
 Finish with the report — it is the transcript's last message and the monitor shows it: branch, PR URL, files
-changed, what Step 4 and the tester verified and what they did not, review rounds, where the card ended up. For a blocked run:
+changed, what Step 4 and the tester verified and what they did not, how many screenshots the PR carries, review rounds, where the card ended up. For a blocked run:
 the question comment URL, whether an answer arrived, where the card is, and what is left.
 
 ## Rules
@@ -274,10 +297,11 @@ the question comment URL, whether an answer arrived, where the card is, and what
   makes every change; this session reads, verifies, tests, reviews, commits, and talks to GitHub and the board.
 - **The comment thread is part of the spec** — never re-ask what it answers.
 - **A referenced design is matched exactly**; a difference is a bug, an unreachable design is a question.
-  The PR describes the match in words — images, gifs and videos are never required.
+- **A PR that changes a screen shows it**: the tester's screenshots, pushed with `publish_shots`, in
+  `## Screenshots`. Never a screenshot that was not taken.
 - **Never touch the checkout at `$SLOTH_RUNNER_ROOT`, a shared database, or a port another session uses.**
-- **Test in the browser when there is one** (Step 4.5): the tester subagent's run is part of every PR that
-  touches a screen.
+- **Test in the browser when there is one** (Step 4.5): the tester subagent's run — and a PNG of every screen
+  it verified — is part of every PR that touches a screen.
 - Do not push on a failed Step 4; do not hand a PR to a human before the reviewer loop passes; the PR ends
   ready for review, with `Closes #ISSUE`, no reviewer and no assignee.
 - Always clean up (Step 7), whether the run succeeds, waits out, or stops early — a preview hand-off (Step 6)

@@ -67,7 +67,7 @@ export interface AgentModels {
   orchestrator: string;
   /** The implement session: claims the card, writes the code, opens the PR (triggers 1–3). With `orchestrator` on, the implementor subagent that writes the code. */
   implement: string;
-  /** The tester subagent an implement session spawns to click through the change in Chrome. */
+  /** The tester subagent an implement session spawns to click through the change in a headless Chrome and screenshot it. */
   tester: string;
   /** The reviewer subagent an implement session asks before it hands the PR over. */
   reviewer: string;
@@ -115,7 +115,10 @@ export interface SlothConfig {
    * code itself. Either way the tester and the reviewer are subagents on their own models.
    */
   orchestrator: boolean;
-  /** Pass `--chrome` to implement sessions, so a tester subagent can exercise the change in the user's Chrome. */
+  /**
+   * Give implement sessions a headless Chrome (Playwright MCP), so a tester subagent can click through the
+   * change and screenshot it for the PR. Needs Google Chrome (or Chromium) on this machine.
+   */
   chrome: boolean;
   /** Start Sloth when this machine is logged into, through a macOS launch agent (`server/service.ts`). */
   autostart: boolean;
