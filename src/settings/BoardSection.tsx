@@ -7,7 +7,7 @@ import { useProjectFields, useProjects } from '../setup/use-setup';
 import { Choose, Row } from './ui';
 import type { SectionProps } from './ui';
 
-const ROLES: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved', 'done'];
+const ROLES: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved', 'qa', 'done'];
 const BLANK = { id: '', name: '' };
 
 export default function BoardSection({ draft, patch }: SectionProps) {
@@ -32,7 +32,7 @@ export default function BoardSection({ draft, patch }: SectionProps) {
     if (!p || p.id === draft.project.id) return;
     patch({
       project: { id: p.id, number: p.number, owner: p.owner, title: p.title },
-      statusField: { id: '', columns: { pickup: BLANK, inProgress: BLANK, needsHelp: BLANK, codeReview: BLANK, approved: BLANK, done: BLANK } },
+      statusField: { id: '', columns: { pickup: BLANK, inProgress: BLANK, needsHelp: BLANK, codeReview: BLANK, approved: BLANK, qa: BLANK, done: BLANK } },
     });
   };
   const set = (role: ColumnRole, id: string) =>
@@ -58,13 +58,19 @@ export default function BoardSection({ draft, patch }: SectionProps) {
       <Row label="Watched column" hint="Sloth picks cards up from here — every card but the ones labelled “Sloth: skip”. It only ever reads this column.">
         <Choose label="Watched column" value={columns.pickup.id} onChange={(id) => set('pickup', id)} options={options} placeholder="choose a column" />
       </Row>
-      {OTHERS.map(({ role, label, hint }) => (
+      {OTHERS.map(({ role, label, hint, none }) => (
         <Row
           key={role}
           label={label}
-          hint={columns[role].id ? hint : `${hint} — “${columns[role].name || DEFAULT_COLUMN_NAMES[role]}” will be created on the board when you save`}
+          hint={
+            columns[role]?.id
+              ? hint
+              : none && !columns[role]?.name
+                ? `${hint} — ${none}`
+                : `${hint} — “${columns[role]?.name || DEFAULT_COLUMN_NAMES[role]}” will be created on the board when you save`
+          }
         >
-          <Select value={columns[role].id} onChange={(id) => set(role, id)} options={options} placeholder={`create “${DEFAULT_COLUMN_NAMES[role]}”`} />
+          <Select value={columns[role]?.id ?? ''} onChange={(id) => set(role, id)} options={options} placeholder={none ?? `create “${DEFAULT_COLUMN_NAMES[role]}”`} />
         </Row>
       ))}
     </>

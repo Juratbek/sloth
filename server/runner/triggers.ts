@@ -8,7 +8,7 @@ import { limitExit } from './limits';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
 import { APPROVED_LABEL, MARKERS, markerFiles, statePath, unapprove } from './markers';
 import { helpMentions, notify } from './notify';
-import { cleanup } from './cleanup';
+import { cleanup, cleanupRun } from './cleanup';
 import { exitLine, exitReport, exitsOf, forgetExits, recordExit } from './exits';
 import { previewLink } from './preview';
 import { approvedDir, counter, dirAlive, dirOf, isBlocked, issueAlive, issueDir, pidAlive, pidOf, runDirs, startedAt, stateOf } from './session-dirs';
@@ -88,6 +88,12 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
     }
   }
   remove(path.join(dir, 'pid'));
+  if (kind === 'qa') {
+    // Its app and worktree are its own; the card stays in QA and the head keeps its marker, like a stopped review.
+    await cleanupRun('qa', target);
+    log(`QA #${target} stopped: ${reason}`);
+    return true;
+  }
   if (kind !== 'issue') {
     log(`review PR #${target} stopped: ${reason}`);
     return true;
@@ -118,7 +124,9 @@ export async function reap(): Promise<void> {
             log(`${name} ended without finishing — ${exitLine(recordExit(dir, 'the session ended on its own'))}`);
           } else {
             for (const f of markerFiles(kind, target)) remove(statePath(MARKERS[kind], f));
-            log(`${name} ended without a verdict — the head will be reviewed again`);
+            // A QA run that died mid-test may have left its app up; a review has nothing to leave.
+            if (kind === 'qa') await cleanupRun('qa', target);
+            log(`${name} ended without a verdict — ${kind === 'qa' ? 'the card will be tested again' : 'the head will be reviewed again'}`);
           }
         }
         continue;
@@ -132,7 +140,7 @@ export async function reap(): Promise<void> {
       if (kind !== 'issue') for (const f of markerFiles(kind, target)) remove(statePath(MARKERS[kind], f));
       continue;
     }
-    const budget = cfg().budgetMinutes * 60;
+    const budget = (kind === 'qa' ? cfg().qa.budgetMinutes : cfg().budgetMinutes) * 60;
     if ((stateOf(dir).state ?? 'working') !== 'working' || nowSec() - startedAt(dir) <= budget + KILL_GRACE) continue;
     await stop(kind, target, 'hung past the budget', 'the run for this issue hung past its time budget and was stopped by Sloth.');
   }

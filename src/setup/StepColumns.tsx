@@ -25,6 +25,7 @@ export default function StepColumns({
     needsHelp: draft.needsHelp,
     codeReview: draft.codeReview,
     approved: draft.approved,
+    qa: draft.qa,
     done: draft.done,
   });
   const [helpLogins, setHelpLogins] = useState(draft.helpLogins.join(', '));
@@ -52,14 +53,9 @@ export default function StepColumns({
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            {OTHERS.map(({ role, label, hint }) => (
-              <Field key={role} label={label} hint={value(role).id ? hint : `“${value(role).name}” will be created`}>
-                <Select
-                  value={value(role).id}
-                  onChange={(id) => set(role, id)}
-                  options={options}
-                  placeholder={`create “${DEFAULT_COLUMN_NAMES[role]}”`}
-                />
+            {OTHERS.map(({ role, label, hint, none }) => (
+              <Field key={role} label={label} hint={value(role).id ? hint : none ? `${none} — ${hint}` : `“${value(role).name}” will be created`}>
+                <Select value={value(role).id} onChange={(id) => set(role, id)} options={options} placeholder={none ?? `create “${DEFAULT_COLUMN_NAMES[role]}”`} />
               </Field>
             ))}
           </div>
@@ -93,6 +89,7 @@ export default function StepColumns({
               needsHelp: value('needsHelp'),
               codeReview: value('codeReview'),
               approved: value('approved'),
+              qa: value('qa'),
               done: value('done'),
               helpLogins: helpLogins.split(/[\s,]+/).map((l) => l.replace(/^@/, '')).filter(Boolean),
               helpWebhook: helpWebhook.trim(),

@@ -58,7 +58,7 @@ export function modelName(id?: string): string | undefined {
   return version ? `${family} ${version}` : family;
 }
 
-const KIND: Record<string, string> = { 'sloth:implement': 'fix', 'sloth:review': 'review', 'sloth:status': 'status', other: 'run' };
+const KIND: Record<string, string> = { 'sloth:implement': 'fix', 'sloth:review': 'review', 'sloth:status': 'status', 'sloth:qa': 'QA', other: 'run' };
 export const label = (s: SessionSummary) => `${KIND[s.kind] ?? s.kind}${s.target ? ` #${s.target}` : ''}`;
 
 /** Step numbers are the section headings of the plugin commands; the UI shows what the session is doing instead. */
@@ -84,7 +84,15 @@ const REVIEW_STEPS: Record<string, string> = {
   '5.5': 'labeling',
   '6': 'reporting',
 };
-const STEPS: Record<WatcherSession['kind'], Record<string, string>> = { issue: IMPLEMENT_STEPS, review: REVIEW_STEPS, approved: REVIEW_STEPS };
+const QA_STEPS: Record<string, string> = {
+  '0': 'reading issue',
+  '1': 'checking out',
+  '2': 'booting app',
+  '3': 'browser testing',
+  '4': 'reporting',
+  '5': 'cleaning up',
+};
+const STEPS: Record<WatcherSession['kind'], Record<string, string>> = { issue: IMPLEMENT_STEPS, review: REVIEW_STEPS, approved: REVIEW_STEPS, qa: QA_STEPS };
 /** Human words for a session's current step; unknown values fall back to "step N" so nothing is hidden. */
 export const stepLabel = (kind: WatcherSession['kind'], step?: string) =>
   step ? (STEPS[kind]?.[step.trim()] ?? `step ${step}`) : undefined;

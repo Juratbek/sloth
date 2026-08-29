@@ -51,7 +51,7 @@ const BLANK: SlothConfig = {
   project: { id: '', number: 0, owner: '', title: '' },
   statusField: {
     id: '',
-    columns: { pickup: BLANK_COLUMN, inProgress: BLANK_COLUMN, needsHelp: BLANK_COLUMN, codeReview: BLANK_COLUMN, approved: BLANK_COLUMN, done: BLANK_COLUMN },
+    columns: { pickup: BLANK_COLUMN, inProgress: BLANK_COLUMN, needsHelp: BLANK_COLUMN, codeReview: BLANK_COLUMN, approved: BLANK_COLUMN, qa: BLANK_COLUMN, done: BLANK_COLUMN },
   },
   runnerRoot: process.cwd(),
   worktreesDir: '~/.sloth/worktrees',
@@ -65,6 +65,7 @@ export const COMMANDS: Record<string, string> = {
   'sloth:implement': 'issues',
   'sloth:review': 'pull',
   'sloth:status': 'issues',
+  'sloth:qa': 'issues',
 };
 
 function resolve(): ResolvedConfig {

@@ -18,7 +18,12 @@ export interface ConfigColumns {
   codeReview: ColumnRef;
   /** Optional: with no Approved column a passing review leaves the card in Code Review and trigger 5 never fires. */
   approved: ColumnRef;
-  /** Optional: where a card goes once its issue is closed (trigger 6); without it the card stays put. */
+  /**
+   * Optional: the column the QA sweep (trigger 9) tests — cards whose fix is merged and deployed to
+   * `qa.branch`, waiting for a tester. Never created unless asked for; blank means no sweep.
+   */
+  qa: ColumnRef;
+  /** Optional: where a card goes once its issue is closed (trigger 6), or once it passed the QA sweep; without it the card stays put. */
   done: ColumnRef;
 }
 export type ColumnRole = keyof ConfigColumns;
@@ -30,8 +35,29 @@ export const DEFAULT_COLUMN_NAMES: Record<ColumnRole, string> = {
   needsHelp: 'Sloth needs help',
   codeReview: 'Code Review',
   approved: 'Approved',
+  qa: 'QA',
   done: 'Done',
 };
+
+/** The roles a board need not have: left blank, the trigger that needs the column simply never fires. */
+export const OPTIONAL_COLUMNS: ColumnRole[] = ['needsHelp', 'approved', 'qa', 'done'];
+/** The roles that are never created unasked — the wizard offers "none" for them, and blank stays blank. */
+export const OPT_IN_COLUMNS: ColumnRole[] = ['qa'];
+
+/**
+ * The QA sweep (trigger 9): once a day, at `at` (`HH:MM`, this machine's clock), every card in the QA
+ * column gets its own `/sloth:qa <issue>` session that checks the issue out on `branch` — the branch the
+ * fixes are deployed from — boots the app and tests the fix as a user would. A pass moves the card to
+ * Done, a fail to In Progress with the findings on the issue. No QA column, or an empty `at`, means no sweep.
+ */
+export interface QaConfig {
+  /** The branch the sweep tests; empty is the repository's default branch. */
+  branch: string;
+  /** Local time of day the sweep starts, `HH:MM`; empty turns the sweep off. */
+  at: string;
+  /** A QA session's own time budget — one issue, one app boot, one browser run. */
+  budgetMinutes: number;
+}
 
 /** How trigger 8 merges a PR that passed the review; `''` leaves merging — and the test in Approved — to a human. */
 export type MergeMethod = '' | 'squash' | 'merge' | 'rebase';
@@ -41,7 +67,7 @@ export const MERGE_METHODS: MergeMethod[] = ['', 'squash', 'merge', 'rebase'];
  * What the `helpWebhook` hears about. `needsHelp` is the one Sloth has always sent, and the only one a
  * config that predates the rest gets: an existing setup keeps behaving exactly as it did.
  */
-export const WEBHOOK_EVENTS = ['needsHelp', 'codeReview', 'finalPassed', 'finalFailed', 'merged', 'stopped', 'usageLimit'] as const;
+export const WEBHOOK_EVENTS = ['needsHelp', 'codeReview', 'finalPassed', 'finalFailed', 'merged', 'qaPassed', 'qaFailed', 'stopped', 'usageLimit'] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 
 /** One admin, any number of developers and testers. A login holds one role: admin wins, then developer. */
@@ -75,10 +101,12 @@ export interface AgentModels {
   final: string;
   /** `/sloth:status`: the reply to an @sloth question when no session is running. */
   status: string;
+  /** `/sloth:qa <issue>` (trigger 9): the session that tests one QA card on the QA branch; its browser tester runs on `tester`. */
+  qa: string;
 }
 export type AgentRole = keyof AgentModels;
 
-export const DEFAULT_MODELS: AgentModels = { orchestrator: 'fable', implement: 'opus', tester: 'opus', reviewer: 'opus', final: 'fable', status: 'opus' };
+export const DEFAULT_MODELS: AgentModels = { orchestrator: 'fable', implement: 'opus', tester: 'opus', reviewer: 'opus', final: 'fable', status: 'opus', qa: 'opus' };
 export const AGENT_ROLES = Object.keys(DEFAULT_MODELS) as AgentRole[];
 
 export interface SlothConfig {
@@ -161,7 +189,12 @@ export interface SlothConfig {
   publicUrl: string;
   /** What the sessions' app needs on this machine (see `STACK`); `auto` detects it from the checkout. */
   stack: StackChoice;
+  /** The daily QA sweep of the QA column (trigger 9, `runner/qa.ts`); off until `at` is set. */
+  qa: QaConfig;
 }
+
+/** The sweep is on as soon as a QA column is chosen — at eight in the evening, once the day's merges are deployed. */
+export const DEFAULT_QA: QaConfig = { branch: '', at: '20:00', budgetMinutes: 60 };
 
 export const DEFAULT_TUNNEL = ['cloudflared', 'tunnel', '--url', 'http://localhost:{port}'];
 
@@ -211,6 +244,7 @@ export const CONFIG_DEFAULTS = {
   tunnel: DEFAULT_TUNNEL,
   publicUrl: '',
   stack: 'auto' as StackChoice,
+  qa: DEFAULT_QA,
 } satisfies Partial<SlothConfig>;
 
 /** The directories that are kept apart per repository (`name` is the part after the slash). */

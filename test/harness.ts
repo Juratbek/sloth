@@ -19,6 +19,8 @@ export const COLUMNS = {
   needsHelp: { id: 'opt-help', name: 'Sloth needs help' },
   codeReview: { id: 'opt-review', name: 'Code Review' },
   approved: { id: 'opt-approved', name: 'Approved' },
+  /** Opt-in, and not opted into here: a test that wants the QA sweep configures its column itself. */
+  qa: { id: '', name: '' },
   done: { id: 'opt-done', name: 'Done' },
 };
 
@@ -72,10 +74,11 @@ export function wipe(): void {
   fs.rmSync(c.watcherLog, { force: true });
 }
 
-export const sessionDir = (kind: 'issue' | 'review' | 'approved', n: number) => path.join(reloadConfig().sessionsDir, `${kind}-${n}`);
+type Kind = 'issue' | 'review' | 'approved' | 'qa';
+export const sessionDir = (kind: Kind, n: number) => path.join(reloadConfig().sessionsDir, `${kind}-${n}`);
 
 /** A session directory with the given files (`state.json` may be given as an object). */
-export function makeSession(kind: 'issue' | 'review' | 'approved', n: number, files: Record<string, string | object> = {}): string {
+export function makeSession(kind: Kind, n: number, files: Record<string, string | object> = {}): string {
   const dir = sessionDir(kind, n);
   fs.mkdirSync(path.join(dir, 'inbox'), { recursive: true });
   for (const [name, body] of Object.entries(files)) {

@@ -7,13 +7,14 @@ import AboutSection from './AboutSection';
 import BoardSection from './BoardSection';
 import MachineSection from './MachineSection';
 import NotificationsSection from './NotificationsSection';
+import QaSection from './QaSection';
 import RepositorySection from './RepositorySection';
 import StackSection from './StackSection';
 import { Models } from './ModelsSection';
 import { General, Remote, Sessions, Team } from './sections';
 import type { SectionProps } from './ui';
 
-type Key = 'general' | 'board' | 'repository' | 'stack' | 'team' | 'notifications' | 'models' | 'sessions' | 'remote' | 'machine' | 'about';
+type Key = 'general' | 'board' | 'qa' | 'repository' | 'stack' | 'team' | 'notifications' | 'models' | 'sessions' | 'remote' | 'machine' | 'about';
 
 const pick = <K extends keyof typeof CONFIG_DEFAULTS>(...keys: K[]) =>
   Object.fromEntries(keys.map((k) => [k, CONFIG_DEFAULTS[k]])) as Pick<typeof CONFIG_DEFAULTS, K>;
@@ -22,6 +23,7 @@ const pick = <K extends keyof typeof CONFIG_DEFAULTS>(...keys: K[]) =>
 const SECTIONS: { key: Key; label: string; component: ComponentType<SectionProps>; defaults?: (c: SlothConfig) => Partial<SlothConfig> }[] = [
   { key: 'general', label: 'General', component: General, defaults: () => pick('mention', 'botPrefix', 'boardSeconds', 'commentSeconds', 'chrome', 'previewHours', 'priorityField', 'autoMerge') },
   { key: 'board', label: 'Board', component: BoardSection },
+  { key: 'qa', label: 'QA sweep', component: QaSection, defaults: () => pick('qa') },
   {
     key: 'repository',
     label: 'Repository',

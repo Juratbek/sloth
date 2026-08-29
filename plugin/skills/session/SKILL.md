@@ -5,7 +5,7 @@ description: >-
   forwarded `@sloth` comments, the time budget, the needs-help protocol (one
   numbered comment, park the card, wait loop, idle teardown, resume) and the
   comment conventions every Sloth comment follows. Use from any command the
-  Sloth server launches (implement, review, status).
+  Sloth server launches (implement, review, status, qa).
 ---
 
 # Sloth session protocol
@@ -23,6 +23,8 @@ directory.
 | `SLOTH_REPO` | `owner/repo` |
 | `SLOTH_RUNNER_ROOT` | The checkout sessions run from; `cwd` is inside it |
 | `SLOTH_WORKTREES_DIR` | Where per-issue worktrees are created |
+| `SLOTH_WORKTREE` | This run's own worktree path under it — `issue-<n>` for an implement run, `qa-<n>` for a QA test; create it there, tear it down from there |
+| `SLOTH_QA_BRANCH` | The branch the QA sweep tests (`/sloth:qa`); empty means the repository's default branch |
 | `SLOTH_ADMIN_LOGIN` | The **admin** — the one login whose orders have no limit (may be empty) |
 | `SLOTH_DEVELOPER_LOGINS` | Space-separated **developers** — their orders are followed within the issue they are on (may be empty) |
 | `SLOTH_TESTER_LOGINS` | Space-separated **testers** — they answer questions and ask for status, never order (may be empty) |
@@ -195,7 +197,7 @@ below builds its commit out of the index, so the worktree is untouched.
 ```bash
 # publish_shots <dir> — pushes every *.png in <dir> to $SLOTH_ASSETS_BRANCH and prints the URL base of the files
 publish_shots() {
-  local dir=$1 br=$SLOTH_ASSETS_BRANCH wt=$SLOTH_WORKTREES_DIR/issue-$SLOTH_ISSUE
+  local dir=$1 br=$SLOTH_ASSETS_BRANCH wt=${SLOTH_WORKTREE:-$SLOTH_WORKTREES_DIR/issue-$SLOTH_ISSUE}
   local dest="issue-$SLOTH_ISSUE/$(date -u +%Y%m%d-%H%M%S)" idx=$SLOTH_SESSION_DIR/assets.index parent tree commit f
   for _ in 1 2 3 4 5; do
     parent=$(git -C "$wt" fetch -q origin "+refs/heads/${br}:refs/remotes/origin/${br}" 2>/dev/null && git -C "$wt" rev-parse "refs/remotes/origin/$br") || parent=""
@@ -227,7 +229,7 @@ At the end of every run, whatever the outcome:
 
 ```bash
 # stop this session's processes and drop its database (only the pids / name in $SLOTH_SESSION_DIR)
-git -C "$SLOTH_RUNNER_ROOT" worktree remove "$SLOTH_WORKTREES_DIR/issue-$SLOTH_ISSUE" --force
+git -C "$SLOTH_RUNNER_ROOT" worktree remove "${SLOTH_WORKTREE:-$SLOTH_WORKTREES_DIR/issue-$SLOTH_ISSUE}" --force
 git -C "$SLOTH_RUNNER_ROOT" worktree prune
 # set_state done <step> "<how the run ended>"
 ```

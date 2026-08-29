@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AGENT_ROLES, CONFIG_DEFAULTS, DEFAULT_MODELS, MERGE_METHODS, STACK, WEBHOOK_EVENTS, defaultDirs, type AgentModels, type AgentRole, type ColumnRef, type MergeMethod, type Roles, type SlothConfig, type StackChoice, type StackId, type WebhookEvent } from './config-types';
+import { AGENT_ROLES, CONFIG_DEFAULTS, DEFAULT_MODELS, MERGE_METHODS, STACK, WEBHOOK_EVENTS, defaultDirs, type AgentModels, type AgentRole, type ColumnRef, type MergeMethod, type QaConfig, type Roles, type SlothConfig, type StackChoice, type StackId, type WebhookEvent } from './config-types';
 import { sameLogin } from './roles';
 
 const home = os.homedir();
@@ -108,6 +108,18 @@ function webhookEvents(v: unknown, fallback: WebhookEvent[]): WebhookEvent[] {
 const argv = (v: unknown, fallback: string[]): string[] =>
   Array.isArray(v) && v.length ? v.map(String).filter((a) => a.trim()) : fallback;
 
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const BRANCH_RE = /^[\w.\/-]+$/;
+/** The QA sweep: a branch name that is safe in argv, a `HH:MM` local time (empty = off), and the session's own budget. */
+function qaOf(v: unknown, d: QaConfig): QaConfig {
+  const q = (v ?? {}) as Record<string, unknown>;
+  const branch = text(q.branch) ?? '';
+  if (branch && !BRANCH_RE.test(branch)) throw new Error('qa.branch must be a branch name');
+  const at = text(q.at) ?? '';
+  if (at && !TIME_RE.test(at)) throw new Error('qa.at must be a time of day, HH:MM');
+  return { branch, at, budgetMinutes: int(q.budgetMinutes, d.budgetMinutes) };
+}
+
 function column(v: unknown, what: string): ColumnRef {
   const c = v as ColumnRef | undefined;
   return { id: str(c?.id, `${what}.id`), name: str(c?.name, `${what}.name`) };
@@ -146,6 +158,8 @@ export function normalizeConfig(input: unknown): SlothConfig {
         codeReview: column(columns.codeReview, 'codeReview'),
         // Optional: without it a passing review leaves the card in Code Review and trigger 5 (the hand-over comment) never fires.
         approved: optional(columns.approved, 'approved'),
+        // Optional: the column the daily QA sweep tests (trigger 9); without it there is no sweep.
+        qa: optional(columns.qa, 'qa'),
         // Optional: without it a closed issue's card stays where it is (trigger 6).
         done: optional(columns.done, 'done'),
       },
@@ -185,6 +199,7 @@ export function normalizeConfig(input: unknown): SlothConfig {
     tunnel: argv(b.tunnel, d.tunnel),
     publicUrl: url(b.publicUrl, 'publicUrl'),
     stack: stackOf(b.stack),
+    qa: qaOf(b.qa, d.qa),
   };
 }
 

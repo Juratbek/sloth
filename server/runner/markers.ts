@@ -15,8 +15,11 @@ import type { Kind } from './session-dirs';
 
 export const statePath = (...parts: string[]) => path.join(cfg().stateDir, ...parts);
 
-/** Where each review kind keeps its `<pr>-<sha>` "already reviewed this head" markers (`reviewed` is the older kind's, see `Kind`). */
-export const MARKERS: Record<Exclude<Kind, 'issue'>, string> = { review: 'reviewed', approved: 'approved' };
+/**
+ * Where each kind keeps its "already done this head" markers: `<pr>-<sha>` for a review (`reviewed` is the
+ * older kind's, see `Kind`), `<issue>-<sha of the QA branch>` for a QA test.
+ */
+export const MARKERS: Record<Exclude<Kind, 'issue'>, string> = { review: 'reviewed', approved: 'approved', qa: 'qa' };
 
 /** The `<pr>-…` markers of one PR, whatever head they were written for. */
 export function markerFiles(kind: Exclude<Kind, 'issue'>, pr: number): string[] {

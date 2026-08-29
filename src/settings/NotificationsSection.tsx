@@ -12,6 +12,8 @@ const EVENTS: { event: WebhookEvent; label: string; hint: string }[] = [
   { event: 'finalPassed', label: 'Review passed', hint: 'A card reached Approved with the `Fable: approved` label: its PR passed the review and is ready for a human to test — the message carries the preview link.' },
   { event: 'finalFailed', label: 'Review pass taken back', hint: 'A card lost that label again — the branch moved on after the pass, or its checks turned red.' },
   { event: 'merged', label: 'Issue closed', hint: 'A PR was merged and Sloth filed its card away in Done.' },
+  { event: 'qaPassed', label: 'QA passed', hint: 'The daily QA sweep tested a card on the QA branch and it passed — the card is in Done.' },
+  { event: 'qaFailed', label: 'QA failed', hint: 'The sweep found the fix wanting — the findings are on the issue and the card is back in In Progress.' },
   { event: 'stopped', label: 'Run stopped', hint: 'A session was stopped — past its budget, from the monitor, or relaunched too many times.' },
   { event: 'usageLimit', label: 'Usage limit', hint: 'A Claude usage limit stopped a session and paused the watcher for 30 minutes.' },
 ];

@@ -7,9 +7,11 @@ import type { IssueCost, SessionSummary } from './types';
  * review from before the `issue` file existed) is left out rather than guessed at.
  */
 
-/** Which issue a run belongs to; `board-view.ts` asks the same question when it picks a card's newest run. */
+/** Which issue a run belongs to; `board-view.ts` asks the same question when it picks a card's newest run. An implement run and a QA test are both named after theirs. */
 export const issueOf = (s: SessionSummary): number | undefined =>
-  s.watcher?.kind === 'issue' ? s.watcher.target : (s.watcher?.issue ?? (s.kind === 'sloth:implement' ? s.target : undefined));
+  s.watcher?.kind === 'issue' || s.watcher?.kind === 'qa'
+    ? s.watcher.target
+    : (s.watcher?.issue ?? (s.kind === 'sloth:implement' || s.kind === 'sloth:qa' ? s.target : undefined));
 
 /** Dearest first; an unpriced issue has no number to compare, so it sits after the priced ones. */
 const byCost = (a: IssueCost, b: IssueCost) => (b.cost ?? -1) - (a.cost ?? -1);

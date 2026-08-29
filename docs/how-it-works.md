@@ -48,6 +48,16 @@ board. When it finds work, it starts a Claude Code session to do it. That is all
    end of the card: Sloth moves it to *Done*, takes the preview, the servers, the database and the worktree
    down and deletes the branch. A PR closed without being merged does the opposite — the issue is still open,
    so the card goes to *Sloth needs help* with a comment saying its PR was closed.
+8. **Or the card waits in *QA* for the daily sweep.** Some teams do not close an issue on merge: the fix is
+   deployed to a QA branch first and a tester confirms it. Put those cards in a *QA* column (Settings →
+   Board, opt-in) and set a time of day in Settings → *QA sweep*: at that hour Sloth gives every card there a
+   session of its own — `/sloth:qa 42` — that checks the QA branch out at its current head, boots the app
+   and has the tester agent click through the fix as the user it concerns, screenshots included. The result
+   goes on the issue: a **pass** moves the card to *Done*, a **fail** lists the steps and what was seen and
+   moves the card back to *In Progress*, where a fresh implement run reads those findings; a test that could
+   not reach the fix — not on the branch yet, the app would not start — says so and leaves the card for a
+   human. A card is tested once per head of the branch, so a pass is not repeated tomorrow unless the branch
+   moved; **sweep now** on the home panel runs a sweep at any hour.
 
 ## When the session gets stuck
 
@@ -60,7 +70,7 @@ URL) hears about the card too, within one board poll. Both are set in the wizard
 
 The webhook can hear about more than this one moment. **Settings → Notifications** has a toggle per
 event: a card reaching *Code Review*, a review passing (with the preview link) or its pass taken back, an issue Sloth closed and
-filed away, a run stopped or parked, and a Claude usage limit pausing the watcher. Only the needs-help
+filed away, the QA sweep's verdict on a card, a run stopped or parked, and a Claude usage limit pausing the watcher. Only the needs-help
 one is on to begin with, so a Sloth that was set up before this keeps saying exactly what it did.
 
 - Anyone on the team — the admin, a developer or a tester — answers in the issue thread, and the
@@ -122,10 +132,10 @@ Every comment Sloth writes starts with `**Sloth:**`.
 ├── config.json          the configuration (the wizard writes it)
 ├── watcher.log          what Sloth did, one line per event — the UI shows it
 ├── runners/<repo>/      the checkout sessions start from
-├── worktrees/<repo>/    one worktree per issue
-├── sessions/<repo>/     one folder per session: its log, its state, its inbox
+├── worktrees/<repo>/    one worktree per issue (and one per QA test while it runs)
+├── sessions/<repo>/     one folder per session: its log, its state, its inbox — a QA test's verdict
 └── state/               markers so nothing is done twice (approved, handed, finished, closed, checks,
-                         merged); the pause; the remote-access secret
+                         merged, qa); the pause; the day's QA sweep; the remote-access secret
 ```
 
 The UI at `http://localhost:4400` shows every session, its full transcript, its token spend, and

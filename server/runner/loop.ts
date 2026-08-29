@@ -10,6 +10,7 @@ import { boardEvents } from './notify-events';
 import { sampleMachine } from './machine';
 import { isPaused } from './pause';
 import { previews } from './preview';
+import { qaSweep, qaVerdicts } from './qa';
 import { prune } from './retention';
 import { answered } from './answers';
 import { handover, pausedUntil, pickup, reap, retryStranded, reviews } from './triggers';
@@ -68,8 +69,10 @@ async function runTick({ board = false, comments: wantComments = false, dryRun =
     if (!items) return;
     // The home panel's board view mirrors this one read — a dry run reads the board too, and reading is harmless.
     setSnapshot(items);
-    // Filing a closed issue away is bookkeeping on work that is already over, not new work.
+    // Filing a closed issue away is bookkeeping on work that is already over, not new work — and so is
+    // moving a card on the verdict its QA test left behind.
     await finished(items);
+    await qaVerdicts();
     // The webhook hears about all of it even while paused: sessions keep running, so they keep parking.
     await boardEvents(items);
     if (userPaused) return;
@@ -81,6 +84,8 @@ async function runTick({ board = false, comments: wantComments = false, dryRun =
     await autoMerge(items);
     await retryStranded(items);
     await answered(items);
+    // The day's QA sweep, when it is time: the merged fixes waiting in QA are tested before new ones are started.
+    await qaSweep(items);
     await pickup(items);
   } finally {
     state.ticking = false;

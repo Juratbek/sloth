@@ -1,7 +1,7 @@
 import { cfg } from '../config';
 import { graphql, graphqlBody } from './gh';
 import { log } from './log';
-import { DEFAULT_COLUMN_NAMES } from '../config-types';
+import { DEFAULT_COLUMN_NAMES, OPTIONAL_COLUMNS, OPT_IN_COLUMNS } from '../config-types';
 import type { ColumnRef, ColumnRole, ConfigColumns, FieldOption } from '../config-types';
 
 const OPTIONS_QUERY = `query($id: ID!) {
@@ -17,10 +17,13 @@ const CREATED: { role: ColumnRole; color: string }[] = [
   { role: 'needsHelp', color: 'ORANGE' },
   { role: 'codeReview', color: 'PURPLE' },
   { role: 'approved', color: 'GREEN' },
+  { role: 'qa', color: 'BLUE' },
 ];
 /** Done belongs at the end of the board, not next to the flow columns. */
 const CREATED_LAST: { role: ColumnRole; color: string }[] = [{ role: 'done', color: 'GRAY' }];
-const ROLES: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved', 'done'];
+const ROLES: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved', 'qa', 'done'];
+/** Whether a role is wanted at all: an opt-in one (QA) only with an id or a name — a board without a QA step gets no column. */
+const asked = (role: ColumnRole, wanted: Record<ColumnRole, ColumnRef>) => !OPT_IN_COLUMNS.includes(role) || !!(wanted[role].id || wanted[role].name);
 
 export async function fieldOptions(fieldId: string): Promise<FieldOption[]> {
   const data = await graphql(OPTIONS_QUERY, ['-F', `id=${fieldId}`]);
@@ -65,13 +68,15 @@ const asInput = (o: FieldOption) => ({
 export async function ensureColumns(fieldId: string, wanted: Record<ColumnRole, ColumnRef>): Promise<ConfigColumns> {
   let options = await fieldOptions(fieldId);
   const resolve = (role: ColumnRole): FieldOption | undefined =>
-    options.find((o) => o.id && o.id === wanted[role].id) ?? byName(options, wanted[role].name || DEFAULT_COLUMN_NAMES[role]);
+    asked(role, wanted) ? (options.find((o) => o.id && o.id === wanted[role].id) ?? byName(options, wanted[role].name || DEFAULT_COLUMN_NAMES[role])) : undefined;
 
   const pickup = resolve('pickup');
   if (!pickup) throw new Error(`the watched column "${wanted.pickup.name}" is not on this board`);
 
   const create = (list: typeof CREATED): FieldOption[] =>
-    list.filter(({ role }) => !resolve(role)).map(({ role, color }) => ({ id: '', name: wanted[role].name || DEFAULT_COLUMN_NAMES[role], color }));
+    list
+      .filter(({ role }) => asked(role, wanted) && !resolve(role))
+      .map(({ role, color }) => ({ id: '', name: wanted[role].name || DEFAULT_COLUMN_NAMES[role], color }));
   const middle = create(CREATED);
   const last = create(CREATED_LAST);
   if (middle.length || last.length) {
@@ -86,6 +91,10 @@ export async function ensureColumns(fieldId: string, wanted: Record<ColumnRole, 
   const out = {} as ConfigColumns;
   for (const role of ROLES) {
     const found = resolve(role);
+    if (!found?.id && OPTIONAL_COLUMNS.includes(role) && !asked(role, wanted)) {
+      out[role] = { id: '', name: '' };
+      continue;
+    }
     if (!found?.id) throw new Error(`could not resolve the ${role} column`);
     out[role] = { id: found.id, name: found.name };
   }

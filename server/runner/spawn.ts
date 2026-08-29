@@ -8,10 +8,10 @@ import { moveCard } from './board';
 import { mcpConfig } from './browser';
 import { runHeader } from './exits';
 import { run } from './gh';
-import { isDry, log, remove, write } from './log';
+import { isDry, log, readFile, remove, write } from './log';
 import { stopPreview } from './preview';
-import { APPEND_PROMPT, sessionEnv, type Target } from './session-env';
-import { approvedDir, issueDir, slotsFull } from './session-dirs';
+import { APPEND_PROMPT, sessionEnv, type SessionExtras, type Target } from './session-env';
+import { approvedDir, counter, issueDir, qaDir, slotsFull, worktreeName } from './session-dirs';
 import { machineHold } from './machine';
 
 /** Why nothing may start right now: every slot taken, or the machine too loaded to take one more run. */
@@ -50,10 +50,12 @@ interface StartOptions {
   chrome?: boolean;
   /** Extra environment on top of `sessionEnv` — the stack install session names what it has to install. */
   env?: NodeJS.ProcessEnv;
+  /** A budget or worktree of the run's own — the QA sweep's sessions have both. */
+  extras?: SessionExtras;
 }
 export function start(bookDir: string, sessionDir: string, prompt: string, target: Target, logFile: string, options: StartOptions): void {
   const c = cfg();
-  const { model, chrome = false } = options;
+  const { model, chrome = false, extras } = options;
   // A status reply borrows the issue's directory read-only — it must not conjure one that never ran.
   if (bookDir === sessionDir) fs.mkdirSync(path.join(sessionDir, 'inbox'), { recursive: true });
   fs.mkdirSync(bookDir, { recursive: true });
@@ -71,7 +73,7 @@ export function start(bookDir: string, sessionDir: string, prompt: string, targe
     ['-p', prompt, '--plugin-dir', PLUGIN_DIR, '--session-id', sessionId, '--model', model,
       '--no-chrome', ...(mcp ? ['--mcp-config', mcp] : []),
       '--dangerously-skip-permissions', '--append-system-prompt', APPEND_PROMPT],
-    { cwd: c.runnerRoot, detached: true, stdio: ['ignore', fd, fd], env: { ...sessionEnv(sessionDir, target, model, !!mcp), ...options.env } },
+    { cwd: c.runnerRoot, detached: true, stdio: ['ignore', fd, fd], env: { ...sessionEnv(sessionDir, target, model, !!mcp, extras), ...options.env } },
   );
   fs.closeSync(fd);
   if (child.pid) write(path.join(bookDir, 'pid'), String(child.pid));
@@ -133,6 +135,41 @@ export function launchApproved(pr: number, issue: number): boolean {
   // needs it to roll this run's cost up under the issue.
   write(path.join(approvedDir(pr), 'issue'), String(issue));
   start(approvedDir(pr), approvedDir(pr), `/sloth:review ${pr} final`, { pr, issue }, path.join(approvedDir(pr), 'run.log'), { model: c.models.final });
+  return true;
+}
+
+/**
+ * Trigger 9: the QA sweep's test of one card — `/sloth:qa <issue>` on `models.qa`, in a worktree of the QA
+ * branch at `sha`, with the sweep's own budget. Held like an implement run, by the slots and the machine.
+ * The run's directory is `qa-<issue>`, apart from the issue's implement run: the two may exist at once and
+ * neither may touch the other's servers or worktree. The head under test is written beside the run, so the
+ * verdict can be tied to it, and a run that ended without a verdict counts against `retries` — reset when
+ * the branch moves on, since a new head is a new test.
+ */
+export async function launchQa(issue: number, sha: string, branch: string): Promise<boolean> {
+  const c = cfg();
+  const dir = qaDir(issue);
+  const why = held();
+  if (why) {
+    log(`QA #${issue} queued (${why})`);
+    return false;
+  }
+  const where = `${branch} @ ${sha.slice(0, 7)}`;
+  if (isDry()) {
+    log(`dry-run: would launch QA #${issue} on ${c.models.qa} (${where})`);
+    return true;
+  }
+  const retries = (readFile(path.join(dir, 'sha')) ?? '').trim() === sha ? counter(dir, 'retries') : 0;
+  for (const f of ['state.json', 'verdict', 'handled']) remove(path.join(dir, f));
+  write(path.join(dir, 'sha'), sha);
+  write(path.join(dir, 'retries'), String(retries + 1));
+  await run('git', ['-C', c.runnerRoot, 'fetch', '-q', 'origin'], 120_000);
+  log(`launch QA #${issue} on ${c.models.qa} (${where})`);
+  start(dir, dir, `/sloth:qa ${issue}`, { issue }, path.join(dir, 'run.log'), {
+    model: c.models.qa,
+    chrome: c.chrome,
+    extras: { budgetMinutes: c.qa.budgetMinutes, worktree: worktreeName('qa', issue) },
+  });
   return true;
 }
 

@@ -22,6 +22,8 @@ export interface Draft {
   needsHelp?: ColumnRef;
   codeReview?: ColumnRef;
   approved?: ColumnRef;
+  /** Opt-in: the column the daily QA sweep tests; `{id:'', name:''}` means none. */
+  qa?: ColumnRef;
   done?: ColumnRef;
   runnerRoot: string;
   /** The team: one admin, developers, testers (see server/roles.ts). */
@@ -49,6 +51,7 @@ export const draftFrom = (config: SlothConfig | null | undefined): Draft => ({
   codeReview: config?.statusField.columns.codeReview,
   // An older config has no Approved column; the wizard offers to create one.
   approved: config?.statusField.columns.approved?.id ? config.statusField.columns.approved : undefined,
+  qa: config?.statusField.columns.qa?.id ? config.statusField.columns.qa : undefined,
   done: config?.statusField.columns.done?.id ? config.statusField.columns.done : undefined,
   runnerRoot: config?.runnerRoot ?? '',
   admin: config?.roles.admin ?? '',

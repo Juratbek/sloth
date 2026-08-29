@@ -1,5 +1,5 @@
 /**
- * The home panel's mirror of the GitHub board: Sloth's six columns in pipeline order, the cards on
+ * The home panel's mirror of the GitHub board: Sloth's seven columns in pipeline order, the cards on
  * them, and what Sloth's newest run on each card is doing. It is a *mirror* — the view is built from
  * the board the loop already read (`runner/board-snapshot.ts`), never from a fetch of its own, and
  * nothing in the UI writes back to GitHub.
@@ -26,7 +26,7 @@ export const SKIP_LABEL = 'Sloth: skip';
 export const skipped = (item: { labels: string[] }): boolean => item.labels.includes(SKIP_LABEL);
 
 /** Sloth's columns, always in this order — the pipeline, not the order the GitHub board happens to be in. */
-export const PIPELINE: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved', 'done'];
+export const PIPELINE: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved', 'qa', 'done'];
 
 /** How far back Done looks. A closed card older than this is archive, not this week's work. */
 export const DONE_DAYS = 7;
