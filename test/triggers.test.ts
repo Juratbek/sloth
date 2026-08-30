@@ -364,6 +364,26 @@ describe('reap', () => {
     expect(exists(statePath('reviewed', '6-def'))).toBe(true);
     expect(exists(statePath('paused_until'))).toBe(false);
   });
+  it('drops the QA head marker when a hung QA run is killed, and keeps a hung review’s', async () => {
+    // Kills are stubbed out so the "live" hung sessions can be killed without taking the test down with them.
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    try {
+      makeSession('qa', 9, { pid: '12345', 'state.json': { state: 'working', since: 1 } });
+      makeSession('review', 5, { pid: '12346', 'state.json': { state: 'working', since: 1 } });
+      fs.mkdirSync(statePath('qa'), { recursive: true });
+      fs.writeFileSync(statePath('qa', '9-abc'), '');
+      fs.mkdirSync(statePath('reviewed'), { recursive: true });
+      fs.writeFileSync(statePath('reviewed', '5-abc'), '');
+      await reap();
+      expect(exists(statePath('qa', '9-abc'))).toBe(false);
+      expect(exists(statePath('reviewed', '5-abc'))).toBe(true);
+      const logged = readLog().join('\n');
+      expect(logged).toMatch(/QA #9 stopped: hung past the budget/);
+      expect(logged).toMatch(/QA #9 will be tested again/);
+    } finally {
+      kill.mockRestore();
+    }
+  });
 });
 
 describe('stop', () => {
