@@ -9,6 +9,7 @@ import { mcpConfig } from './browser';
 import { runHeader } from './exits';
 import { run } from './gh';
 import { isDry, log, readFile, remove, write } from './log';
+import { cleanup } from './cleanup';
 import { stopPreview } from './preview';
 import { APPEND_PROMPT, sessionEnv, type SessionExtras, type Target } from './session-env';
 import { approvedDir, counter, issueDir, qaDir, slotsFull, worktreeName } from './session-dirs';
@@ -92,8 +93,10 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
     log(`dry-run: would launch #${issue}${order ? ` (${order.slice(0, 120)})` : ''}`);
     return true;
   }
-  // One environment per issue: a preview of the previous run makes way for the new one.
+  // One environment per issue: a preview of the previous run makes way for the new one, and a crashed
+  // run's leftovers go too — stopPreview alone skips a run that never wrote preview.json.
   await stopPreview(issue, 'a new session starts on the issue');
+  await cleanup(issue);
   fs.mkdirSync(path.join(dir, 'inbox'), { recursive: true });
   remove(path.join(dir, 'state.json'));
   remove(path.join(dir, 'blocked'));

@@ -122,6 +122,8 @@ export async function reap(): Promise<void> {
         if ((stateOf(dir).state ?? 'working') === 'working') {
           if (kind === 'issue') {
             log(`${name} ended without finishing — ${exitLine(recordExit(dir, 'the session ended on its own'))}`);
+            // A run killed mid-work (OOM, crash) leaves its servers up; only a preview may keep them.
+            if (!fs.existsSync(path.join(dir, 'preview.json'))) await cleanup(target);
           } else {
             for (const f of markerFiles(kind, target)) remove(statePath(MARKERS[kind], f));
             // A QA run that died mid-test may have left its app up; a review has nothing to leave.
