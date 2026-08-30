@@ -89,7 +89,8 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
   }
   remove(path.join(dir, 'pid'));
   if (kind === 'qa') {
-    // Its app and worktree are its own; the card stays in QA and the head keeps its marker, like a stopped review.
+    // Its app and worktree are its own; the card stays in QA and the head keeps its marker, like a stopped
+    // review — except a budget kill, where `reap` drops the marker so the sweep tests the card again.
     await cleanupRun('qa', target);
     log(`QA #${target} stopped: ${reason}`);
     return true;
@@ -109,7 +110,9 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
  * while still `working` finished nothing: how it ended is recorded before trigger 2 relaunches it and
  * `launch` wipes its state, so the comment that finally parks the card can say what each run got to.
  * A review that died the same way posted no verdict, but `launchApproved` already marked its head as
- * reviewed — the marker goes, so trigger 4 gives the head the review it never got.
+ * reviewed — the marker goes, so trigger 4 gives the head the review it never got. A hung QA run is
+ * killed with no verdict either, so its head marker goes the same way — `launchQa` counts the retry, and
+ * the sweep gives the card up once they run out, instead of stranding it in QA with a head it never tested.
  */
 export async function reap(): Promise<void> {
   for (const { kind, target, dir } of runDirs()) {
@@ -144,7 +147,12 @@ export async function reap(): Promise<void> {
     }
     const budget = (kind === 'qa' ? cfg().qa.budgetMinutes : cfg().budgetMinutes) * 60;
     if ((stateOf(dir).state ?? 'working') !== 'working' || nowSec() - startedAt(dir) <= budget + KILL_GRACE) continue;
-    await stop(kind, target, 'hung past the budget', 'the run for this issue hung past its time budget and was stopped by Sloth.');
+    const stopped = await stop(kind, target, 'hung past the budget', 'the run for this issue hung past its time budget and was stopped by Sloth.');
+    // A hang is not a verdict: the head's marker goes so the sweep tests the card again, `retries` allowing.
+    if (stopped && kind === 'qa' && !isDry()) {
+      for (const f of markerFiles(kind, target)) remove(statePath(MARKERS.qa, f));
+      log(`QA #${target} will be tested again`);
+    }
   }
 }
 

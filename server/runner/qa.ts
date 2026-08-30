@@ -100,7 +100,7 @@ export async function qaSweep(board: BoardItem[]): Promise<void> {
   for (const { number: issue } of cards) {
     const marker = statePath(MARKERS.qa, `${issue}-${sweep.sha}`);
     if (fs.existsSync(marker) || dirAlive(qaDir(issue))) continue;
-    // `reap` drops the marker of a run that died without a verdict, so the card is tried again — this often, no more.
+    // `reap` drops the marker of a run that died — or hung and was killed — without a verdict, so the card is tried again — this often, no more.
     if (counter(qaDir(issue), 'retries') > c.maxRetries) {
       log(`QA #${issue} given up: its test ended without a verdict ${c.maxRetries + 1} times on ${sweep.sha.slice(0, 7)}`);
       if (!isDry()) write(marker, '');
