@@ -108,10 +108,13 @@ export function ModelPicker({ value, onChange, label }: { value: string; onChang
   const choices = useModels();
   const listed = choices.some((c) => c.id === value);
   const [custom, setCustom] = useState(!listed);
-  // A restore or a discard that lands on a listed model closes the custom field.
-  useEffect(() => {
-    if (listed) setCustom(false);
-  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A restore or a discard that lands on a listed model closes the custom field — adjusted while
+  // rendering, so no effect is needed for what is not a subscription to anything outside React.
+  const [prev, setPrev] = useState(value);
+  if (value !== prev) {
+    setPrev(value);
+    if (listed && custom) setCustom(false);
+  }
   const providers = [...new Map(choices.map((c) => [c.provider, c.providerLabel])).entries()];
   return (
     <div className="w-full space-y-1.5">

@@ -18,13 +18,8 @@
 export interface Price {
   input: number;
   output: number;
-  /**
-   * What a cache read and the two cache writes cost as a multiple of `input`. Absent takes the
-   * provider's `cache`, which is what nearly every model of a provider uses.
-   */
+  /** What a cache read costs as a multiple of `input`. Absent takes the provider's `cache.read`, which is what nearly every model of a provider uses. */
   cacheRead?: number;
-  cacheWrite5m?: number;
-  cacheWrite1h?: number;
 }
 
 /** How a provider bills cached prompts, as multiples of the input price. */
@@ -48,7 +43,7 @@ export interface Provider {
   baseUrl: string;
   /** The environment variable holding this provider's key; empty means it needs none. Its presence is what "available" means. */
   tokenEnv: string;
-  /** Where to get a key, shown against the models this machine's environment cannot reach. */
+  /** Where a key for `tokenEnv` comes from — the row's own reference, for whoever sets the variable. */
   docsUrl: string;
   /**
    * Environment the provider needs beyond the base URL and the key. Claude Code resolves the aliases a
@@ -118,6 +113,15 @@ export const PROVIDERS: Provider[] = [
   },
 ];
 
+/** The one walk of the price table: a model's list price together with the provider that charges it. */
+export function listPrice(model: string): { provider: Provider; price: Price } | undefined {
+  for (const provider of PROVIDERS) {
+    const price = provider.prices.find(([re]) => re.test(model))?.[1];
+    if (price) return { provider, price };
+  }
+  return undefined;
+}
+
 /**
  * The provider a `--model` value belongs to, by the picker's own ids first and then by the price table —
  * so a model id pinned to a version (`glm-5.3-flash-…`) still routes. Undefined for anything unrecognised,
@@ -126,7 +130,7 @@ export const PROVIDERS: Provider[] = [
 export function providerOf(model: string): Provider | undefined {
   const m = model.trim();
   if (!m) return undefined;
-  return PROVIDERS.find((p) => p.models.some((o) => o.id === m)) ?? PROVIDERS.find((p) => p.prices.some(([re]) => re.test(m)));
+  return PROVIDERS.find((p) => p.models.some((o) => o.id === m)) ?? listPrice(m)?.provider;
 }
 
 /** Whether this machine's environment can reach the provider at all — Anthropic, needing no key of its own, always can. */
@@ -140,15 +144,15 @@ export interface ModelChoice extends ModelOption {
   available: boolean;
   /** The environment variable that would make it available — what to tell whoever wants it. */
   tokenEnv: string;
-  docsUrl: string;
 }
+
+/** A provider's models as the picker shows them — the one shape both the server and the hook's fallback build. */
+export const toChoices = (p: Provider, available: boolean): ModelChoice[] =>
+  p.models.map((m) => ({ ...m, provider: p.id, providerLabel: p.label, available, tokenEnv: p.tokenEnv }));
 
 /** Every model Sloth knows, in provider order, judged against the environment Sloth itself is running in. */
 export function modelChoices(env: NodeJS.ProcessEnv): ModelChoice[] {
-  return PROVIDERS.flatMap((p) => {
-    const available = providerReady(p, env);
-    return p.models.map((m) => ({ ...m, provider: p.id, providerLabel: p.label, available, tokenEnv: p.tokenEnv, docsUrl: p.docsUrl }));
-  });
+  return PROVIDERS.flatMap((p) => toChoices(p, providerReady(p, env)));
 }
 
 /**

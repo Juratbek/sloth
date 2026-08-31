@@ -1,4 +1,4 @@
-import { PROVIDERS, type Price } from './models';
+import { listPrice, type Price } from './models';
 import type { Rec } from './transcripts';
 
 /**
@@ -6,13 +6,12 @@ import type { Rec } from './transcripts';
  * them (`models.ts`); this file is only the arithmetic, so a new provider needs nothing here.
  */
 
-/** A model's price together with the cache multiples that apply to it — its own, or its provider's. */
+/** A model's price together with the cache multiples that apply to it — its own read rate, its provider's writes. */
 function rated(model: string): { price: Price; read: number; write5m: number; write1h: number } | undefined {
-  for (const p of PROVIDERS) {
-    const price = p.prices.find(([re]) => re.test(model))?.[1];
-    if (price) return { price, read: price.cacheRead ?? p.cache.read, write5m: price.cacheWrite5m ?? p.cache.write5m, write1h: price.cacheWrite1h ?? p.cache.write1h };
-  }
-  return undefined;
+  const hit = listPrice(model);
+  if (!hit) return undefined;
+  const { provider, price } = hit;
+  return { price, read: price.cacheRead ?? provider.cache.read, write5m: provider.cache.write5m, write1h: provider.cache.write1h };
 }
 
 export const priceOf = (model: string): Price | undefined => rated(model)?.price;
