@@ -106,6 +106,24 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
 }
 
 /**
+ * What a run that died before its own teardown leaves behind: its dev server, Redis and database, all
+ * still up and holding the machine's memory and disk. An implement run or a QA test is cleaned up like
+ * the session itself would have; a review starts nothing and has nothing to leave. An implement run
+ * that ended with `preview.json` written is not swept — that app was handed over on purpose, and
+ * `previews` tunnels it or, with previews off, cleans it up itself.
+ */
+async function sweepDead(kind: Kind, target: number): Promise<void> {
+  if (kind === 'qa') {
+    await cleanupRun('qa', target);
+    return;
+  }
+  if (kind !== 'issue') return;
+  const dir = issueDir(target);
+  if (fs.existsSync(path.join(dir, 'preview.json')) || fs.existsSync(path.join(dir, 'preview-state.json'))) return;
+  await cleanup(target);
+}
+
+/**
  * Forgets dead sessions, notices usage-limit exits, kills and cleans up hung ones. An issue run that died
  * while still `working` finished nothing: how it ended is recorded before trigger 2 relaunches it and
  * `launch` wipes its state, so the comment that finally parks the card can say what each run got to.
@@ -125,14 +143,11 @@ export async function reap(): Promise<void> {
         if ((stateOf(dir).state ?? 'working') === 'working') {
           if (kind === 'issue') {
             log(`${name} ended without finishing — ${exitLine(recordExit(dir, 'the session ended on its own'))}`);
-            // A run killed mid-work (OOM, crash) leaves its servers up; only a preview may keep them.
-            if (!fs.existsSync(path.join(dir, 'preview.json'))) await cleanup(target);
           } else {
             for (const f of markerFiles(kind, target)) remove(statePath(MARKERS[kind], f));
-            // A QA run that died mid-test may have left its app up; a review has nothing to leave.
-            if (kind === 'qa') await cleanupRun('qa', target);
             log(`${name} ended without a verdict — ${kind === 'qa' ? 'the card will be tested again' : 'the head will be reviewed again'}`);
           }
+          await sweepDead(kind, target);
         }
         continue;
       }
@@ -143,6 +158,7 @@ export async function reap(): Promise<void> {
         text: `${name} stopped on a Claude usage limit — Sloth waits ${LIMIT_PAUSE / 60} minutes, the card keeps its place`,
       });
       if (kind !== 'issue') for (const f of markerFiles(kind, target)) remove(statePath(MARKERS[kind], f));
+      await sweepDead(kind, target);
       continue;
     }
     const budget = (kind === 'qa' ? cfg().qa.budgetMinutes : cfg().budgetMinutes) * 60;

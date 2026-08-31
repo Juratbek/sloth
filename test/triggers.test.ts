@@ -346,6 +346,31 @@ describe('reap', () => {
     expect(logged).toMatch(/issue-1 ended without finishing — the session ended on its own at step 4 \(running the tester\)/);
     expect(logged).toMatch(/review-5 ended without a verdict — the head will be reviewed again/);
   });
+  it('cleans up the servers, database and worktree of a run that died mid-way, working or on the limit', async () => {
+    fs.mkdirSync(path.join(configure().worktreesDir, 'issue-1'), { recursive: true });
+    makeSession('issue', 1, { pid: '2000000000', 'state.json': { state: 'working', servers: 'running' }, 'run.log': 'died\n', 'dev.pid': '2000000001\n', 'redis.pid': '2000000002\n', 'demo.db': 'sloth_1\n' });
+    makeSession('issue', 2, { pid: '2000000000', 'run.log': 'Claude AI usage limit reached|123\n', 'demo.db': 'sloth_2\n' });
+    makeSession('qa', 3, { pid: '2000000000', 'run.log': 'usage limit reached\n', 'demo.db': 'sloth_qa_3\n' });
+    await reap();
+    for (const n of [1, 2]) {
+      expect(exists(sessionDir('issue', n), 'demo.db')).toBe(false);
+      expect(exists(sessionDir('issue', n), 'dev.pid')).toBe(false);
+      expect(exists(sessionDir('issue', n), 'redis.pid')).toBe(false);
+    }
+    expect(exists(sessionDir('qa', 3), 'demo.db')).toBe(false);
+    expect(called(/dropdb --if-exists sloth_1$/)).toHaveLength(1);
+    expect(called(/dropdb --if-exists sloth_2$/)).toHaveLength(1);
+    expect(called(/dropdb --if-exists sloth_qa_3$/)).toHaveLength(1);
+    expect(called(/worktree remove .*issue-1 --force/)).toHaveLength(1);
+  });
+  it('leaves the app of a dead run that handed a preview over to the preview trigger', async () => {
+    makeSession('issue', 1, { pid: '2000000000', 'state.json': { state: 'working' }, 'run.log': 'died\n', 'demo.db': 'sloth_1\n', 'preview.json': { url: 'http://localhost:3000' } });
+    makeSession('issue', 2, { pid: '2000000000', 'state.json': { state: 'done', servers: 'preview' }, 'run.log': 'done\n', 'demo.db': 'sloth_2\n' });
+    await reap();
+    expect(exists(sessionDir('issue', 1), 'demo.db')).toBe(true);
+    expect(exists(sessionDir('issue', 2), 'demo.db')).toBe(true);
+    expect(called(/dropdb/)).toHaveLength(0);
+  });
   it('drops the review marker when a review died on the limit, so the head is reviewed again', async () => {
     makeSession('review', 5, { pid: '2000000000', 'run.log': 'usage limit reached\n' });
     fs.mkdirSync(statePath('reviewed'), { recursive: true });
