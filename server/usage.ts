@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from './config';
 import { costOf } from './pricing';
-import { readRecords, type Rec } from './transcripts';
+import { readNew } from './transcripts';
 import type { ModelCost, UsageBucket, UsageSeries } from './types';
 
 const HOUR = 3_600_000;
@@ -33,32 +33,63 @@ function transcriptFiles(): string[] {
 
 /** Per-model dollars; `null` once a model with no list price shows up, so the headline can say so. */
 type ModelSums = Map<string, number | null>;
+interface HourSums extends UsageBucket {
+  byModel: ModelSums;
+}
 
-/** One assistant record's spend, added to its hour and its model. Mirrors `summarize`: one row per requestId. */
-function accumulate(records: Rec[], seen: Set<string>, sums: Map<number, UsageBucket>, models: ModelSums, since: number) {
+/**
+ * One file's spend by hour, folded in as the file grows — the records are read once and let go. Each
+ * hour keeps its own per-model dollars, so a window that starts mid-way can be summed without re-reading.
+ */
+const folds = new Map<string, { offset: number; seen: Set<string>; hours: Map<number, HourSums> }>();
+
+function fold(file: string): Map<number, HourSums> {
+  let f = folds.get(file);
+  if (!f) folds.set(file, (f = { offset: 0, seen: new Set(), hours: new Map() }));
+  const { records, offset } = readNew(file, f.offset);
+  if (offset < f.offset) {
+    f.seen.clear();
+    f.hours.clear();
+  }
+  f.offset = offset;
   for (const r of records) {
     if (r.type !== 'assistant' || !r.message?.usage || !r.timestamp) continue;
     const at = Date.parse(r.timestamp);
-    if (!Number.isFinite(at) || at < since) continue;
+    if (!Number.isFinite(at)) continue;
     const key: string = r.requestId ?? r.uuid;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    if (f.seen.has(key)) continue;
+    f.seen.add(key);
     const hour = Math.floor(at / HOUR);
     const u = r.message.usage;
-    const b = sums.get(hour) ?? { hour: '', newInput: 0, cacheRead: 0, output: 0, cost: 0 };
+    const b = f.hours.get(hour) ?? { hour: '', newInput: 0, cacheRead: 0, output: 0, cost: 0, byModel: new Map() };
     const newInput = (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
     const cacheRead = u.cache_read_input_tokens ?? 0;
     const output = u.output_tokens ?? 0;
     b.newInput += newInput;
     b.cacheRead += cacheRead;
     b.output += output;
-    sums.set(hour, b);
+    f.hours.set(hour, b);
     // `<synthetic>` rows carry no tokens; listing them as unpriced would only add noise to the headline.
     if (newInput + cacheRead + output === 0) continue;
     const model: string = r.message.model ?? 'unknown';
     const cost = costOf(model, u);
     b.cost += cost ?? 0;
-    models.set(model, cost === undefined ? null : (models.get(model) ?? 0) + cost);
+    b.byModel.set(model, cost === undefined ? null : (b.byModel.get(model) ?? 0) + cost);
+  }
+  return f.hours;
+}
+
+/** Adds one file's hours from `firstHour` on into the totals. */
+function accumulate(hours: Map<number, HourSums>, sums: Map<number, UsageBucket>, models: ModelSums, firstHour: number) {
+  for (const [hour, h] of hours) {
+    if (hour < firstHour) continue;
+    const b = sums.get(hour) ?? { hour: '', newInput: 0, cacheRead: 0, output: 0, cost: 0 };
+    b.newInput += h.newInput;
+    b.cacheRead += h.cacheRead;
+    b.output += h.output;
+    b.cost += h.cost;
+    sums.set(hour, b);
+    for (const [model, cost] of h.byModel) models.set(model, cost === null || models.get(model) === null ? null : (models.get(model) ?? 0) + cost);
   }
 }
 
@@ -73,10 +104,9 @@ export function usageSeries(days: number): UsageSeries {
   const firstHour = lastHour - days * 24 + 1;
   const sums = new Map<number, UsageBucket>();
   const models: ModelSums = new Map();
-  const seen = new Set<string>();
   for (const file of transcriptFiles()) {
     try {
-      accumulate(readRecords(file), seen, sums, models, firstHour * HOUR);
+      accumulate(fold(file), sums, models, firstHour);
     } catch {
       /* unreadable transcript */
     }

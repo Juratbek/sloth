@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
+import { forgetTranscript } from '../transcripts';
 import { run } from './gh';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
 import { statePath } from './markers';
@@ -38,6 +39,7 @@ const previewing = (issue: number) => fs.existsSync(path.join(issueDir(issue), '
 function removeTranscript(dir: string): void {
   const id = readFile(path.join(dir, 'session_id'))?.trim();
   if (!id || !/^[\w-]+$/.test(id)) return;
+  forgetTranscript(path.join(cfg().transcriptsDir, `${id}.jsonl`));
   remove(path.join(cfg().transcriptsDir, `${id}.jsonl`));
   remove(path.join(cfg().transcriptsDir, id));
 }

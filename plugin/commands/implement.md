@@ -210,7 +210,13 @@ must be gone, and `$SLOTH_SCREENSHOTS_DIR`. Its task:
 
 A finding is a bug: fix it (**orchestrator:** hand it to the implementor verbatim), re-run the affected
 checks of Step 4, and ask the tester to re-test — **and to re-screenshot what changed**, deleting the stale
-PNGs first (`rm -f`) so the set in `$SLOTH_SCREENSHOTS_DIR` is only what is true now. Its report is the
+PNGs first (`rm -f`) so the set in `$SLOTH_SCREENSHOTS_DIR` is only what is true now.
+
+**Then stop the app** — unless `SLOTH_PREVIEW_HOURS` is above `0`, when it stays up for the hand-off in
+Step 6. The dev servers are the run's biggest cost in memory, and the commit, the PR and the reviewer rounds
+do not need them: kill every pid in `$SESSION_DIR/dev.pid` and `redis.pid` (their process groups too —
+`kill -- -<pid>` then `kill <pid>`), empty both files, `SERVERS=stopped`. Keep the database. A re-test in
+Step 5.5 brings the app back up the same way, on the same database. Its report is the
 browser part of the PR's `## Verification`; its files become the PR's `## Screenshots` (Step 5). A tester that
 cannot reach the screen at all is a failed Step 4 (Step Q when you cannot fix it). Skip this step only when
 the change has no screen — an API-only fix, a script — and say so in the PR.
@@ -288,8 +294,8 @@ wait window. Never open or finish a PR built on a guess.
 
 ## Step 7 — Clean up, report
 
-Teardown per the `session` skill: stop this session's processes and database, remove the worktree,
-`set_state done`. After a preview hand-off (Step 6) skip the stopping and removing — only `set_state done`
+Teardown per the `session` skill: stop this session's processes (if any are still up) and drop its
+database, `set_state done`; the worktree slot stays for the server to return. After a preview hand-off (Step 6) skip the stopping and removing — only `set_state done`
 with `SERVERS=preview`; the server takes the environment down later. The branch stays on the remote.
 
 Finish with the report — it is the transcript's last message and the monitor shows it: branch, PR URL, files

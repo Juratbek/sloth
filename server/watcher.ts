@@ -16,6 +16,23 @@ const read = (f: string) => {
   }
 };
 const num = (f: string) => Number(read(f)?.trim() ?? 0) || 0;
+/** The last `bytes` of a file, read from the end — a run log is megabytes, and the UI shows its tail. */
+export function tailOf(f: string, bytes: number): string {
+  try {
+    const size = fs.statSync(f).size;
+    const fd = fs.openSync(f, 'r');
+    try {
+      const buf = Buffer.alloc(Math.min(size, bytes));
+      fs.readSync(fd, buf, 0, buf.length, size - buf.length);
+      return buf.toString('utf8');
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return '';
+  }
+}
+
 const mtime = (f: string) => {
   try {
     return fs.statSync(f).mtime;
@@ -74,7 +91,7 @@ export function listSessionDirs(): WatcherSession[] {
         blocked: fs.existsSync(path.join(d, 'blocked')),
         paused: pausedRun(d),
         issue: num(path.join(d, 'issue')) || undefined,
-        runLogTail: (read(path.join(d, 'run.log')) ?? '').slice(-4000),
+        runLogTail: tailOf(path.join(d, 'run.log'), 4000),
         inbox,
         updatedAt: updated?.toISOString(),
       },
