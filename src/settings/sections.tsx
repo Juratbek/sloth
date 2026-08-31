@@ -122,7 +122,7 @@ export function Sessions({ draft, patch }: SectionProps) {
       </Row>
       <Row
         label="Keep days"
-        hint="Finished runs older than this are deleted — their session directory and status replies. Transcripts belong to Claude Code and are left alone."
+        hint="Finished runs older than this are deleted — their session directory, their transcript under ~/.claude and their status replies."
       >
         <NumberInput value={draft.keepDays} onChange={(keepDays) => patch({ keepDays })} />
       </Row>
