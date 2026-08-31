@@ -163,8 +163,9 @@ export interface SlothConfig {
    */
   previewHours: number;
   /**
-   * How long a finished run is kept: its session directory, its worktree and the markers of the status
-   * replies it prompted. The transcripts belong to Claude Code and are never touched.
+   * How long a finished run is kept: its session directory, its transcript under `~/.claude/projects` and
+   * the markers of the status replies it prompted. Worktrees are not kept: a run's leftover per-issue
+   * checkout goes as soon as it is over, and the pool's slots are reused.
    */
   keepDays: number;
   /**
@@ -220,8 +221,8 @@ export const CONFIG_DEFAULTS = {
   watcherLog: '~/.sloth/watcher.log',
   mention: '@sloth',
   botPrefix: '**Sloth:**',
-  maxActive: 3,
-  maxAlive: 5,
+  maxActive: 2,
+  maxAlive: 3,
   minFreeMemory: 10,
   minIdleCpu: 5,
   minIdleDisk: 10,

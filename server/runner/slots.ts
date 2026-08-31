@@ -32,6 +32,12 @@ function holds(lease: string): boolean {
   return kind === 'issue' && fs.existsSync(path.join(issueDir(target), 'preview-state.json'));
 }
 
+/** Whether a slot is held by a run that still needs it; a stale lease or none at all counts as free. */
+export function slotInUse(name: string): boolean {
+  const lease = readFile(leaseFile(name))?.trim();
+  return !!lease && holds(lease);
+}
+
 /** The slot a run holds, if any. */
 export function slotOf(kind: Kind, target: number): string | undefined {
   const me = runName(kind, target);

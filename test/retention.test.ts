@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setDry } from '../server/runner/log';
 import { prune } from '../server/runner/retention';
 import { called, resetGh } from './gh-mock';
+import { cfg } from '../server/config';
 import { alivePid, configure, exists, makeSession, readLog, sessionDir, statePath, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
@@ -33,7 +34,7 @@ describe('prune', () => {
   it('deletes the directories and markers of runs nobody has touched in keepDays', async () => {
     age(makeSession('issue', 1, { 'state.json': { state: 'done' }, 'run.log': 'old' }), 40);
     age(makeSession('review', 2, { 'run.log': 'old' }), 40);
-    makeSession('issue', 3, { 'run.log': 'fresh' });
+    makeSession('issue', 3, { pid: alivePid(), 'run.log': 'fresh' });
     age(makeWorktree(1), 40);
     makeWorktree(3);
     fs.mkdirSync(statePath('status', '1-99'), { recursive: true });
@@ -72,6 +73,52 @@ describe('prune', () => {
     expect(called(/worktree remove/)).toHaveLength(0);
   });
 
+  it('deletes the transcript of a pruned run and of a pruned status reply, and keeps the others', async () => {
+    const t = cfg().transcriptsDir;
+    fs.mkdirSync(path.join(t, 'aaa', 'subagents'), { recursive: true });
+    for (const id of ['aaa', 'bbb', 'ccc']) fs.writeFileSync(path.join(t, `${id}.jsonl`), '{}\n');
+    fs.writeFileSync(path.join(t, 'aaa', 'subagents', 'agent-1.jsonl'), '{}\n');
+    age(makeSession('issue', 1, { session_id: 'aaa\n', 'run.log': 'old' }), 40);
+    makeSession('issue', 2, { session_id: 'bbb', 'run.log': 'fresh' });
+    fs.mkdirSync(statePath('status', '1-99'), { recursive: true });
+    fs.writeFileSync(statePath('status', '1-99', 'session_id'), 'ccc');
+    age(statePath('status', '1-99'), 40);
+
+    await prune();
+
+    expect(exists(t, 'aaa.jsonl')).toBe(false);
+    expect(exists(t, 'aaa')).toBe(false);
+    expect(exists(t, 'bbb.jsonl')).toBe(true);
+    expect(exists(t, 'ccc.jsonl')).toBe(false);
+  });
+
+  it('removes a per-issue worktree as soon as its run is over, however young', async () => {
+    makeSession('issue', 1, { 'state.json': { state: 'done' }, 'run.log': 'just finished' });
+    makeSession('qa', 2, { pid: alivePid() });
+    makeWorktree(1);
+    fs.mkdirSync(path.join(cfg().worktreesDir, 'qa-2'), { recursive: true });
+    await prune();
+    expect(called(/worktree remove .*issue-1 --force/)).toHaveLength(1);
+    expect(called(/worktree remove .*qa-2/)).toHaveLength(0);
+    expect(exists(sessionDir('issue', 1))).toBe(true); // the session directory keeps its keepDays
+  });
+
+  it('removes a pool slot past maxActive that nobody holds, keeps the pool and a held slot', async () => {
+    configure({ keepDays: 30, maxActive: 2 });
+    for (const n of [1, 2, 3, 4]) fs.mkdirSync(path.join(cfg().worktreesDir, `slot-${n}`), { recursive: true });
+    fs.mkdirSync(statePath('slots'), { recursive: true });
+    fs.writeFileSync(statePath('slots', 'slot-3'), 'issue-7');
+    fs.writeFileSync(statePath('slots', 'slot-4'), 'issue-8');
+    makeSession('issue', 7, { pid: alivePid() });
+    await prune();
+    expect(called(/worktree remove .*slot-1/)).toHaveLength(0);
+    expect(called(/worktree remove .*slot-2/)).toHaveLength(0);
+    expect(called(/worktree remove .*slot-3/)).toHaveLength(0); // held by a live run
+    expect(called(/worktree remove .*slot-4 --force/)).toHaveLength(1);
+    expect(exists(statePath('slots', 'slot-4'))).toBe(false);
+    expect(exists(statePath('slots', 'slot-3'))).toBe(true);
+  });
+
   it('sweeps at most once an hour', async () => {
     await prune();
     age(makeSession('issue', 1, {}), 40);
@@ -106,7 +153,7 @@ describe('prune', () => {
     expect(called(/worktree/)).toHaveLength(0);
     const lines = readLog().join('\n');
     expect(lines).toMatch(/dry-run: would delete the session directory of issue-1/);
-    expect(lines).toMatch(/dry-run: would remove the worktree of #1/);
+    expect(lines).toMatch(/dry-run: would remove the worktree issue-1/);
     expect(lines).toMatch(/dry-run: would prune 1 seen marker/);
   });
 });
