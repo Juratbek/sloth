@@ -145,7 +145,9 @@ export async function qaVerdicts(): Promise<void> {
       await notify('qaPassed', { issue, column: col.done.name, text: `#${issue} passed the QA sweep on ${where}` });
     } else if (verdict === 'failed') {
       if (!(await moveCard(issue, col.inProgress.id))) continue;
-      for (const f of ['retries', 'blocked']) remove(path.join(issueDir(issue), f));
+      // A stale handoff note goes with them: the new run works from the QA findings on the issue, not
+      // from where a run long over thought it stopped.
+      for (const f of ['retries', 'blocked', 'handoff.md']) remove(path.join(issueDir(issue), f));
       forgetExits(issueDir(issue));
       log(`QA #${issue} failed on ${where} — card to ${col.inProgress.name}, a new implement run reads the findings`);
       await notify('qaFailed', { issue, column: col.inProgress.name, text: `#${issue} failed the QA sweep on ${where} — back to ${col.inProgress.name}` });

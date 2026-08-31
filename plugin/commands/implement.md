@@ -62,6 +62,15 @@ Then **claim the card**: move it to `$SLOTH_COL_IN_PROGRESS_NAME` (`$SLOTH_COL_I
 `item-edit` per `board`, wrapped in `retry`) before reading further, so a second run cannot take the issue.
 Keep `ITEM_ID` and `ISSUE_URL`.
 
+**A handoff from a dead run.** `$SESSION_DIR/handoff.md`, when it exists, is the note the previous run on
+this issue left before it died: `head:`, `done:`, `next:`, `don't redo:` (`session` skill). Once the wired
+PR is known (Step 1), compare its `head:` with the current head of the PR's branch — or, with no PR yet,
+with the branch's tip (`git ls-remote origin`). A match means the note is current: continue from its
+`next:`, trust `done:` and `don't redo:`, and skip the discovery it already paid for. No match — the
+branch moved since — `rm -f` it and start from scratch. Either way, from here on **rewrite `handoff.md`
+at every step boundary**, the same moment `state.json` is written, so the run that continues this one
+starts where it stopped instead of re-deriving everything.
+
 ## Step 1 — Read and scope
 
 ```bash
@@ -312,6 +321,7 @@ the server keeps them warm for the next run; otherwise stop this session's proce
 up) and drop its database. Either way `set_state done`; the worktree slot stays for the server to
 return. After a preview hand-off (Step 6) skip the stopping and removing — only `set_state done`
 with `SERVERS=preview`; the server takes the environment down later. The branch stays on the remote.
+Delete `$SESSION_DIR/handoff.md` — a finished run leaves no handoff.
 
 Finish with the report — it is the transcript's last message and the monitor shows it: branch, PR URL, files
 changed, what Step 4 and the tester verified and what they did not, how many screenshots the PR carries, review rounds, where the card ended up. For a blocked run:
