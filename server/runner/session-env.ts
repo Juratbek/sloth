@@ -2,6 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { cfg } from '../config';
 import { EXTRA_DIRS } from '../install';
+import { providerEnv } from '../models';
 import { requiredStack } from '../stack-detect';
 import { ASSETS_BRANCH } from './browser';
 import { knownColumns } from './columns';
@@ -45,6 +46,9 @@ export function sessionEnv(dir: string, target: Target, model: string, chrome: b
   return {
     ...process.env,
     PATH: [...new Set([...(process.env.PATH ?? '').split(':'), ...PATH_EXTRA])].filter(Boolean).join(':'),
+    // A model that is not Anthropic's is reached by pointing Claude Code at its provider (`models.ts`);
+    // for Anthropic's own this is empty and the session keeps the machine's Claude Code credentials.
+    ...providerEnv(model, process.env),
     SLOTH_SESSION_DIR: dir,
     ...(worktree ? { SLOTH_WORKTREE: path.join(c.worktreesDir, worktree) } : {}),
     // The warm-slot contract (`warm.ts`): `SLOTH_WARM_SLOTS` tells the session whether to leave its
