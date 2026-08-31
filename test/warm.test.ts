@@ -151,6 +151,21 @@ describe('claiming a stack', () => {
     expect(env.SLOTH_WARM_SAME).toBeUndefined();
   });
 
+  it('a killed run warms the slot tainted — inherited on the same head as warm, never as same', async () => {
+    makeSession('issue', 9, { 'dev.pid': `${alivePid()}\n`, 'demo.db': 'demo_9\n' });
+    await leaseSlot('issue', 9);
+    fs.mkdirSync(slotDir(1), { recursive: true });
+    onCommand(/rev-parse --abbrev-ref HEAD/, 'sloth/issue-9-fix\n');
+    onCommand(/rev-parse origin\/sloth\/issue-9-fix/, 'abc123\n');
+    onCommand(/rev-parse HEAD/, 'abc123\n'); // the head never moved — only the kill taints it
+    await cleanupRun('issue', 9, true); // what `stop` does for a hung or stopped run
+    expect(warmOf('slot-1')?.head).toBeUndefined();
+    expect(await launch(9)).toBe(true);
+    const env = spawned[0].options.env;
+    expect(env.SLOTH_WARM).toBe('1');
+    expect(env.SLOTH_WARM_SAME).toBeUndefined(); // the retry reseeds instead of trusting the interrupted data
+  });
+
   it('a warm stack with a dead process is taken down whole and the run boots cold', async () => {
     const pid = sleeper(); // the survivor, killed along with the rest
     fs.mkdirSync(slotDir(1), { recursive: true });

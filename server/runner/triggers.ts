@@ -94,7 +94,9 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
   if (kind === 'qa') {
     // Its app and worktree are its own; the card stays in QA and the head keeps its marker, like a stopped
     // review — except a budget kill, where `reap` drops the marker so the sweep tests the card again.
-    await cleanupRun('qa', target);
+    // A killed run's database may hold a mutation it never finished: the stack warms the slot tainted,
+    // so the next test of the card reseeds instead of trusting it.
+    await cleanupRun('qa', target, true);
     log(`QA #${target} stopped: ${reason}`);
     return true;
   }
@@ -102,7 +104,7 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
     log(`review PR #${target} stopped: ${reason}`);
     return true;
   }
-  await cleanup(target);
+  await cleanup(target, true);
   log(`#${target} stopped: ${reason}`);
   await park(target, why, exitReport(dir));
   return true;

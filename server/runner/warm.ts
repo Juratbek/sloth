@@ -57,8 +57,13 @@ const pidsIn = (file: string): number[] =>
  * signal or drop what is now the slot's — and the worktree's branch and head are recorded so the next
  * lease can tell a retry from new work. False when there is nothing alive to keep: the caller then
  * cleans up the leftovers as it always has.
+ *
+ * `tainted` is for a run that was killed rather than ended — hung past its budget, stopped from the
+ * monitor. Its servers are as good as anyone's, but its database may hold a mutation it never finished:
+ * the stack is kept warm without its head, so the next lease of the same issue reseeds instead of
+ * reusing the data untouched.
  */
-export async function handOver(kind: Kind, target: number, slot: string): Promise<boolean> {
+export async function handOver(kind: Kind, target: number, slot: string, tainted = false): Promise<boolean> {
   const dir = dirOf(kind, target);
   const dev = pidsIn(path.join(dir, 'dev.pid'));
   const redis = pidsIn(path.join(dir, 'redis.pid'));
@@ -69,7 +74,7 @@ export async function handOver(kind: Kind, target: number, slot: string): Promis
   const head = await run('git', ['-C', wt, 'rev-parse', 'HEAD'], 30_000);
   const branch = br.ok && br.out.trim() !== 'HEAD' ? br.out.trim() : undefined;
   const db = readFile(path.join(dir, 'demo.db'))?.trim() || undefined;
-  const state: WarmState = { run: `${kind}-${target}`, branch, head: head.ok ? head.out.trim() : undefined, dev, redis, db, at: nowSec() };
+  const state: WarmState = { run: `${kind}-${target}`, branch, head: !tainted && head.ok ? head.out.trim() : undefined, dev, redis, db, at: nowSec() };
   write(warmFile(slot), JSON.stringify(state));
   for (const name of ['dev.pid', 'redis.pid', 'demo.db']) remove(path.join(dir, name));
   log(`${slot} keeps the stack of ${kind}-${target} warm — ${dev.length + redis.length} pid(s)${db ? `, database ${db}` : ''}`);

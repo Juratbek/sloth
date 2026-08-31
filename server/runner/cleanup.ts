@@ -18,16 +18,20 @@ import { handOver } from './warm';
  * it. Only a run whose app was kept up for a preview — that stack is the preview's until `preview.ts`
  * takes it down — or one with nothing left alive is cleaned up the old way.
  */
-export const cleanup = (issue: number): Promise<void> => cleanupRun('issue', issue);
+export const cleanup = (issue: number, tainted = false): Promise<void> => cleanupRun('issue', issue, tainted);
 
 /** Whether the run handed its app over to a preview — written at teardown, or once the tunnel is up. */
 const previewed = (dir: string) => fs.existsSync(path.join(dir, 'preview.json')) || fs.existsSync(path.join(dir, 'preview-state.json'));
 
-/** The same for any run that boots the app — an implement run, or the QA sweep's test of a card. */
-export async function cleanupRun(kind: Kind, target: number): Promise<void> {
+/**
+ * The same for any run that boots the app — an implement run, or the QA sweep's test of a card.
+ * `tainted` marks a run that was killed rather than ended (`warm.ts`): its stack still warms the slot,
+ * but without its head, so a retry reseeds the database instead of trusting what the kill interrupted.
+ */
+export async function cleanupRun(kind: Kind, target: number, tainted = false): Promise<void> {
   const dir = dirOf(kind, target);
   const slot = cfg().warmSlots && !previewed(dir) ? slotOf(kind, target) : undefined;
-  if (!(slot && (await handOver(kind, target, slot)))) {
+  if (!(slot && (await handOver(kind, target, slot, tainted)))) {
     for (const name of ['dev.pid', 'redis.pid']) {
       const file = path.join(dir, name);
       // One pid per line — a project skill may have started several servers.
