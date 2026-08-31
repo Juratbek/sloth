@@ -46,23 +46,28 @@ in the repo (`docs/` or equivalent) that covers the flow is the reference for wh
 No merged PR wired to the issue, or one merged into a branch that is not `$SLOTH_QA_BRANCH` and not merged
 onward into it: the fix is not on the branch you are testing → **inconclusive** (Step 4), saying so.
 
-## Step 1 — Worktree of the QA branch
+## Step 1 — Reset the worktree slot to the QA branch
+
+`$SLOTH_WORKTREE` is a worktree Sloth leased to this run from its pool — an earlier run's checkout, kept
+so its installed dependencies carry over. Reset it; never create or remove a worktree.
 
 ```bash
 BRANCH=${SLOTH_QA_BRANCH:-$(gh repo view "$SLOTH_REPO" --json defaultBranchRef --jq .defaultBranchRef.name)}
-git -C "$SLOTH_RUNNER_ROOT" fetch origin "$BRANCH"
-WT=${SLOTH_WORKTREE:-$SLOTH_WORKTREES_DIR/qa-$ISSUE}
-git -C "$SLOTH_RUNNER_ROOT" worktree remove "$WT" --force 2>/dev/null; git -C "$SLOTH_RUNNER_ROOT" worktree prune
-git -C "$SLOTH_RUNNER_ROOT" worktree add --detach "$WT" "origin/$BRANCH"
+WT="$SLOTH_WORKTREE"
+git -C "$WT" fetch origin "$BRANCH"
+git -C "$WT" checkout -q --detach "origin/$BRANCH"
+git -C "$WT" clean -fdx -e node_modules -e .turbo -e .venv -e .cache   # the previous run's files go; dependencies and caches stay
 SHA=$(git -C "$WT" rev-parse --short HEAD)
 cd "$WT"
 # set_state working 1 "checked out $BRANCH @ $SHA"   with BRANCH set
 ```
 
 Detached, read-only: no branch of your own, no commit, no push. Work **only inside `$WT`** — never the
-checkout at `$SLOTH_RUNNER_ROOT`, never the issue's own `issue-<n>` worktree, which may belong to a live
-run. Install dependencies the way the repo does (`CLAUDE.md` wins; otherwise the lockfile —
-`pnpm-lock.yaml` → `pnpm install --frozen-lockfile`, and so on).
+checkout at `$SLOTH_RUNNER_ROOT`, never another slot, which may belong to a live run. Install dependencies
+the way the repo does (`CLAUDE.md` wins; otherwise the lockfile — `pnpm-lock.yaml` →
+`pnpm install --frozen-lockfile`, and so on). A reused slot installs in seconds but runs **no `postinstall`**:
+run the project's generate steps yourself (a Prisma client, codegen — whatever `CLAUDE.md` or the
+`postinstall` / `generate` scripts name), or you test against code generated for another branch.
 
 Confirm the fix is in what you checked out: `git -C "$WT" merge-base --is-ancestor <mergeCommit> HEAD`. A
 merge commit that is not an ancestor means the branch does not carry the fix yet → **inconclusive**.

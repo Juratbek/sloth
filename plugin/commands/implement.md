@@ -92,26 +92,33 @@ gh issue view "$ISSUE" --repo "$SLOTH_REPO" --json comments \
   read only what you need to brief the implementor and to judge its work — the issue, the thread, the
   project's rules, the design; locating and reading the code is the implementor's job.
 
-## Step 2 — Worktree off the default branch
+## Step 2 — Reset the worktree slot to the default branch
+
+`$SLOTH_WORKTREE` is a worktree Sloth leased to this run from its pool — a checkout an earlier run used,
+kept so its installed dependencies carry over. Reset it to a fresh branch; never create or remove a worktree.
 
 ```bash
 BASE=$(gh repo view "$SLOTH_REPO" --json defaultBranchRef --jq .defaultBranchRef.name)
-git -C "$SLOTH_RUNNER_ROOT" fetch origin "$BASE"
 BRANCH="sloth/issue-$ISSUE-<kebab-slug>"
-WT="$SLOTH_WORKTREES_DIR/issue-$ISSUE"
-git -C "$SLOTH_RUNNER_ROOT" worktree add -b "$BRANCH" "$WT" "origin/$BASE"
+WT="$SLOTH_WORKTREE"
+git -C "$WT" fetch origin "$BASE"
+git -C "$WT" checkout -q --ignore-other-worktrees -B "$BRANCH" "origin/$BASE"
+git -C "$WT" clean -fdx -e node_modules -e .turbo -e .venv -e .cache   # the previous run's files go; dependencies and caches stay
 cd "$WT"
 ```
 
-Reuse an existing `$WT` on a resumed run. For a review round-trip check the PR's branch out instead:
-`git -C "$SLOTH_RUNNER_ROOT" fetch origin "$BRANCH" && git -C "$SLOTH_RUNNER_ROOT" worktree add "$WT" "$BRANCH"`.
-From here on work **only inside `$WT`** — never the checkout at `$SLOTH_RUNNER_ROOT`.
+For a review round-trip check the PR's branch out instead: `git -C "$WT" fetch origin "$BRANCH" &&
+git -C "$WT" checkout -q --ignore-other-worktrees -B "$BRANCH" "origin/$BRANCH"`, then the same `clean`.
+From here on work **only inside `$WT`** — never the checkout at `$SLOTH_RUNNER_ROOT`, never another slot.
 
 Install dependencies the way the repo does — `CLAUDE.md` wins; otherwise detect from the lockfile:
 `pnpm-lock.yaml` → `pnpm install --frozen-lockfile`, `yarn.lock` → `yarn install --frozen-lockfile`,
 `package-lock.json` → `npm ci`, `bun.lockb` → `bun install`, or the language's equivalent
 (`uv sync` / `poetry install` / `pip install -e .`, `go mod download`, `bundle install`, `cargo fetch`).
-No manifest → nothing to install.
+No manifest → nothing to install. In a reused slot this is seconds when the lockfile is unchanged — but
+then the install runs **no `postinstall`**, so run the project's generate steps yourself (a Prisma client,
+GraphQL or API codegen: whatever `CLAUDE.md` or the manifests' `postinstall` / `generate` scripts name),
+or the slot serves code generated for the branch the last run was on.
 
 ## Step 3 — Implement
 

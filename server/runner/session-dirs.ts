@@ -25,7 +25,7 @@ export const dirOf = (kind: Kind, target: number) => path.join(cfg().sessionsDir
 export const issueDir = (issue: number) => dirOf('issue', issue);
 export const approvedDir = (pr: number) => dirOf('approved', pr);
 export const qaDir = (issue: number) => dirOf('qa', issue);
-/** The worktree a run checks out under `worktreesDir`: `issue-12` for an implement run, `qa-12` for its QA test. */
+/** The per-run worktree of the old scheme — `issue-12`, `qa-12` — still removed when found; runs now lease a slot (`slots.ts`). */
 export const worktreeName = (kind: Kind, target: number) => (kind === 'qa' ? `qa-${target}` : `issue-${target}`);
 
 export function pidAlive(pid: number | undefined): boolean {

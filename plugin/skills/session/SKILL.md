@@ -22,8 +22,8 @@ directory.
 | `SLOTH_ISSUE` / `SLOTH_PR` | The target — issue number, or PR number for a review run; a status reply gets both when the question was asked on the issue's PR |
 | `SLOTH_REPO` | `owner/repo` |
 | `SLOTH_RUNNER_ROOT` | The checkout sessions run from; `cwd` is inside it |
-| `SLOTH_WORKTREES_DIR` | Where per-issue worktrees are created |
-| `SLOTH_WORKTREE` | This run's own worktree path under it — `issue-<n>` for an implement run, `qa-<n>` for a QA test; create it there, tear it down from there |
+| `SLOTH_WORKTREES_DIR` | Where Sloth's pool of worktrees lives — `slot-1 … slot-N` under it |
+| `SLOTH_WORKTREE` | The slot leased to this run (`$SLOTH_WORKTREES_DIR/slot-<n>`): reset it to your branch, work in it, leave it — the server gives it back to the pool at teardown. Never create or remove a worktree |
 | `SLOTH_QA_BRANCH` | The branch the QA sweep tests (`/sloth:qa`); empty means the repository's default branch |
 | `SLOTH_ADMIN_LOGIN` | The **admin** — the one login whose orders have no limit (may be empty) |
 | `SLOTH_DEVELOPER_LOGINS` | Space-separated **developers** — their orders are followed within the issue they are on (may be empty) |
@@ -158,7 +158,7 @@ Sloth's, the reviewer loop will not pass, or time is running out.
         | "\(.user.login) (\(.created_at)):\n\(.body)\n---"'
    ```
 4. **30 idle minutes** — free the machine, keep the code: stop the processes and drop the database this
-   session started (its own pids / database name only), leave the worktree and the branch,
+   session started (its own pids / database name only), leave the slot and the branch,
    `set_state waiting Q "<note>"` with `SERVERS=stopped` and `SINCE=$ASKED`.
 5. **An answer arrives** — re-read the whole thread, never re-ask what it answers. With what you need:
    move the card back to In Progress, `rm -f "$SLOTH_SESSION_DIR/blocked"`, comment
@@ -229,13 +229,14 @@ At the end of every run, whatever the outcome:
 
 ```bash
 # stop this session's processes and drop its database (only the pids / name in $SLOTH_SESSION_DIR)
-git -C "$SLOTH_RUNNER_ROOT" worktree remove "${SLOTH_WORKTREE:-$SLOTH_WORKTREES_DIR/issue-$SLOTH_ISSUE}" --force
-git -C "$SLOTH_RUNNER_ROOT" worktree prune
 # set_state done <step> "<how the run ended>"
 ```
 
+The slot stays as it is — its files are the next run's head start; the server returns it to the pool and
+detaches it once this run is over. Never `git worktree remove` it.
+
 **Except a preview hand-off.** When `SLOTH_PREVIEW_HOURS` is above `0` *and* the run ends with its PR handed
-to `$SLOTH_COL_CODE_REVIEW_NAME`, the servers, the database and the worktree **stay**: the server puts a
+to `$SLOTH_COL_CODE_REVIEW_NAME`, the servers, the database and the slot **stay**: the server puts a
 tunnel in front of the app, posts the link on the PR with the sign-in notes, and tears everything down
 itself after `SLOTH_PREVIEW_HOURS` hours (or when the PR closes, or when a new run starts on the issue).
 Instead of the commands above:

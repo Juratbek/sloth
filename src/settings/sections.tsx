@@ -90,7 +90,7 @@ export function Team({ draft, patch }: SectionProps) {
 export function Sessions({ draft, patch }: SectionProps) {
   return (
     <>
-      <Row label="Max active sessions" hint="How many sessions run at once. A trigger with no free slot is retried on the next tick.">
+      <Row label="Max active sessions" hint="How many sessions run at once, and how many worktree slots the pool holds. A trigger with no free slot is retried on the next tick.">
         <NumberInput value={draft.maxActive} onChange={(maxActive) => patch({ maxActive })} />
       </Row>
       <Row label="Max alive sessions" hint="Running plus parked sessions waiting for an answer, before Sloth stops picking cards up.">
@@ -122,7 +122,7 @@ export function Sessions({ draft, patch }: SectionProps) {
       </Row>
       <Row
         label="Keep days"
-        hint="Finished runs older than this are deleted — their session directory, worktree and status replies. Transcripts belong to Claude Code and are left alone."
+        hint="Finished runs older than this are deleted — their session directory and status replies. Transcripts belong to Claude Code and are left alone."
       >
         <NumberInput value={draft.keepDays} onChange={(keepDays) => patch({ keepDays })} />
       </Row>
