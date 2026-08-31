@@ -1,4 +1,4 @@
-import type { BoardView } from './board-types';
+import type { BlockedCard, BoardView } from './board-types';
 import type { AgentModels } from './config-types';
 import type { RemoteStatus } from './machine-types';
 
@@ -195,11 +195,13 @@ export interface Overview {
   issues: IssueCost[];
   /** The board as the last tick read it, joined to the runs above; undefined until a tick has read it. */
   board?: BoardView;
+  /** The cards Sloth has given up on, newest first — each one a row on the panel with an unblock button. */
+  blocked: BlockedCard[];
 }
 
 /** Remote access, updates and the launch agent — what the machine itself reports (`machine-types.ts`). */
 export type { InstallStatus, RemoteLink, RemoteStatus, ServiceStatus, StackStatus, StackTool, UpdateStatus, VersionInfo } from './machine-types';
 /** The home panel's mirror of the GitHub board (`board-types.ts`). */
-export type { BoardCard, BoardColumn, BoardView } from './board-types';
+export type { BlockedCard, BoardCard, BoardColumn, BoardView } from './board-types';
 /** The spend series behind the usage chart (`usage-types.ts`). */
 export type { ModelCost, UsageBucket, UsageSeries } from './usage-types';

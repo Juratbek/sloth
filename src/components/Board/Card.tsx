@@ -15,9 +15,10 @@ function Out({ href, className, children }: { href: string; className: string; c
 
 /**
  * One card, two dense lines: the issue and what Sloth's newest run on it is doing, then only what
- * applies — cost, PR, preview, retries, the assignee, the skip label that keeps Sloth off it, the
- * review pass, how long a parked card has been waiting. Clicking selects the run; the links
- * open GitHub or the preview.
+ * applies — cost, PR, preview, retries, the give-up that blocked it, the assignee, the skip label that
+ * keeps Sloth off it, the review pass, how long a parked card has been waiting. Clicking selects the
+ * run; the links open GitHub or the preview. The badges only read state: unblocking is the home
+ * panel's, because this view writes nothing.
  */
 export default function Card({ card, role, onSelect }: { card: BoardCard; role: ColumnRole; onSelect: (id: string) => void }) {
   const step = card.kind && stepLabel(card.kind, card.step);
@@ -29,7 +30,7 @@ export default function Card({ card, role, onSelect }: { card: BoardCard; role: 
   const owner = card.assignees[0];
   const held = skipped(card);
   const waited = role === 'needsHelp' && card.since ? duration(Date.now() / 1000 - card.since) : undefined;
-  const second = cost || pr || previewLink || card.retries > 0 || owner || held || approved || waited;
+  const second = cost || pr || previewLink || card.retries > 0 || owner || held || approved || waited || card.blocked;
   const pick = card.sessionId ? () => onSelect(card.sessionId!) : undefined;
 
   return (
@@ -68,6 +69,11 @@ export default function Card({ card, role, onSelect }: { card: BoardCard; role: 
             </Out>
           )}
           {card.retries > 0 && <span className="text-amber-400">retries {card.retries}</span>}
+          {card.blocked && (
+            <span title={card.blocked} className="rounded bg-red-950 px-1 text-red-400">
+              blocked
+            </span>
+          )}
           {waited && <span className="tabular-nums">waiting {waited}</span>}
           {approved && <span className="rounded bg-zinc-800 px-1 text-zinc-400">{APPROVED_LABEL}</span>}
           {held && <span className="rounded bg-zinc-800 px-1 text-orange-400">{SKIP_LABEL}</span>}

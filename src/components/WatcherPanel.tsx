@@ -1,7 +1,9 @@
 import { useMemo } from 'react';
-import type { Overview } from '../../server/types';
+import type { BlockedCard, Overview } from '../../server/types';
+import { duration } from '../lib/format';
 import useFollowBottom from '../hooks/use-follow-bottom';
 import useQaRun from '../hooks/use-qa-run';
+import useUnblock from '../hooks/use-unblock';
 import IssuesTable from './IssuesTable';
 import UsageChart from './UsageChart';
 
@@ -32,6 +34,47 @@ function QaSweep({ column, at }: { column: string; at: string }) {
   );
 }
 
+/**
+ * The cards Sloth has given up on — the one state it will not leave on its own. Each row says why and
+ * carries the button that hands the card back to the sweep; "sweep now" beside the log tests it at once.
+ */
+function Blocked({ cards, repo }: { cards: BlockedCard[]; repo: string }) {
+  const unblock = useUnblock();
+  return (
+    <section className="shrink-0 space-y-1">
+      <h3 className="text-[10px] font-semibold tracking-wide text-zinc-400 uppercase">blocked ({cards.length})</h3>
+      <ul className="space-y-1">
+        {cards.map((b) => (
+          <li key={b.issue} className="flex items-baseline gap-2 rounded border border-red-900 bg-red-950/30 px-1.5 py-1 text-[11px]">
+            <a
+              href={`https://github.com/${repo}/issues/${b.issue}`}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0 tabular-nums text-red-300 hover:underline"
+              title={b.title}
+            >
+              #{b.issue}
+            </a>
+            <span className="min-w-0 flex-1 truncate text-zinc-400" title={b.reason}>
+              {b.reason}
+            </span>
+            <span className="shrink-0 tabular-nums text-zinc-500">{duration(Date.now() / 1000 - b.at)}</span>
+            <button
+              onClick={() => unblock.mutate(b.issue)}
+              disabled={unblock.isPending}
+              className="shrink-0 text-sky-400 hover:underline disabled:text-zinc-600"
+              title="Forget the block and the heads already tested, so the next sweep tests this card again"
+            >
+              {unblock.isPending ? 'unblocking…' : 'unblock'}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {unblock.error && <p className="text-[11px] text-red-400">{String(unblock.error)}</p>}
+    </section>
+  );
+}
+
 export default function WatcherPanel({ overview, onSelect }: { overview: Overview; onSelect: (id: string) => void }) {
   const { watcher, config } = overview;
   const pending = useMemo(() => queued(watcher.logTail), [watcher.logTail]);
@@ -55,6 +98,8 @@ export default function WatcherPanel({ overview, onSelect }: { overview: Overvie
           </div>
         </section>
       )}
+
+      {overview.blocked.length > 0 && <Blocked cards={overview.blocked} repo={config.repo} />}
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 md:flex-row">
         <IssuesTable issues={overview.issues} config={overview.config} />

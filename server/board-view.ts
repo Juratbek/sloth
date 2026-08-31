@@ -2,7 +2,8 @@ import { cfg } from './config';
 import { issueOf } from './issue-costs';
 import { snapshot } from './runner/board-snapshot';
 import { DONE_DAYS, PIPELINE, skipped } from './board-types';
-import type { BoardCard, BoardColumn, BoardView } from './board-types';
+import type { BlockedCard, BoardCard, BoardColumn, BoardView } from './board-types';
+import { blockedCards } from './runner/blocked';
 import type { BoardItem } from './runner/board';
 import type { ColumnRole, ConfigColumns } from './config-types';
 import type { IssueCost, SessionSummary } from './types';
@@ -41,7 +42,7 @@ const recent = (s: SessionSummary, now: number): boolean => !s.lastAt || now - D
  */
 const sloths = (role: ColumnRole, item: BoardItem, s: SessionSummary | undefined): boolean => !!s || (role === 'pickup' && !skipped(item));
 
-function cardOf(item: BoardItem, s: SessionSummary | undefined, cost: number | null): BoardCard {
+function cardOf(item: BoardItem, s: SessionSummary | undefined, cost: number | null, blocked: string | undefined): BoardCard {
   const w = s?.watcher;
   const preview = w?.preview;
   // "Waiting since" only means something while the run is actually waiting for an answer.
@@ -62,6 +63,7 @@ function cardOf(item: BoardItem, s: SessionSummary | undefined, cost: number | n
     // A preview whose tunnel has not printed an address yet is not a link anyone can follow.
     preview: preview?.url ? { url: preview.url, key: preview.key } : undefined,
     cost,
+    blocked,
   };
 }
 
@@ -76,10 +78,12 @@ export function buildBoardView(
   columns: ConfigColumns,
   sessions: SessionSummary[],
   issues: IssueCost[],
+  blocked: BlockedCard[] = [],
   now = Date.now(),
 ): BoardView {
   const newest = newestByIssue(sessions);
   const costs = new Map(issues.map((i) => [i.issue, i.cost]));
+  const blocks = new Map(blocked.map((b) => [b.issue, b.reason]));
   const out: BoardColumn[] = PIPELINE.filter((role) => columns[role]?.name).map((role) => ({
     role,
     id: columns[role].id,
@@ -101,7 +105,7 @@ export function buildBoardView(
       continue;
     }
     if (column.role === 'done' && s && !recent(s, now)) continue;
-    column.cards.push(cardOf(item, s, costs.get(item.number) ?? null));
+    column.cards.push(cardOf(item, s, costs.get(item.number) ?? null, blocks.get(item.number)));
   }
   return { asOf: new Date(board.at).toISOString(), columns: out, elsewhere, others };
 }
@@ -109,5 +113,5 @@ export function buildBoardView(
 /** The view the overview carries; undefined until a board tick has read the board at least once. */
 export function boardFromSnapshot(sessions: SessionSummary[], issues: IssueCost[]): BoardView | undefined {
   const last = snapshot();
-  return last && cfg().configured ? buildBoardView(last, cfg().statusField.columns, sessions, issues) : undefined;
+  return last && cfg().configured ? buildBoardView(last, cfg().statusField.columns, sessions, issues, blockedCards()) : undefined;
 }

@@ -1,5 +1,6 @@
 import { cfg } from '../config';
 import { broadcast } from '../events';
+import { pruneBlocked } from './blocked';
 import { fetchBoard } from './board';
 import { setSnapshot } from './board-snapshot';
 import { refreshColumns } from './columns';
@@ -73,6 +74,8 @@ async function runTick({ board = false, comments: wantComments = false, dryRun =
     // moving a card on the verdict its QA test left behind.
     await finished(items);
     await qaVerdicts();
+    // A blocked card a human has moved on is nobody's to hold back any more.
+    pruneBlocked(items);
     // The webhook hears about all of it even while paused: sessions keep running, so they keep parking.
     await boardEvents(items);
     if (userPaused) return;

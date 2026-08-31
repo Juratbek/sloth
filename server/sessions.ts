@@ -6,6 +6,7 @@ import { agentsDirOf, linkAgents, listAgents } from './agents';
 import { costOfUsage } from './pricing';
 import { rollup } from './issue-costs';
 import { boardFromSnapshot } from './board-view';
+import { blockedCards } from './runner/blocked';
 import { remoteStatus } from './remote';
 import { listSessionDirs, rateLimit, titleFor, watcherInfo } from './watcher';
 import type { AgentDetail, AgentSummary, ModelUsage, Overview, SessionDetail, SessionKind, SessionSummary, WatcherSession } from './types';
@@ -103,6 +104,7 @@ export async function overview(): Promise<Overview> {
     orphans,
     issues,
     board: boardFromSnapshot(sessions, issues),
+    blocked: blockedCards(),
   };
 }
 
