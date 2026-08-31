@@ -1,61 +1,11 @@
-import fs from 'node:fs';
-import type { Block, Message, ModelUsage, Stats, ToolCounts, Usage } from './types';
+import type { Block, Message, Stats } from './types';
+import { feed, newDigest, promptFrom, statsOf, usageOf } from './digest';
+import type { Rec } from './jsonl';
 
-/** Transcript records are free-form JSON; each reader picks out the fields it knows. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type Rec = any;
+export { HOT, hotFiles, readNew, readRecords, type Rec } from './jsonl';
+export { add, digestFile, feed, forgetTranscript, mainModel, newDigest, promptFrom, statsOf, zero, type Digest } from './digest';
+
 const MAX_RESULT = 20_000;
-
-const cache = new Map<string, { bytes: number; records: Rec[] }>();
-
-/** Incrementally parses a .jsonl transcript; only bytes appended since the last call are read. */
-export function readRecords(file: string): Rec[] {
-  const size = fs.statSync(file).size;
-  let c = cache.get(file);
-  if (!c || size < c.bytes) {
-    c = { bytes: 0, records: [] };
-    cache.set(file, c);
-  }
-  if (size === c.bytes) return c.records;
-  const fd = fs.openSync(file, 'r');
-  try {
-    const buf = Buffer.alloc(size - c.bytes);
-    fs.readSync(fd, buf, 0, buf.length, c.bytes);
-    const text = buf.toString('utf8');
-    const end = text.lastIndexOf('\n');
-    if (end < 0) return c.records;
-    for (const line of text.slice(0, end).split('\n')) {
-      if (!line.trim()) continue;
-      try {
-        c.records.push(JSON.parse(line));
-      } catch {
-        /* corrupt line */
-      }
-    }
-    c.bytes += Buffer.byteLength(text.slice(0, end + 1), 'utf8');
-  } finally {
-    fs.closeSync(fd);
-  }
-  return c.records;
-}
-
-export const zero = (): Usage => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, thinking: 0 });
-export function add(a: Usage, b: Usage) {
-  a.input += b.input;
-  a.output += b.output;
-  a.cacheRead += b.cacheRead;
-  a.cacheWrite += b.cacheWrite;
-  a.thinking += b.thinking;
-}
-function usageOf(u: Rec): Usage {
-  return {
-    input: u.input_tokens ?? 0,
-    output: u.output_tokens ?? 0,
-    cacheRead: u.cache_read_input_tokens ?? 0,
-    cacheWrite: u.cache_creation_input_tokens ?? 0,
-    thinking: u.output_tokens_details?.thinking_tokens ?? 0,
-  };
-}
 
 function textOf(content: unknown): string {
   if (typeof content === 'string') return content;
@@ -123,55 +73,14 @@ export function toMessages(records: Rec[]): Message[] {
 }
 
 export function summarize(records: Rec[]): Stats {
-  const usage = zero();
-  const models = new Map<string, ModelUsage>();
-  const seen = new Set<string>();
-  const toolCounts: ToolCounts = {};
-  let startedAt: string | undefined, lastAt: string | undefined, lastText = '';
-  let contextTokens = 0, turns = 0;
-  for (const r of records) {
-    if (r.timestamp) {
-      startedAt ??= r.timestamp;
-      lastAt = r.timestamp;
-    }
-    if (r.type !== 'assistant' || !r.message) continue;
-    for (const b of r.message.content ?? []) {
-      if (b.type === 'tool_use') toolCounts[b.name] = (toolCounts[b.name] ?? 0) + 1;
-      if (b.type === 'text' && b.text?.trim()) lastText = b.text;
-    }
-    const key: string = r.requestId ?? r.uuid;
-    if (seen.has(key) || !r.message.usage) continue;
-    seen.add(key);
-    turns++;
-    const u = usageOf(r.message.usage);
-    add(usage, u);
-    contextTokens = u.input + u.cacheRead + u.cacheWrite;
-    const model: string = r.message.model ?? 'unknown';
-    const mu = models.get(model) ?? { model, requests: 0, ...zero() };
-    mu.requests++;
-    add(mu, u);
-    models.set(model, mu);
-  }
-  const byModel = [...models.values()];
-  return { usage, byModel, model: mainModel(byModel), toolCounts, startedAt, lastAt, turns, contextTokens, lastText: lastText.slice(-600) };
-}
-
-/**
- * The model a run ran on: the one that answered most of its requests. `<synthetic>` rows (the CLI's own
- * messages, no tokens) and unknown ones are not it — a run's last usage-limit message must not rename it.
- */
-export function mainModel(byModel: ModelUsage[]): string | undefined {
-  return byModel
-    .filter((m) => m.model !== 'unknown' && !m.model.startsWith('<') && m.input + m.output + m.cacheRead + m.cacheWrite > 0)
-    .sort((a, b) => b.requests - a.requests)[0]?.model;
+  const d = newDigest();
+  feed(d, records);
+  return statsOf(d);
 }
 
 export function promptOf(records: Rec[]): string {
-  const q = records.find((r) => r.type === 'queue-operation' && typeof r.content === 'string');
-  if (q) return q.content.trim();
-  const u = records.find((r) => r.type === 'user' && typeof r.message?.content === 'string');
-  const c: string = u?.message?.content ?? '';
-  const name = /<command-name>(.*?)<\/command-name>/.exec(c)?.[1];
-  const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(c)?.[1];
-  return name ? `${name} ${args ?? ''}`.trim() : c.slice(0, 200);
+  const d = newDigest();
+  feed(d, records);
+  return promptFrom(d);
 }
+
