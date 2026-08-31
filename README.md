@@ -76,9 +76,10 @@ needs-help notifications carry on) and survives a restart.
   own: with less than `minFreeMemory` percent of the memory available, `minIdleCpu` percent of the
   CPU idle or `minIdleDisk` percent of the busiest disk idle, nothing new starts either — and when the machine
   *stays* there with sessions running (two readings in a row), the lowest-priority run is **paused** (SIGSTOP
-  to its processes and the servers it started: QA tests first, then implement runs by their card's priority,
-  the newest among equals; reviews never), and resumed once two readings in a row show room again, one run
-  per tick either way. Its budget clock stands still meanwhile. Not on Windows, which has no SIGSTOP. A session past
+  to its processes and the servers it started), and resumed once two readings in a row show room again, one
+  run per tick either way. Priority is the card's column — QA highest, Code Review next, In Progress and the
+  rest under them — then, within a column, the card's `priorityField` value, and among equals the newest run
+  goes first. Its budget clock stands still meanwhile. Not on Windows, which has no SIGSTOP. A session past
   `budgetMinutes + 5` is killed, cleaned up, and its card parked; **stop** in a live session's header
   does the same on demand (a stopped review is not repeated for that PR head), and **end** on a parked
   session whose process is gone cleans it up and takes it off the needs-help list — the card stays put. A Claude usage
