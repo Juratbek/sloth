@@ -66,13 +66,16 @@ describe('the machine timer', () => {
     let free = 50;
     setReaders({ memoryFree: () => free, cpuTimes: () => ({ idle: 0, total: 0 }), diskTimes: () => ({ busy: {}, total: 0 }), windowMs: 0 });
     startLoop();
+    // Past the first board tick (5 s) and comment tick (20 s), which read the machine themselves; the next
+    // ones are 300 s away, so from here only the machine timer can be reading.
+    await vi.advanceTimersByTimeAsync(21_000);
+    expect(machineLoad()?.memoryFree).toBe(50);
     free = 7;
-    // Well inside one board poll: only the machine timer can have fired.
-    await vi.advanceTimersByTimeAsync(11_000);
+    await vi.advanceTimersByTimeAsync(12_000);
     expect(machineLoad()?.memoryFree).toBe(7);
     expect(readLog().join('\n')).toMatch(/machine busy: 7% memory free, under 10% — no new sessions until it clears/);
     free = 50;
-    await vi.advanceTimersByTimeAsync(11_000);
+    await vi.advanceTimersByTimeAsync(12_000);
     expect(readLog().at(-1)).toMatch(/machine load cleared/);
   });
 

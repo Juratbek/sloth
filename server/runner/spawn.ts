@@ -12,7 +12,7 @@ import { isDry, log, readFile, remove, write } from './log';
 import { cleanup } from './cleanup';
 import { stopPreview } from './preview';
 import { APPEND_PROMPT, sessionEnv, type SessionExtras, type Target } from './session-env';
-import { approvedDir, counter, issueDir, qaDir, slotsFull } from './session-dirs';
+import { approvedDir, issueDir, qaDir, slotsFull, triesOn } from './session-dirs';
 import { machineHold } from './machine';
 import { forgetPause } from './pressure';
 import { leaseSlot } from './slots';
@@ -141,9 +141,10 @@ export function launchApproved(pr: number, issue: number, sha: string): boolean 
     return true;
   }
   log(`review PR #${pr} (issue #${issue}) on ${c.models.final}`);
-  const retries = (readFile(path.join(approvedDir(pr), 'sha')) ?? '').trim() === sha ? counter(approvedDir(pr), 'retries') : 0;
-  write(path.join(approvedDir(pr), 'sha'), sha);
-  write(path.join(approvedDir(pr), 'retries'), String(retries + 1));
+  const dir = approvedDir(pr);
+  const retries = triesOn(dir, sha);
+  write(path.join(dir, 'sha'), sha);
+  write(path.join(dir, 'retries'), String(retries + 1));
   // The previous run's final state must not speak for this one: `reap` reads `working` as "died without
   // a verdict" and clears the head's marker, which a leftover `done` would mask.
   remove(path.join(approvedDir(pr), 'state.json'));
@@ -177,7 +178,7 @@ export async function launchQa(issue: number, sha: string, branch: string): Prom
   }
   const slot = await leaseSlot('qa', issue);
   if (!slot) return noSlot(`QA #${issue}`);
-  const retries = (readFile(path.join(dir, 'sha')) ?? '').trim() === sha ? counter(dir, 'retries') : 0;
+  const retries = triesOn(dir, sha);
   for (const f of ['state.json', 'verdict', 'handled']) remove(path.join(dir, f));
   write(path.join(dir, 'sha'), sha);
   write(path.join(dir, 'retries'), String(retries + 1));

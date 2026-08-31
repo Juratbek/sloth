@@ -75,9 +75,9 @@ needs-help notifications carry on) and survives a restart.
   queue behind it, never the other way round. The machine sets a cap of its
   own: with less than `minFreeMemory` percent of the memory available, `minIdleCpu` percent of the
   CPU idle or `minIdleDisk` percent of the busiest disk idle, nothing new starts either — and when the machine
-  *stays* there with sessions running (two readings in a row), the lowest-priority run is **paused** (SIGSTOP
-  to its processes and the servers it started), and resumed once two readings in a row show room again, one
-  run per reading either way. The machine is read every `machineSeconds` and not only on a tick: a board
+  *stays* there with sessions running (a minute of readings, two at least), the lowest-priority run is **paused**
+  (SIGSTOP to its processes and the servers it started), and resumed once the readings have shown room for a
+  minute again, one run per reading either way. The machine is read every `machineSeconds` and not only on a tick: a board
   poll is minutes apart, and a session that boots an app, a build and a browser at once can exhaust the
   memory in seconds. Priority is the card's column — QA highest, Code Review next, In Progress and the
   rest under them — then, within a column, the card's `priorityField` value, and among equals the newest run

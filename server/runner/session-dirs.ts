@@ -86,6 +86,8 @@ export function startedAt(dir: string): number {
 }
 
 export const counter = (dir: string, name: string) => readNumber(path.join(dir, name));
+/** How many runs this directory has had on `sha`; 0 when its last one was on another head, since a new head is a new count. */
+export const triesOn = (dir: string, sha: string) => ((readFile(path.join(dir, 'sha')) ?? '').trim() === sha ? counter(dir, 'retries') : 0);
 export const isBlocked = (dir: string) => fs.existsSync(path.join(dir, 'blocked'));
 
 const live = () => runDirs().filter((d) => dirAlive(d.dir));

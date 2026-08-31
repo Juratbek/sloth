@@ -163,11 +163,15 @@ describe('prune', () => {
     for (const [name, days] of [['old', 3] as const, ['mid', 2] as const, ['new', 1] as const]) {
       const file = path.join(cache, `${name}.tar.zst`);
       fs.writeFileSync(file, '');
-      fs.truncateSync(file, 256 << 20);
+      fs.truncateSync(file, (256 << 20) - 1024);
       age(file, days);
+      // turbo writes a small meta file beside each tarball; the pair goes together.
+      const meta = path.join(cache, `${name}-meta.json`);
+      fs.writeFileSync(meta, '{}');
+      age(meta, days);
     }
     await prune();
-    expect(fs.readdirSync(cache).sort()).toEqual(['mid.tar.zst', 'new.tar.zst']);
+    expect(fs.readdirSync(cache).sort()).toEqual(['mid-meta.json', 'mid.tar.zst', 'new-meta.json', 'new.tar.zst']);
     expect(readLog().join('\n')).toMatch(/pruned 1 entry \(256 MB\) from runner\/\.turbo\/cache/);
   });
 
@@ -180,7 +184,7 @@ describe('prune', () => {
   });
 
   it('trims the server logs of a finished run to their tail, and leaves a live run alone', async () => {
-    const done = makeSession('issue', 1, { 'state.json': { state: 'done' }, 'run.log': 'short' });
+    const done = makeSession('issue', 1, { 'state.json': { state: 'done' }, 'run.log': 'r'.repeat(3 << 20) });
     fs.writeFileSync(path.join(done, 'dev.log'), `${'x'.repeat(3 << 20)}THE END`);
     const live = makeSession('issue', 2, { pid: alivePid() });
     fs.writeFileSync(path.join(live, 'dev.log'), 'y'.repeat(3 << 20));
@@ -192,7 +196,10 @@ describe('prune', () => {
     expect(trimmed.startsWith('… 1 MB trimmed by Sloth')).toBe(true);
     expect(trimmed.endsWith('THE END')).toBe(true);
     expect(fs.statSync(path.join(live, 'dev.log')).size).toBe(3 << 20);
+    // Sloth's own run.log is not a server log: its mtime is the run's age, and its headers are read from the start.
+    expect(fs.statSync(path.join(done, 'run.log')).size).toBe(3 << 20);
     expect(readLog().join('\n')).toMatch(/trimmed dev\.log of issue-1 by 1 MB/);
+    expect(readLog().join('\n')).not.toMatch(/run\.log/);
   });
 
   it('only logs in a dry run, and does not remember the sweep', async () => {

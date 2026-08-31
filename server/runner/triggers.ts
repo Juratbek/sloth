@@ -12,7 +12,7 @@ import { cleanup, cleanupRun } from './cleanup';
 import { exitLine, exitReport, exitsOf, forgetExits, recordExit } from './exits';
 import { previewLink } from './preview';
 import { forgetPause, pausedSeconds, resumeRun } from './pressure';
-import { approvedDir, counter, dirAlive, dirOf, isBlocked, issueAlive, issueDir, pidAlive, pidOf, runDirs, startedAt, stateOf } from './session-dirs';
+import { approvedDir, counter, dirAlive, dirOf, isBlocked, issueAlive, issueDir, pidAlive, pidOf, runDirs, startedAt, stateOf, triesOn } from './session-dirs';
 import type { Kind } from './session-dirs';
 import { launch, launchApproved } from './spawn';
 
@@ -217,8 +217,7 @@ export async function reviews(board: BoardItem[]): Promise<void> {
       continue;
     }
     if (checks === 'FAILURE') continue;
-    const dir = approvedDir(pr);
-    const tries = (readFile(path.join(dir, 'sha')) ?? '').trim() === sha ? counter(dir, 'retries') : 0;
+    const tries = triesOn(approvedDir(pr), sha);
     if (tries > cfg().maxRetries) {
       if (!isDry()) write(marker, '');
       log(`review PR #${pr} given up: it ended without a verdict ${tries} times on ${sha.slice(0, 7)}`);

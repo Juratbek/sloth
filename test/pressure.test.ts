@@ -35,7 +35,10 @@ beforeEach(() => {
     return true;
   });
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 const me = Number(alivePid());
 /** The board the last tick read; set again on every tick, since the harness's config reloads drop the snapshot as a real reconfigure would. */
@@ -43,6 +46,8 @@ let board: ReturnType<typeof card>[] = [];
 const tick = async (free: number) => {
   setSnapshot(board);
   memory = free;
+  // Readings a minute apart: a trend is a matter of time, not of a count of readings.
+  vi.setSystemTime(Date.now() + 60_000);
   await sampleMachine();
   pressure();
 };
@@ -128,7 +133,7 @@ describe('pressure', () => {
     fs.writeFileSync(path.join(sessionDir('issue', 1), 'paused_total'), String(10 * 60));
     signals.length = 0;
     await reap();
-    expect(signals.some((s) => s.signal === undefined || s.signal === 'SIGTERM')).toBe(false); // 53 min of its own: within budget + grace
+    expect(signals.some((s) => s.signal === undefined || s.signal === 'SIGTERM')).toBe(false); // 55 min of its own: within budget + grace
     await stop('issue', 1, 'from the monitor', 'why');
     const order = signals.map((s) => s.signal);
     expect(order.indexOf('SIGCONT')).toBeGreaterThanOrEqual(0);
