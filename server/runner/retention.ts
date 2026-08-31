@@ -8,6 +8,7 @@ import { previewing, pruneCaches, trimRunLogs } from './caps';
 import { statePath } from './markers';
 import { dirAlive, dirOf, runDirs, type Kind } from './session-dirs';
 import { slotInUse } from './slots';
+import { killWarm } from './warm';
 
 /**
  * Sloth never forgets on its own: every run leaves a session directory, a transcript and a handful of
@@ -94,6 +95,8 @@ async function pruneWorktrees(): Promise<void> {
       log(`dry-run: would remove the worktree ${name}`);
       continue;
     }
+    // A slot that leaves the pool takes its warm stack with it: servers, database, record (`warm.ts`).
+    if (m[1] === 'slot') await killWarm(name, 'the slot leaves the pool');
     const r = await run('git', ['-C', c.runnerRoot, 'worktree', 'remove', dir, '--force'], 120_000);
     if (!r.ok && fs.existsSync(dir)) {
       const why = r.err.split('\n')[0];

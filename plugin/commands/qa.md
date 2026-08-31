@@ -80,6 +80,12 @@ own database, its own ports, throwaway credentials. Record every pid it starts i
 these up), `SERVERS=running`, `set_state working 2 "app up"`. Note the URL and how to sign in as the role
 from Step 0.
 
+**A warm stack** (`SLOTH_WARM=1`, `session` skill): the slot's servers, Redis and database from the
+previous run are already up — pids and name already in `$SESSION_DIR`. Skip createdb, redis-server, the
+build and the server starts: sync the schema onto the existing database, reseed, `FLUSHALL` Redis — the
+watch-mode servers pick the checkout up themselves. `SLOTH_WARM_SAME=1` (same card, same head): skip even
+that. A reset step fails → kill the pids in `$SESSION_DIR/dev.pid` / `redis.pid` yourself and boot cold.
+
 No such skill: the repo's own instructions (`README`, `CLAUDE.md`, `package.json` scripts). An app that
 will not come up after two attempts is not a failed fix → **inconclusive**, with the error.
 
@@ -159,8 +165,10 @@ echo passed >"$SESSION_DIR/verdict"        # or failed / inconclusive — after 
 
 ## Step 5 — Clean up, report
 
-Teardown per the `session` skill: stop this session's processes, drop its database, remove `$WT`
-(`$SLOTH_WORKTREE`), `set_state done 5 "<verdict>"`. No preview: a QA run never leaves its app up.
+Teardown per the `session` skill: with `SLOTH_WARM_SLOTS=1` leave the servers and database running — the
+server keeps them warm for the next run; otherwise stop this session's processes and drop its database.
+`set_state done 5 "<verdict>"`; the slot (`$SLOTH_WORKTREE`) stays for the server to return. No preview:
+a QA run never hands its app to one.
 
 Finish with the report — the transcript's last message, shown in the monitor: the verdict, branch and
 sha, what the tester drove and as whom, what was not covered, how many screenshots the comment carries.

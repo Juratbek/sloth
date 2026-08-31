@@ -111,6 +111,12 @@ export function Sessions({ draft, patch }: SectionProps) {
       >
         <NumberInput min={5} value={draft.machineSeconds} onChange={(machineSeconds) => patch({ machineSeconds })} />
       </Row>
+      <Row
+        label="Warm slots"
+        hint="Keep a finished session's dev servers, Redis and demo database running in its worktree slot, so the next session inherits them instead of booting from scratch. Off tears everything down after every run."
+      >
+        <Toggle checked={draft.warmSlots} onChange={(warmSlots) => patch({ warmSlots })} label="Warm slots" />
+      </Row>
       <Row label="Budget minutes" hint="A session's time budget. Five minutes past it the session is killed, cleaned up and its card parked.">
         <NumberInput value={draft.budgetMinutes} onChange={(budgetMinutes) => patch({ budgetMinutes })} />
       </Row>

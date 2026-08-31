@@ -86,6 +86,13 @@ needs-help notifications carry on) and survives a restart.
   does the same on demand (a stopped review is not repeated for that PR head), and **end** on a parked
   session whose process is gone cleans it up and takes it off the needs-help list — the card stays put. A Claude usage
   limit pauses the watcher for 30 minutes without costing the card its place.
+- **Warm slots** (`warmSlots`, default on): when a run ends, the stack it booted — the dev servers, Redis
+  and the seeded demo database — stays running in its worktree slot instead of being torn down. The next
+  session that leases the slot inherits it: a retry of the same issue on the same head reuses everything
+  untouched, any other run syncs the schema, reseeds and flushes Redis — seconds instead of the ten-minute
+  boot. The stack dies only when its slot leaves the pool, when one of its processes is found dead, or
+  with the toggle off (Settings → *Sessions*); a run that hands its app to a preview hands nothing to the
+  slot, so a preview's stack never has two owners.
 - **Blocked cards** are the one state Sloth will not leave by itself. A QA test that dies before it writes
   a verdict is retried, but `maxRetries + 1` deaths on the same head of the QA branch mean the sweep is
   burning runs on a card it cannot test — so it gives up. Giving up used to be a line in the log and a
@@ -120,7 +127,7 @@ needs-help notifications carry on) and survives a restart.
 ├── sessions/<repo>/                issue-42/, approved-91/, qa-42/ — pid, state.json, inbox/, run.log, preview.json, verdict …
 └── state/                          seen/, approved/, handed/, notified/, finished/, closed/, checks/, merged/,
                                     merge-failed/, qa/ dedupe markers; blocked/ the cards Sloth gave up on;
-                                    paused, paused_until, pruned_at, qa_sweep, qa_ran; slots/ which run holds which worktree slot
+                                    paused, paused_until, pruned_at, qa_sweep, qa_ran; slots/ which run holds which worktree slot, and slot-<n>.warm for the stack a slot keeps warm
 ```
 
 ## The plugin
@@ -175,6 +182,7 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `autostart` | `false` | Start Sloth at login through a macOS launch agent (Settings → *Machine*; see *Run at login*). Saved but ignored on other platforms |
 | `chrome` | `true` | Give implement sessions a headless Chrome (Playwright MCP), so a tester subagent clicks through the change and its screenshots go on the PR; needs Google Chrome installed |
 | `previewHours` | `24` | How long a finished implement session's app stays up behind a public link posted on its PR (see *Previews* above); `0` turns previews off |
+| `warmSlots` | `true` | Keep a finished run's stack — dev servers, Redis, demo database — running in its worktree slot for the next session to inherit (see *Warm slots* above). Off tears everything down after every run, as before |
 | `priorityField` | `Priority` | A single-select field on the board whose option order ranks the watched column. Missing from the board, or empty here: cards are picked up in board order |
 | `keepDays` | `30` | How long a finished run is kept. Once an hour Sloth deletes the session directories, transcripts (under `~/.claude/projects`) and status-reply markers older than this — never a live, parked or previewing run. Worktrees go sooner: a leftover per-issue one as soon as its run is over (one git has already forgotten is deleted outright), a pool slot past `maxActive` once nobody holds it. The same sweep caps what a run leaves behind whatever its age: every `.turbo/cache` back under 512 MB, oldest entry first, and the server logs of a finished run back to their last 2 MB. `watcher.log` is rotated to `watcher.log.1` past 5 MB |
 | `helpLogins` | `[]` | GitHub logins `@`-mentioned in the comment that parks a card in *needs help*, so GitHub notifies them (not the login `gh` writes with — GitHub skips self-mentions) |

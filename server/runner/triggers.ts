@@ -8,7 +8,7 @@ import { limitExit } from './limits';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
 import { APPROVED_LABEL, MARKERS, markerFiles, statePath, unapprove } from './markers';
 import { helpMentions, notify } from './notify';
-import { cleanup, cleanupRun } from './cleanup';
+import { cleanup, cleanupRun, keepWarm } from './cleanup';
 import { exitLine, exitReport, exitsOf, forgetExits, recordExit } from './exits';
 import { previewLink } from './preview';
 import { forgetPause, pausedSeconds, resumeRun } from './pressure';
@@ -152,7 +152,9 @@ export async function reap(): Promise<void> {
             log(`${name} ended without a verdict — ${kind === 'qa' ? 'the card will be tested again' : 'the head will be reviewed again'}`);
           }
           await sweepDead(kind, target);
-        }
+          // A run that finished on its own terms left its stack running for its slot — under the
+          // warm-slots contract the session no longer kills its servers, so it moves to the slot here.
+        } else await keepWarm(kind, target);
         continue;
       }
       log(`${name} stopped on a usage limit — pausing ${LIMIT_PAUSE / 60} min, card untouched`);

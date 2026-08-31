@@ -30,6 +30,10 @@ export interface SessionExtras {
   budgetMinutes?: number;
   /** The run's worktree under `worktreesDir` — the slot `leaseSlot` gave it. */
   worktree?: string;
+  /** The slot's warm stack was inherited (`warm.ts`): servers and database are already up. */
+  warm?: boolean;
+  /** And it last served this very issue at this very head — a retry reuses it untouched. */
+  warmSame?: boolean;
 }
 
 export function sessionEnv(dir: string, target: Target, model: string, chrome: boolean, extras: SessionExtras = {}): NodeJS.ProcessEnv {
@@ -43,6 +47,11 @@ export function sessionEnv(dir: string, target: Target, model: string, chrome: b
     PATH: [...new Set([...(process.env.PATH ?? '').split(':'), ...PATH_EXTRA])].filter(Boolean).join(':'),
     SLOTH_SESSION_DIR: dir,
     ...(worktree ? { SLOTH_WORKTREE: path.join(c.worktreesDir, worktree) } : {}),
+    // The warm-slot contract (`warm.ts`): `SLOTH_WARM_SLOTS` tells the session whether to leave its
+    // stack running at teardown, the other two what it inherited and how much of the boot to skip.
+    SLOTH_WARM_SLOTS: c.warmSlots ? '1' : '0',
+    ...(extras.warm ? { SLOTH_WARM: '1' } : {}),
+    ...(extras.warmSame ? { SLOTH_WARM_SAME: '1' } : {}),
     SLOTH_SCREENSHOTS_DIR: path.join(dir, 'screenshots'),
     SLOTH_ASSETS_BRANCH: ASSETS_BRANCH,
     ...(target.issue ? { SLOTH_ISSUE: String(target.issue) } : {}),

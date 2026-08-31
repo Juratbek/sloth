@@ -16,6 +16,7 @@ import { approvedDir, issueDir, qaDir, slotsFull, triesOn } from './session-dirs
 import { machineHold } from './machine';
 import { forgetPause } from './pressure';
 import { leaseSlot } from './slots';
+import { claimWarm, warmOf } from './warm';
 
 /** Why nothing may start right now: every slot taken, or the machine too loaded to take one more run. */
 const held = (): string | undefined => (slotsFull() ? 'slots full' : machineHold());
@@ -108,11 +109,21 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
   for (const f of fs.readdirSync(path.join(dir, 'inbox'))) remove(path.join(dir, 'inbox', f));
   await moveCard(issue, cfg().statusField.columns.inProgress.id);
   await run('git', ['-C', cfg().runnerRoot, 'fetch', '-q', 'origin'], 120_000);
+  // The slot may hold a warm stack (`warm.ts`). "Same head" for an implement run means the branch the
+  // stack last served has not moved on the remote — the fetch above just made that answerable; a branch
+  // that was never pushed resolves to nothing and counts as new work, which only costs a reseed.
+  let head: string | undefined;
+  const w = warmOf(slot);
+  if (w?.run === `issue-${issue}` && w.branch) {
+    const r = await run('git', ['-C', cfg().runnerRoot, 'rev-parse', `origin/${w.branch}`], 30_000);
+    if (r.ok) head = r.out.trim();
+  }
+  const warm = await claimWarm('issue', issue, slot, head);
   const { models, orchestrator, chrome } = cfg();
   // An orchestrator session runs on its own model and hands the coding to an implementor subagent on `models.implement`.
   const model = orchestrator ? models.orchestrator : models.implement;
   log(`launch #${issue} on ${model}${orchestrator ? ` (orchestrator, implementor on ${models.implement})` : ''}${order ? ` (${order.slice(0, 120)})` : ''}`);
-  start(dir, dir, `/sloth:implement ${issue}${order ? ` ${order}` : ''}`, { issue }, path.join(dir, 'run.log'), { model, chrome, extras: { worktree: slot } });
+  start(dir, dir, `/sloth:implement ${issue}${order ? ` ${order}` : ''}`, { issue }, path.join(dir, 'run.log'), { model, chrome, extras: { worktree: slot, warm: !!warm, warmSame: warm?.same } });
   return true;
 }
 
@@ -183,11 +194,14 @@ export async function launchQa(issue: number, sha: string, branch: string): Prom
   write(path.join(dir, 'sha'), sha);
   write(path.join(dir, 'retries'), String(retries + 1));
   await run('git', ['-C', c.runnerRoot, 'fetch', '-q', 'origin'], 120_000);
+  // The head under test is known here, so a warm stack from an earlier test of this card on the same
+  // head is reused untouched; the same stack on a moved branch still saves the boot, minus a reseed.
+  const warm = await claimWarm('qa', issue, slot, sha);
   log(`launch QA #${issue} on ${c.models.qa} (${where})`);
   start(dir, dir, `/sloth:qa ${issue}`, { issue }, path.join(dir, 'run.log'), {
     model: c.models.qa,
     chrome: c.chrome,
-    extras: { budgetMinutes: c.qa.budgetMinutes, worktree: slot },
+    extras: { budgetMinutes: c.qa.budgetMinutes, worktree: slot, warm: !!warm, warmSame: warm?.same },
   });
   return true;
 }

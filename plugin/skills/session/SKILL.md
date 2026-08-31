@@ -24,6 +24,9 @@ directory.
 | `SLOTH_RUNNER_ROOT` | The checkout sessions run from; `cwd` is inside it |
 | `SLOTH_WORKTREES_DIR` | Where Sloth's pool of worktrees lives — `slot-1 … slot-N` under it |
 | `SLOTH_WORKTREE` | The slot leased to this run (`$SLOTH_WORKTREES_DIR/slot-<n>`): reset it to your branch, work in it, leave it — the server gives it back to the pool at teardown. Never create or remove a worktree |
+| `SLOTH_WARM_SLOTS` | `1`: the server keeps a slot's stack warm between runs — leave your servers and database running at teardown (see *Teardown*). `0`: stop and drop them yourself as before |
+| `SLOTH_WARM` | `1`: this run inherited the slot's live stack — the pids in `dev.pid` / `redis.pid` and the database in `demo.db` are already yours and running. Reset instead of booting: sync the schema onto the existing database, reseed, `FLUSHALL` Redis; no createdb, no redis-server, no build, no server start — the watch-mode servers pick the fresh checkout up. A reset step fails → kill those pids yourself and boot cold |
+| `SLOTH_WARM_SAME` | `1`: that stack last served this very issue at this very head — a retry. Reuse everything untouched: no schema sync, no reseed, no flush |
 | `SLOTH_QA_BRANCH` | The branch the QA sweep tests (`/sloth:qa`); empty means the repository's default branch |
 | `SLOTH_ADMIN_LOGIN` | The **admin** — the one login whose orders have no limit (may be empty) |
 | `SLOTH_DEVELOPER_LOGINS` | Space-separated **developers** — their orders are followed within the issue they are on (may be empty) |
@@ -74,8 +77,9 @@ Other files the server understands, all inside `$SLOTH_SESSION_DIR`:
 - `inbox/<commentId>.md` — forwarded comments (below).
 - `blocked` — `touch` it when the run is parked in a way the server must not retry; `rm -f` it on resume.
 - `asked_at` — epoch seconds of the question comment, written when parking.
-- `dev.pid`, `redis.pid`, `demo.db` — pids / database name of anything this session started, one per line;
-  the server kills and drops these during cleanup. Write them the moment a process or database exists.
+- `dev.pid`, `redis.pid`, `demo.db` — pids / database name of anything this session started (or inherited
+  warm), one per line; the server kills and drops these during cleanup, or keeps them warm for the next
+  run (`SLOTH_WARM_SLOTS`). Write them the moment a process or database exists.
 - `screenshots/*.png` — what the tester saved (`$SLOTH_SCREENSHOTS_DIR`); published with `publish_shots` (below).
 - `preview.json` — `{url, login}`, written by an implement run that leaves its app up for a preview (below).
 
@@ -227,10 +231,11 @@ publish_shots() {
 
 At the end of every run, whatever the outcome:
 
-```bash
-# stop this session's processes and drop its database (only the pids / name in $SLOTH_SESSION_DIR)
-# set_state done <step> "<how the run ended>"
-```
+- **`SLOTH_WARM_SLOTS=1`** — leave the stack running: the servers, Redis and the database stay up, and the
+  server moves them into the slot's warm state for the next run to inherit. `dev.pid` / `redis.pid` /
+  `demo.db` must be complete and current — they are what the next run receives. Just `set_state done …`.
+- **`SLOTH_WARM_SLOTS=0`** (or unset) — stop this session's processes and drop its database (only the
+  pids / name in `$SLOTH_SESSION_DIR`), then `set_state done <step> "<how the run ended>"`.
 
 The slot stays as it is — its files are the next run's head start; the server returns it to the pool and
 detaches it once this run is over. Never `git worktree remove` it.
