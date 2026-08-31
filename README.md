@@ -109,11 +109,11 @@ needs-help notifications carry on) and survives a restart.
 ├── config.json                     the whole configuration
 ├── watcher.log                     one line per event — the log the UI tails (rotated to .1 past 5 MB)
 ├── runners/<repo>/                 the checkout the sessions run from
-├── worktrees/<repo>/issue-42/      one worktree per issue — and qa-42/ while the QA sweep tests it
+├── worktrees/<repo>/slot-1/        the pool of worktrees the runs work in — maxActive of them, made once, reused (their node_modules survive)
 ├── sessions/<repo>/                issue-42/, approved-91/, qa-42/ — pid, state.json, inbox/, run.log, preview.json, verdict …
 └── state/                          seen/, approved/, handed/, notified/, finished/, closed/, checks/, merged/,
                                     merge-failed/, qa/ dedupe markers; blocked/ the cards Sloth gave up on;
-                                    paused, paused_until, pruned_at, qa_sweep, qa_ran
+                                    paused, paused_until, pruned_at, qa_sweep, qa_ran; slots/ which run holds which worktree slot
 ```
 
 ## The plugin
@@ -168,7 +168,7 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `chrome` | `true` | Give implement sessions a headless Chrome (Playwright MCP), so a tester subagent clicks through the change and its screenshots go on the PR; needs Google Chrome installed |
 | `previewHours` | `24` | How long a finished implement session's app stays up behind a public link posted on its PR (see *Previews* above); `0` turns previews off |
 | `priorityField` | `Priority` | A single-select field on the board whose option order ranks the watched column. Missing from the board, or empty here: cards are picked up in board order |
-| `keepDays` | `30` | How long a finished run is kept. Once an hour Sloth deletes the session directories, worktrees and status-reply markers older than this — never a live, parked or previewing run, and never a transcript (those are Claude Code's, under `~/.claude`). `watcher.log` is rotated to `watcher.log.1` past 5 MB |
+| `keepDays` | `30` | How long a finished run is kept. Once an hour Sloth deletes the session directories, leftover per-issue worktrees of the old scheme and status-reply markers older than this — never a live, parked or previewing run, and never a transcript (those are Claude Code's, under `~/.claude`). `watcher.log` is rotated to `watcher.log.1` past 5 MB |
 | `helpLogins` | `[]` | GitHub logins `@`-mentioned in the comment that parks a card in *needs help*, so GitHub notifies them (not the login `gh` writes with — GitHub skips self-mentions) |
 | `autoMerge` | `""` | How trigger 8 merges a PR whose review passed, whose checks are green and which merges cleanly: `squash`, `merge` or `rebase` (the `gh pr merge` methods) — as soon as it passes, skipping the human test in Approved. Empty leaves merging to a human |
 | `helpWebhook` | `""` | URL POSTed once per event in `webhookEvents` (`{event, text, content, repo, issue, title, url, column, pr?}` — Slack and Discord incoming webhooks read `text` / `content` as is) |

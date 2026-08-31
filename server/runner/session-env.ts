@@ -25,10 +25,10 @@ export interface Target {
   pr?: number;
 }
 
-/** What differs between the kinds of run: the QA sweep's session has its own budget and its own worktree name. */
+/** What differs between the kinds of run: the budget, and the worktree slot the run leased (a review has none). */
 export interface SessionExtras {
   budgetMinutes?: number;
-  /** The run's worktree under `worktreesDir` — `issue-<n>` unless said otherwise. */
+  /** The run's worktree under `worktreesDir` — the slot `leaseSlot` gave it. */
   worktree?: string;
 }
 
@@ -37,7 +37,7 @@ export function sessionEnv(dir: string, target: Target, model: string, chrome: b
   const col = c.statusField.columns;
   const start = nowSec();
   const budget = extras.budgetMinutes ?? c.budgetMinutes;
-  const worktree = extras.worktree ?? (target.issue ? `issue-${target.issue}` : '');
+  const worktree = extras.worktree ?? '';
   return {
     ...process.env,
     PATH: [...new Set([...(process.env.PATH ?? '').split(':'), ...PATH_EXTRA])].filter(Boolean).join(':'),

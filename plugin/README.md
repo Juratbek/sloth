@@ -1,7 +1,7 @@
 # Sloth plugin
 
 The Claude Code plugin the Sloth server runs. It holds the generic commands a headless session executes:
-claim an issue off a project board, implement it in an isolated worktree, review the result, hand the card
+claim an issue off a project board, implement it in a worktree of its own, review the result, hand the card
 to a human — and ask on the issue when it needs one.
 
 **Nothing here is project-specific.** How to install dependencies, how to run the app, how to write code,
@@ -80,8 +80,8 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_STACK` | The tools the project's app needs on this machine, space-separated (`postgresql redis node …`) |
 | `SLOTH_STACK_INSTALL` | Only on a `/sloth:stack` run: the tools that run has to install — the same list as its arguments |
 | `SLOTH_RUNNER_ROOT` | The checkout sessions run from |
-| `SLOTH_WORKTREES_DIR` | Where per-issue worktrees go — `issue-<n>` under it |
-| `SLOTH_WORKTREE` | This run's own worktree path — `issue-<n>` for an implement run, `qa-<n>` for a QA test |
+| `SLOTH_WORKTREES_DIR` | Where Sloth's pool of worktrees lives — `slot-1 … slot-N` under it |
+| `SLOTH_WORKTREE` | The slot leased to this run; the session resets it to its branch and leaves it, the server returns it to the pool |
 | `SLOTH_ADMIN_LOGIN` | The admin — the one login whose orders have no limit (may be empty: nobody is admin) |
 | `SLOTH_DEVELOPER_LOGINS` | Space-separated logins whose orders are followed within the issue they are on (may be empty) |
 | `SLOTH_TESTER_LOGINS` | Space-separated logins that answer questions and ask for status, never order (may be empty) |
@@ -138,8 +138,8 @@ The **last message of the transcript is the report** — the monitor shows it.
 - A card in Code Review is reviewed by the server (`/sloth:review … final`), Sloth's PR or a human's: a pass moves it to
   Approved, where a human tests it from the preview link; a fail moves it back to In Progress with the findings, and a
   new `/sloth:implement` run on the issue addresses them on the same branch.
-- A `/sloth:qa` run is the daily QA sweep's test of one card: a worktree of `$SLOTH_QA_BRANCH` at its current
-  head (`qa-<n>`, never the issue's own), the app booted the way the project's run skill says, and the tester
+- A `/sloth:qa` run is the daily QA sweep's test of one card: its slot reset to `$SLOTH_QA_BRANCH` at its current
+  head (never the issue's own implement slot), the app booted the way the project's run skill says, and the tester
   subagent driving the merged fix as the user the issue is about. It comments the result on the issue —
   steps, what was seen, screenshots — and writes `verdict`; it moves no card and never asks for help: what it
   cannot test is `inconclusive`, and the card stays for a human.

@@ -42,7 +42,7 @@ export default function StepRunner({
         {(typed || linked.length === 0) && <TextInput value={repo} onChange={setRepo} placeholder="owner/repo" />}
       </div>
 
-      <Field label="Runner root" hint="The checkout the sessions run from. Worktrees for single issues are made next to it, under ~/.sloth/worktrees.">
+      <Field label="Runner root" hint="The checkout the sessions run from. The worktree slots the sessions work in are made next to it, under ~/.sloth/worktrees.">
         <TextInput value={runnerRoot} onChange={setRoot} placeholder="~/.sloth/runners/repo" />
       </Field>
       <div className="flex items-center gap-2">

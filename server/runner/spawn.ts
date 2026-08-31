@@ -12,8 +12,9 @@ import { isDry, log, readFile, remove, write } from './log';
 import { cleanup } from './cleanup';
 import { stopPreview } from './preview';
 import { APPEND_PROMPT, sessionEnv, type SessionExtras, type Target } from './session-env';
-import { approvedDir, counter, issueDir, qaDir, slotsFull, worktreeName } from './session-dirs';
+import { approvedDir, counter, issueDir, qaDir, slotsFull } from './session-dirs';
 import { machineHold } from './machine';
+import { leaseSlot } from './slots';
 
 /** Why nothing may start right now: every slot taken, or the machine too loaded to take one more run. */
 const held = (): string | undefined => (slotsFull() ? 'slots full' : machineHold());
@@ -51,7 +52,7 @@ interface StartOptions {
   chrome?: boolean;
   /** Extra environment on top of `sessionEnv` — the stack install session names what it has to install. */
   env?: NodeJS.ProcessEnv;
-  /** A budget or worktree of the run's own — the QA sweep's sessions have both. */
+  /** The run's budget and the worktree slot it leased — a review has neither. */
   extras?: SessionExtras;
 }
 export function start(bookDir: string, sessionDir: string, prompt: string, target: Target, logFile: string, options: StartOptions): void {
@@ -97,6 +98,11 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
   // run's leftovers go too — stopPreview alone skips a run that never wrote preview.json.
   await stopPreview(issue, 'a new session starts on the issue');
   await cleanup(issue);
+  const slot = await leaseSlot('issue', issue);
+  if (!slot) {
+    log(`#${issue} queued (no free worktree slot)`);
+    return false;
+  }
   fs.mkdirSync(path.join(dir, 'inbox'), { recursive: true });
   remove(path.join(dir, 'state.json'));
   remove(path.join(dir, 'blocked'));
@@ -107,7 +113,7 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
   // An orchestrator session runs on its own model and hands the coding to an implementor subagent on `models.implement`.
   const model = orchestrator ? models.orchestrator : models.implement;
   log(`launch #${issue} on ${model}${orchestrator ? ` (orchestrator, implementor on ${models.implement})` : ''}${order ? ` (${order.slice(0, 120)})` : ''}`);
-  start(dir, dir, `/sloth:implement ${issue}${order ? ` ${order}` : ''}`, { issue }, path.join(dir, 'run.log'), { model, chrome });
+  start(dir, dir, `/sloth:implement ${issue}${order ? ` ${order}` : ''}`, { issue }, path.join(dir, 'run.log'), { model, chrome, extras: { worktree: slot } });
   return true;
 }
 
@@ -162,6 +168,11 @@ export async function launchQa(issue: number, sha: string, branch: string): Prom
     log(`dry-run: would launch QA #${issue} on ${c.models.qa} (${where})`);
     return true;
   }
+  const slot = await leaseSlot('qa', issue);
+  if (!slot) {
+    log(`QA #${issue} queued (no free worktree slot)`);
+    return false;
+  }
   const retries = (readFile(path.join(dir, 'sha')) ?? '').trim() === sha ? counter(dir, 'retries') : 0;
   for (const f of ['state.json', 'verdict', 'handled']) remove(path.join(dir, f));
   write(path.join(dir, 'sha'), sha);
@@ -171,7 +182,7 @@ export async function launchQa(issue: number, sha: string, branch: string): Prom
   start(dir, dir, `/sloth:qa ${issue}`, { issue }, path.join(dir, 'run.log'), {
     model: c.models.qa,
     chrome: c.chrome,
-    extras: { budgetMinutes: c.qa.budgetMinutes, worktree: worktreeName('qa', issue) },
+    extras: { budgetMinutes: c.qa.budgetMinutes, worktree: slot },
   });
   return true;
 }

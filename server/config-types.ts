@@ -125,6 +125,7 @@ export interface SlothConfig {
   roles: Roles;
   mention: string;
   botPrefix: string;
+  /** Sessions working at once — and the size of the worktree pool the implement and QA runs lease from (`slots.ts`). */
   maxActive: number;
   maxAlive: number;
   /**

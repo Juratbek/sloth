@@ -4,11 +4,13 @@ import { cfg } from '../config';
 import { run } from './gh';
 import { readFile, remove } from './log';
 import { dirOf, worktreeName, type Kind } from './session-dirs';
+import { releaseSlot } from './slots';
 
 /**
  * What a session's own teardown does, for a run that never got there or one whose environment Sloth kept
- * alive as a preview: stop the processes it recorded, drop its database, remove its worktree. Only the
- * pids (and their process groups) and the name written into the session directory are touched — never another run's.
+ * alive as a preview: stop the processes it recorded, drop its database, give its worktree slot back. Only
+ * the pids (and their process groups) and the name written into the session directory are touched — never
+ * another run's. A worktree of the old per-issue kind (`issue-<n>`, `qa-<n>`) is removed outright.
  */
 export const cleanup = (issue: number): Promise<void> => cleanupRun('issue', issue);
 
@@ -40,6 +42,7 @@ export async function cleanupRun(kind: Kind, target: number): Promise<void> {
   }
   // A cleaned-up run has nothing left to show.
   remove(path.join(dir, 'preview.json'));
+  await releaseSlot(kind, target);
   const worktree = path.join(cfg().worktreesDir, worktreeName(kind, target));
   if (fs.existsSync(worktree)) {
     await run('git', ['-C', cfg().runnerRoot, 'worktree', 'remove', worktree, '--force'], 120_000);
