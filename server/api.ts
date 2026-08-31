@@ -5,6 +5,7 @@ import { broadcast, sse, watchAll } from './events';
 import { startLoop, stopLoop, tick } from './runner/loop';
 import { isPaused, setPaused } from './runner/pause';
 import { closeTunnels, stopPreview } from './runner/preview';
+import { unblock } from './runner/blocked';
 import { openSweep } from './runner/qa';
 import { stop as stopRun } from './runner/triggers';
 import { install } from './install';
@@ -120,6 +121,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     const agent = /^\/api\/sessions\/([\w-]+)\/agents\/(\w+)$/.exec(p);
     const preview = /^\/api\/previews\/(\d+)\/stop$/.exec(p);
     const stopSession = /^\/api\/sessions\/([\w-]+)\/stop$/.exec(p);
+    const unblockIssue = /^\/api\/issues\/(\d+)\/unblock$/.exec(p);
     if (p === '/api/tick' && req.method === 'POST') {
       const dryRun = url.searchParams.get('dry') === '1';
       await tick({ board: true, comments: true, dryRun });
@@ -129,6 +131,13 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       const sweep = await openSweep(true);
       if (sweep) await tick({ board: true });
       body = { ok: !!sweep, sweep };
+    } else if (unblockIssue && req.method === 'POST') {
+      // Lifts a give-up. The card is only handed back to the sweep — the next one tests it, and "sweep
+      // now" beside it makes that next one immediate.
+      const issue = Number(unblockIssue[1]);
+      const unblocked = unblock(issue, 'from the monitor');
+      broadcast();
+      body = { ok: unblocked, issue };
     } else if ((p === '/api/pause' || p === '/api/resume') && req.method === 'POST') {
       // Pause / resume the launching triggers; running sessions and replies are untouched.
       setPaused(p === '/api/pause');

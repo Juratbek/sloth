@@ -35,7 +35,7 @@ The short version; the tick-by-tick account is in [docs/how-it-works.md](docs/ho
 | 6 | An issue Sloth was working on is **closed** | Moves the card to Done, takes its preview, servers, database and worktree down, and deletes the `sloth/issue-<n>-…` branch of the PR that closed it. A PR closed *without* being merged parks its still-open issue instead |
 | 7 | The checks on a PR **Sloth wrote** are red, its card in Code Review or Approved | Sends the session back to the branch to make them pass — once per commit, keeping the PR. A human's PR is left to its author |
 | 8 | A PR that passed its review is green and merges cleanly | Merges it with the `autoMerge` method — as soon as that is true, so nobody tests it in Approved first. Off by default: merging stays a human's call until you ask for it |
-| 9 | It is `qa.at` o'clock and the QA column holds cards | **The QA sweep**: every card there — a merged fix, deployed to `qa.branch` — gets `/sloth:qa <n>` on `models.qa`, a session of its own that checks the branch out at its current head, boots the app and tests the fix in the browser as the user it concerns. The findings go on the issue with screenshots; a pass moves the card to Done, a fail to In Progress (row 2 then starts an implement run on the findings), an inconclusive test leaves it for a human. Once per card per head, so a passed card is not tested again until the branch moves. Off until a QA column is chosen — then daily at `qa.at`, 20:00 unless changed; **sweep now** on the home panel runs one regardless |
+| 9 | It is `qa.at` o'clock and the QA column holds cards | **The QA sweep**: every card there — a merged fix, deployed to `qa.branch` — gets `/sloth:qa <n>` on `models.qa`, a session of its own that checks the branch out at its current head, boots the app and tests the fix in the browser as the user it concerns. The findings go on the issue with screenshots; a pass moves the card to Done, a fail to In Progress (row 2 then starts an implement run on the findings), an inconclusive test leaves it for a human. Once per card per head, so a passed card is not tested again until the branch moves. A card whose tests keep dying before they reach a verdict (`maxRetries + 1` of them on one head) is **blocked** instead — see *Blocked cards*. Off until a QA column is chosen — then daily at `qa.at`, 20:00 unless changed; **sweep now** on the home panel runs one regardless |
 
 The board is read every 5 minutes, comments every 2; **Tick now** runs both at once. **Pause**
 stops Sloth from starting anything new (running sessions, inbox deliveries, status replies and
@@ -79,6 +79,16 @@ needs-help notifications carry on) and survives a restart.
   does the same on demand (a stopped review is not repeated for that PR head), and **end** on a parked
   session whose process is gone cleans it up and takes it off the needs-help list — the card stays put. A Claude usage
   limit pauses the watcher for 30 minutes without costing the card its place.
+- **Blocked cards** are the one state Sloth will not leave by itself. A QA test that dies before it writes
+  a verdict is retried, but `maxRetries + 1` deaths on the same head of the QA branch mean the sweep is
+  burning runs on a card it cannot test — so it gives up. Giving up used to be a line in the log and a
+  marker that looked exactly like a passed test, which left the card sitting in QA looking untested with
+  nothing short of a new head to ever pick it up again. Now the card is *blocked*: Sloth comments on the
+  issue saying why (mentioning `helpLogins`), raises the `blocked` webhook event, shows a red **blocked**
+  badge on the board card, and lists it on the home panel with the **unblock** button beside it. Unblocking
+  forgets the block, the heads already tested and the run's count of verdict-less tests, so the next sweep
+  meets the card fresh — **sweep now** makes that next sweep immediate. Moving the card out of the QA
+  column (or closing the issue) lifts the block on its own, since the sweep no longer owns it.
 - **Previews** (`previewHours`, default 24): an implement session that hands its PR to Code Review leaves
   the app it tested running — its own database, seeded, nothing shared — and Sloth puts a tunnel in front
   of it and posts the link on the PR, with how to sign in; once the PR passes its review the link is posted
@@ -102,7 +112,8 @@ needs-help notifications carry on) and survives a restart.
 ├── worktrees/<repo>/issue-42/      one worktree per issue — and qa-42/ while the QA sweep tests it
 ├── sessions/<repo>/                issue-42/, approved-91/, qa-42/ — pid, state.json, inbox/, run.log, preview.json, verdict …
 └── state/                          seen/, approved/, handed/, notified/, finished/, closed/, checks/, merged/,
-                                    merge-failed/, qa/ dedupe markers; paused, paused_until, pruned_at, qa_sweep, qa_ran
+                                    merge-failed/, qa/ dedupe markers; blocked/ the cards Sloth gave up on;
+                                    paused, paused_until, pruned_at, qa_sweep, qa_ran
 ```
 
 ## The plugin
@@ -161,7 +172,7 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `helpLogins` | `[]` | GitHub logins `@`-mentioned in the comment that parks a card in *needs help*, so GitHub notifies them (not the login `gh` writes with — GitHub skips self-mentions) |
 | `autoMerge` | `""` | How trigger 8 merges a PR whose review passed, whose checks are green and which merges cleanly: `squash`, `merge` or `rebase` (the `gh pr merge` methods) — as soon as it passes, skipping the human test in Approved. Empty leaves merging to a human |
 | `helpWebhook` | `""` | URL POSTed once per event in `webhookEvents` (`{event, text, content, repo, issue, title, url, column, pr?}` — Slack and Discord incoming webhooks read `text` / `content` as is) |
-| `webhookEvents` | `["needsHelp"]` | What `helpWebhook` hears about (Settings → *Notifications*, one toggle each): `needsHelp` (a card is parked), `codeReview` (a PR awaits Sloth's review), `finalPassed` (the review passed and the card is in Approved, with the preview link) / `finalFailed` (the `Fable: approved` label was taken back), `merged` (Sloth filed a closed issue away), `qaPassed` / `qaFailed` (the QA sweep's verdict on a card), `stopped` (a run was stopped or parked), `usageLimit` (a Claude limit paused the watcher) |
+| `webhookEvents` | `["needsHelp"]` | What `helpWebhook` hears about (Settings → *Notifications*, one toggle each): `needsHelp` (a card is parked), `codeReview` (a PR awaits Sloth's review), `finalPassed` (the review passed and the card is in Approved, with the preview link) / `finalFailed` (the `Fable: approved` label was taken back), `merged` (Sloth filed a closed issue away), `qaPassed` / `qaFailed` (the QA sweep's verdict on a card), `blocked` (Sloth gave up on a card), `stopped` (a run was stopped or parked), `usageLimit` (a Claude limit paused the watcher) |
 | `tunnel` | `["cloudflared", "tunnel", "--url", "http://localhost:{port}"]` | The command Sloth runs so the UI is reachable from outside (see *Remote access*); the first bare `https://` URL it prints is the address |
 | `publicUrl` | — | Where the UI is already reachable — your own tunnel or domain. Set, no tunnel is started |
 | `stack` | `"auto"` | What the sessions' app needs on this machine, out of the stack Sloth can install: `postgresql`, `redis`, `node`, `python`, `java` (see *Stack* below). `auto` reads the checkout at every start; a list pins it |

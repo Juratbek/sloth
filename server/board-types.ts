@@ -58,6 +58,25 @@ export interface BoardCard {
   preview?: { url: string; key: string };
   /** What the issue has cost so far (the per-issue rollup); null when unpriced, or when nothing ran on it. */
   cost: number | null;
+  /** Why Sloth gave up on this card (`BlockedCard.reason`); absent while it is not blocked. */
+  blocked?: string;
+}
+
+/**
+ * A card Sloth has given up on and will not start work on again by itself. Today one thing raises it:
+ * the QA sweep testing a card `maxRetries + 1` times on one head of the QA branch and every run dying
+ * before it wrote a verdict. The block is announced once (a comment on the issue, the `blocked` webhook)
+ * and stands until a human lifts it from the home panel or moves the card out of the QA column.
+ */
+export interface BlockedCard {
+  issue: number;
+  title: string;
+  /** Why Sloth stopped, in the words the comment and the panel both use. */
+  reason: string;
+  /** The head of the QA branch the tests were given up on. */
+  sha: string;
+  /** Epoch seconds the block was written. */
+  at: number;
 }
 
 export interface BoardColumn {

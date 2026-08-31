@@ -3,7 +3,7 @@ import { buildBoardView } from '../server/board-view';
 import { clearSnapshot, setSnapshot, snapshot } from '../server/runner/board-snapshot';
 import { reloadConfig } from '../server/config';
 import type { ConfigColumns } from '../server/config-types';
-import type { IssueCost, SessionSummary, WatcherSession, WatcherState } from '../server/types';
+import type { BlockedCard, IssueCost, SessionSummary, WatcherSession, WatcherState } from '../server/types';
 import { COLUMNS, card, configure } from './harness';
 
 const usage = () => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, thinking: 0 });
@@ -37,8 +37,13 @@ const cost = (issue: number, over: Partial<IssueCost> = {}): IssueCost =>
   ({ issue, sessions: 1, cost: 1, tokens: { input: 0, output: 0, cacheRead: 0 }, ...over }) as IssueCost;
 
 const NOW = Date.parse('2026-08-28T12:00:00Z');
-const view = (items: Parameters<typeof buildBoardView>[0]['items'], sessions: SessionSummary[] = [], issues: IssueCost[] = [], columns: ConfigColumns = COLUMNS) =>
-  buildBoardView({ at: NOW, items }, columns, sessions, issues, NOW);
+const view = (
+  items: Parameters<typeof buildBoardView>[0]['items'],
+  sessions: SessionSummary[] = [],
+  issues: IssueCost[] = [],
+  columns: ConfigColumns = COLUMNS,
+  blocked: BlockedCard[] = [],
+) => buildBoardView({ at: NOW, items }, columns, sessions, issues, blocked, NOW);
 
 const names = (v: ReturnType<typeof buildBoardView>) => v.columns.map((c) => c.role);
 const issuesIn = (v: ReturnType<typeof buildBoardView>, role: string) => v.columns.find((c) => c.role === role)?.cards.map((c) => c.issue);
