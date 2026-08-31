@@ -5,6 +5,7 @@ import { cfg } from './config';
 import { loopStatus } from './runner/loop';
 import { isPaused } from './runner/pause';
 import { previewState } from './runner/preview';
+import { pausedRun } from './runner/pressure';
 import type { Overview, RateBucket, WatcherSession, WatcherState } from './types';
 
 const read = (f: string) => {
@@ -71,6 +72,7 @@ export function listSessionDirs(): WatcherSession[] {
         preview: m[1] === 'issue' ? previewState(Number(m[2])) : undefined,
         retries: num(path.join(d, 'retries')),
         blocked: fs.existsSync(path.join(d, 'blocked')),
+        paused: pausedRun(d),
         issue: num(path.join(d, 'issue')) || undefined,
         runLogTail: (read(path.join(d, 'run.log')) ?? '').slice(-4000),
         inbox,

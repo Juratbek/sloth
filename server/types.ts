@@ -71,6 +71,8 @@ export interface WatcherSession {
   preview?: PreviewState;
   retries: number;
   blocked: boolean;
+  /** Set while the run is stopped for the machine's sake (`runner/pressure.ts`): since when, and the reading that did it. */
+  paused?: { since: number; reason: string };
   /** The issue a review / approved run was started for — the server writes it into the directory. */
   issue?: number;
   runLogTail: string;

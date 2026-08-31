@@ -10,6 +10,7 @@ import { isDry, log, nowSec, setDry } from './log';
 import { boardEvents } from './notify-events';
 import { sampleMachine } from './machine';
 import { isPaused } from './pause';
+import { pressure } from './pressure';
 import { previews } from './preview';
 import { qaSweep, qaVerdicts } from './qa';
 import { prune } from './retention';
@@ -57,6 +58,8 @@ async function runTick({ board = false, comments: wantComments = false, dryRun =
       if (machine.hold && machine.hold !== state.machine?.hold) log(`${machine.hold} — no new sessions until it clears`);
       else if (!machine.hold && state.machine?.hold) log('machine load cleared — new sessions may start');
       state.machine = machine;
+      // A machine that stays over its limits with sessions running pauses the lowest-priority one.
+      pressure();
     }
     if (wantComments) {
       state.lastComment = Date.now();

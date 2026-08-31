@@ -11,6 +11,7 @@ import { helpMentions, notify } from './notify';
 import { cleanup, cleanupRun } from './cleanup';
 import { exitLine, exitReport, exitsOf, forgetExits, recordExit } from './exits';
 import { previewLink } from './preview';
+import { forgetPause, pausedSeconds, resumeRun } from './pressure';
 import { approvedDir, counter, dirAlive, dirOf, isBlocked, issueAlive, issueDir, pidAlive, pidOf, runDirs, startedAt, stateOf } from './session-dirs';
 import type { Kind } from './session-dirs';
 import { launch, launchApproved } from './spawn';
@@ -79,6 +80,8 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
   }
   // What the run was doing when it was killed is all the human will get: it never prints a final report.
   if (kind === 'issue') recordExit(dir, `stopped by Sloth: ${reason}`);
+  // A run paused for the machine's sake is stopped cold: it has to be woken to act on the signal.
+  resumeRun(dir);
   // Detached, so the run leads its own group: the negative pid takes its subagents and servers with it.
   for (const t of [-pid!, pid!]) {
     try {
@@ -139,6 +142,7 @@ export async function reap(): Promise<void> {
     const name = `${kind}-${target}`;
     if (!dirAlive(dir)) {
       remove(pidFile);
+      forgetPause(dir);
       if (!limitExit(readFile(path.join(dir, 'run.log')))) {
         if ((stateOf(dir).state ?? 'working') === 'working') {
           if (kind === 'issue') {
@@ -162,7 +166,8 @@ export async function reap(): Promise<void> {
       continue;
     }
     const budget = (kind === 'qa' ? cfg().qa.budgetMinutes : cfg().budgetMinutes) * 60;
-    if ((stateOf(dir).state ?? 'working') !== 'working' || nowSec() - startedAt(dir) <= budget + KILL_GRACE) continue;
+    // The time a run spent paused for the machine is not its own: the budget clock stands still meanwhile.
+    if ((stateOf(dir).state ?? 'working') !== 'working' || nowSec() - startedAt(dir) - pausedSeconds(dir) <= budget + KILL_GRACE) continue;
     const stopped = await stop(kind, target, 'hung past the budget', 'the run for this issue hung past its time budget and was stopped by Sloth.');
     // A hang is not a verdict: the head's marker goes so the sweep tests the card again, `retries` allowing.
     if (stopped && kind === 'qa' && !isDry()) {
