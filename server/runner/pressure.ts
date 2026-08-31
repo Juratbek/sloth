@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { cfg } from '../config';
 import { snapshot } from './board-snapshot';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
 import { machineLoad } from './machine';
@@ -11,8 +12,8 @@ import { dirAlive, pidOf, runDirs, startedAt, stateOf, type RunDir } from './ses
  * it recorded, which stops their CPU and disk use on the spot and lets the OS page their memory out —
  * and resumed with SIGCONT once the machine has had room for a while. One run per tick, either way,
  * and only after two readings in a row say the same, so a launch's install storm does not pause the
- * session doing it. Reviews and status replies are never paused: short, read-only, and first in line.
- * Windows has no SIGSTOP; there the holds are all Sloth can do.
+ * session doing it. Status replies are not runs and are never paused. Windows has no SIGSTOP; there
+ * the holds are all Sloth can do.
  */
 
 export interface PausedRun {
@@ -84,16 +85,26 @@ export function forgetPause(dir: string): void {
 }
 
 /**
- * Lowest priority first: the QA sweep's tests before implement runs (background work on merged fixes),
- * then the card's own priority on the board — a card without one ranks under every card that has one,
- * as in pickup — and among equals the run started last, which has the least to lose.
+ * Lowest priority first. The card's column decides: work in the QA column (the sweep's tests) matters
+ * most, work in Code Review (a review, or an implement run sent back to fix the findings) next, and
+ * everything else — In Progress above all — sits under them. Within a column the card's priority on the
+ * board: a card without one ranks under every card that has one, as in pickup. Among equals the run
+ * started last, which has the least to lose.
  */
 export function byPriority(runs: RunDir[]): RunDir[] {
   const items = snapshot()?.items ?? [];
+  const col = cfg().statusField.columns;
+  // A review's directory is named after its PR; the issue it is for is written beside it.
+  const cardOf = (r: RunDir) => items.find((i) => i.number === (r.kind === 'issue' || r.kind === 'qa' ? r.target : readNumber(path.join(r.dir, 'issue'))));
+  const column = (r: RunDir) => {
+    if (r.kind === 'qa') return 2;
+    if (r.kind !== 'issue') return 1;
+    const status = cardOf(r)?.status;
+    return status && status === col.qa.name ? 2 : status === col.codeReview.name ? 1 : 0;
+  };
   // A finite "none" — Infinity minus Infinity is NaN, which would leave the sort undefined.
-  const priority = (r: RunDir) => (r.kind === 'issue' ? (items.find((i) => i.number === r.target)?.priority ?? 1e9) : -1);
-  const kind = (r: RunDir) => (r.kind === 'qa' ? 0 : 1);
-  return [...runs].sort((a, b) => kind(a) - kind(b) || priority(b) - priority(a) || startedAt(b.dir) - startedAt(a.dir));
+  const priority = (r: RunDir) => cardOf(r)?.priority ?? 1e9;
+  return [...runs].sort((a, b) => column(a) - column(b) || priority(b) - priority(a) || startedAt(b.dir) - startedAt(a.dir));
 }
 
 let overTicks = 0;
@@ -104,7 +115,7 @@ export function resetPressure(): void {
   clearTicks = 0;
 }
 
-const working = () => runDirs().filter((d) => (d.kind === 'issue' || d.kind === 'qa') && dirAlive(d.dir) && (stateOf(d.dir).state ?? 'working') === 'working');
+const working = () => runDirs().filter((d) => dirAlive(d.dir) && (stateOf(d.dir).state ?? 'working') === 'working');
 
 /** Every tick, after the machine was read: pause one run when it has been over its limits, resume one when it has had room. */
 export function pressure(): void {

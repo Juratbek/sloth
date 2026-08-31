@@ -50,44 +50,65 @@ const stopped = (pid: number) => signals.some((s) => s.pid === -pid && s.signal 
 const continued = (pid: number) => signals.some((s) => s.pid === -pid && s.signal === 'SIGCONT');
 
 describe('pressure', () => {
-  it('pauses the lowest-priority working run after two readings over the limit, one per tick, then resumes in reverse', async () => {
+  it('pauses by column — In Progress before Code Review before QA — then by card priority, and resumes in reverse', async () => {
     makeSession('issue', 1, { pid: alivePid(), 'state.json': { state: 'working' }, 'dev.pid': '4242\n' });
     makeSession('issue', 2, { pid: alivePid(), 'state.json': { state: 'working' } });
     makeSession('qa', 3, { pid: alivePid() });
-    makeSession('approved', 9, { pid: alivePid() }); // a review is never paused
+    makeSession('approved', 9, { pid: alivePid(), issue: '5' });
     makeSession('issue', 4, { pid: alivePid(), 'state.json': { state: 'waiting' } }); // parked: no processes to pause
     const [d1, d2, d3, d9, d4] = [sessionDir('issue', 1), sessionDir('issue', 2), sessionDir('qa', 3), sessionDir('approved', 9), sessionDir('issue', 4)];
-    board = [card(1, 'In Progress', { priority: 0 }), card(2, 'In Progress', { priority: 1 })];
+    board = [card(1, 'In Progress', { priority: 0 }), card(2, 'In Progress', { priority: 1 }), card(5, 'Code Review')];
 
     await tick(5);
     expect(signals).toHaveLength(0); // one reading is not a trend
     await tick(5);
-    expect(exists(d3, 'paused')).toBe(true);
-    expect(exists(d2, 'paused')).toBe(false);
-    expect(readLog().join('\n')).toMatch(/paused qa-3 — machine busy: 5% memory free, under 10%/);
-    await tick(5);
-    await tick(5);
-    expect(exists(d2, 'paused')).toBe(true); // the lower board priority goes before #1
+    expect(exists(d2, 'paused')).toBe(true); // In Progress, the lower card priority
     expect(exists(d1, 'paused')).toBe(false);
+    expect(readLog().join('\n')).toMatch(/paused issue-2 — machine busy: 5% memory free, under 10%/);
     await tick(5);
     await tick(5);
     expect(exists(d1, 'paused')).toBe(true);
     expect(stopped(4242)).toBe(true); // its dev server too
     expect(exists(d9, 'paused')).toBe(false);
+    await tick(5);
+    await tick(5);
+    expect(exists(d9, 'paused')).toBe(true); // Code Review after every In Progress run
+    expect(exists(d3, 'paused')).toBe(false);
+    await tick(5);
+    await tick(5);
+    expect(exists(d3, 'paused')).toBe(true); // QA last of all
     expect(exists(d4, 'paused')).toBe(false);
-    expect(JSON.parse(read(path.join(d1, 'paused')))).toMatchObject({ reason: 'machine busy: 5% memory free, under 10%' });
+    expect(JSON.parse(read(path.join(d3, 'paused')))).toMatchObject({ reason: 'machine busy: 5% memory free, under 10%' });
 
     signals.length = 0;
     await tick(50);
     expect(signals).toHaveLength(0);
     await tick(50);
-    expect(exists(d1, 'paused')).toBe(false); // the highest priority comes back first
-    expect(exists(d2, 'paused')).toBe(true);
+    expect(exists(d3, 'paused')).toBe(false); // QA comes back first
+    expect(exists(d9, 'paused')).toBe(true);
     expect(continued(me)).toBe(true);
+    expect(readLog().join('\n')).toMatch(/resumed qa-3 — the machine has room again \(3 still paused\)/);
+    await tick(50);
+    await tick(50);
+    expect(exists(d9, 'paused')).toBe(false);
+    await tick(50);
+    await tick(50);
+    expect(exists(d1, 'paused')).toBe(false);
     expect(continued(4242)).toBe(true);
-    expect(readLog().join('\n')).toMatch(/resumed issue-1 — the machine has room again \(2 still paused\)/);
+    expect(exists(d2, 'paused')).toBe(true);
     expect(pausedSeconds(d1)).toBeGreaterThanOrEqual(0);
     expect(exists(d1, 'paused_total')).toBe(true);
+  });
+
+  it('ranks an implement run by the column its card is in now — one sent back from Code Review outranks In Progress', async () => {
+    makeSession('issue', 1, { pid: alivePid() });
+    makeSession('issue', 2, { pid: alivePid() });
+    const [d1, d2] = [sessionDir('issue', 1), sessionDir('issue', 2)];
+    board = [card(1, 'Code Review', { priority: 2 }), card(2, 'In Progress', { priority: 0 })];
+    await tick(5);
+    await tick(5);
+    expect(exists(d2, 'paused')).toBe(true);
+    expect(exists(d1, 'paused')).toBe(false);
   });
 
   it('a hold that clears between readings starts the count over', async () => {
