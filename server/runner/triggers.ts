@@ -12,7 +12,7 @@ import { cleanup, cleanupRun } from './cleanup';
 import { exitLine, exitReport, exitsOf, forgetExits, recordExit } from './exits';
 import { previewLink } from './preview';
 import { forgetPause, pausedSeconds, resumeRun } from './pressure';
-import { approvedDir, counter, dirAlive, dirOf, isBlocked, issueAlive, issueDir, pidAlive, pidOf, runDirs, startedAt, stateOf } from './session-dirs';
+import { approvedDir, counter, dirAlive, dirOf, isBlocked, issueAlive, issueDir, pidAlive, pidOf, runDirs, startedAt, stateOf, triesOn } from './session-dirs';
 import type { Kind } from './session-dirs';
 import { launch, launchApproved } from './spawn';
 
@@ -191,6 +191,12 @@ export async function reap(): Promise<void> {
  * goes and the card comes back to Code Review to be reviewed like any other — unless a session is already on
  * the issue (trigger 7 sent it back to fix the checks), which moves the card itself. Checks decide the rest:
  * a pending rollup is worth waiting one tick for, a red one belongs to trigger 7.
+ *
+ * A review that dies before it posts a verdict has its head's marker cleared by `reap`, so this trigger
+ * gives the head the review it never got. That is right once and wrong for ever: a head whose review dies
+ * every time — a model that runs out, a PR too large to read — was reviewed again on every tick, each one
+ * a fresh session on `models.final`. `maxRetries + 1` of them is enough to call it: the marker is written
+ * so the head is left alone, and the card goes to a human like every other run Sloth gives up on.
  */
 export async function reviews(board: BoardItem[]): Promise<void> {
   const col = cfg().statusField.columns;
@@ -211,7 +217,14 @@ export async function reviews(board: BoardItem[]): Promise<void> {
       continue;
     }
     if (checks === 'FAILURE') continue;
-    if (launchApproved(pr, issue) && !isDry()) write(marker, '');
+    const tries = triesOn(approvedDir(pr), sha);
+    if (tries > cfg().maxRetries) {
+      if (!isDry()) write(marker, '');
+      log(`review PR #${pr} given up: it ended without a verdict ${tries} times on ${sha.slice(0, 7)}`);
+      await park(issue, `the review of PR #${pr} ended without a verdict ${tries} times on ${sha.slice(0, 7)}.`);
+      continue;
+    }
+    if (launchApproved(pr, issue, sha) && !isDry()) write(marker, '');
   }
 }
 

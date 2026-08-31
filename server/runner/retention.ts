@@ -4,8 +4,9 @@ import { cfg } from '../config';
 import { forgetTranscript } from '../transcripts';
 import { run } from './gh';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
+import { previewing, pruneCaches, trimRunLogs } from './caps';
 import { statePath } from './markers';
-import { dirAlive, dirOf, issueDir, runDirs, type Kind } from './session-dirs';
+import { dirAlive, dirOf, runDirs, type Kind } from './session-dirs';
 import { slotInUse } from './slots';
 
 /**
@@ -15,7 +16,8 @@ import { slotInUse } from './slots';
  * `~/.claude/projects` (Claude Code writes it, but it is this run's and nobody else's). Worktrees are not
  * kept that long: a leftover per-issue one goes as soon as its run is over, and so does a pool slot the
  * pool no longer needs. A run that is alive, parked or still serving a preview is left alone however
- * old it looks.
+ * old it looks. What a run leaves behind that outgrows the run itself — its build cache, its server
+ * logs — is capped by `caps.ts` on the same sweep, whatever the run's age.
  */
 
 const DAY = 24 * 3600;
@@ -33,7 +35,6 @@ const newest = (...paths: string[]): number =>
     }
   }, 0);
 
-const previewing = (issue: number) => fs.existsSync(path.join(issueDir(issue), 'preview-state.json'));
 
 /** The transcript of the run booked in `dir` — its main `.jsonl` and the subagent files beside it. */
 function removeTranscript(dir: string): void {
@@ -64,6 +65,12 @@ function pruneSessions(cutoff: number): void {
  * numbered past `maxActive` that no run holds (the cap was lowered). A slot within the pool stays — its
  * installed dependencies are the next run's head start. `git worktree remove` so git's own administrative
  * files go too.
+ *
+ * A checkout git has already forgotten — its administrative files pruned, or the run that made it killed
+ * before git finished — fails that command with "is not a working tree" for ever, and used to be logged
+ * and left: the build output under it stayed on disk, and every sweep from then on spent a `git` call
+ * failing the same way. Git having no record of it is exactly what makes the directory nobody's, so it
+ * is deleted outright.
  */
 async function pruneWorktrees(): Promise<void> {
   const c = cfg();
@@ -89,8 +96,15 @@ async function pruneWorktrees(): Promise<void> {
     }
     const r = await run('git', ['-C', c.runnerRoot, 'worktree', 'remove', dir, '--force'], 120_000);
     if (!r.ok && fs.existsSync(dir)) {
-      log(`worktree ${name} could not be removed: ${r.err.split('\n')[0]}`);
-      continue;
+      const why = r.err.split('\n')[0];
+      // Only when git disowns it: a removal that failed for any other reason (a lock, a busy file) is
+      // left for the next sweep rather than deleted behind git's back.
+      if (!/is not a working tree/i.test(why)) {
+        log(`worktree ${name} could not be removed: ${why}`);
+        continue;
+      }
+      remove(dir);
+      log(`worktree ${name} deleted — git has no record of it (${why})`);
     }
     removed++;
     remove(statePath('slots', name));
@@ -155,5 +169,7 @@ export async function prune(): Promise<void> {
   pruneSessions(cutoff);
   await pruneWorktrees();
   pruneMarkers(cutoff);
+  pruneCaches();
+  trimRunLogs();
   rotateLog();
 }

@@ -142,6 +142,12 @@ export interface SlothConfig {
   maxRetries: number;
   boardSeconds: number;
   commentSeconds: number;
+  /**
+   * How often the machine is read, in seconds — the holds above and the pausing in `pressure.ts` can
+   * only act on a reading they have. Short: the board is read every few minutes, and a session that
+   * boots an app, a build and a browser at once can exhaust the memory between two of those readings.
+   */
+  machineSeconds: number;
   /** One model per agent; a config from before this had `model` for every session and `approvedModel` for the final review. */
   models: AgentModels;
   /**
@@ -232,6 +238,7 @@ export const CONFIG_DEFAULTS = {
   maxRetries: 2,
   boardSeconds: 300,
   commentSeconds: 120,
+  machineSeconds: 15,
   models: DEFAULT_MODELS,
   orchestrator: true,
   chrome: true,

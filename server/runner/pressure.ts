@@ -10,10 +10,13 @@ import { dirAlive, pidOf, runDirs, startedAt, stateOf, type RunDir } from './ses
  * `machine.ts` only keep new ones from starting, so a laptop pushed to the edge by the ones it has was
  * on its own. Now the lowest-priority run is paused — SIGSTOP to its process group and to the servers
  * it recorded, which stops their CPU and disk use on the spot and lets the OS page their memory out —
- * and resumed with SIGCONT once the machine has had room for a while. One run per tick, either way,
- * and only after two readings in a row say the same, so a launch's install storm does not pause the
- * session doing it. Status replies are not runs and are never paused. Windows has no SIGSTOP; there
- * the holds are all Sloth can do.
+ * and resumed with SIGCONT once the machine has had room for a while. One run per reading, either way,
+ * and only after the readings have said the same for `STEADY_SECONDS` — a minute, and two of them at
+ * least — so a launch's install storm does not pause the session doing it. Readings are `machineSeconds`
+ * apart and not a board poll apart, so this acts while the memory is going rather than minutes after
+ * the kernel has already killed something; the trend is measured in time and not in readings, so a
+ * shorter interval, or a tick's reading right behind the timer's, does not make it trigger-happy. Status replies
+ * are not runs and are never paused. Windows has no SIGSTOP; there the holds are all Sloth can do.
  */
 
 export interface PausedRun {
@@ -21,8 +24,8 @@ export interface PausedRun {
   reason: string;
 }
 
-/** How many readings in a row must agree before a run is paused or resumed. */
-export const STEADY = 2;
+/** How long the readings must agree before a run is paused or resumed — and never on one reading alone. */
+export const STEADY_SECONDS = 60;
 
 const file = (dir: string) => path.join(dir, 'paused');
 const totalFile = (dir: string) => path.join(dir, 'paused_total');
@@ -107,12 +110,20 @@ export function byPriority(runs: RunDir[]): RunDir[] {
   return [...runs].sort((a, b) => column(a) - column(b) || priority(b) - priority(a) || startedAt(b.dir) - startedAt(a.dir));
 }
 
-let overTicks = 0;
-let clearTicks = 0;
-/** Tests start each case from a fresh count. */
+/** The readings in a row that said the same, and when the first of them was taken. */
+interface Trend {
+  readings: number;
+  since: number;
+}
+const none = (): Trend => ({ readings: 0, since: 0 });
+const extend = (t: Trend): Trend => ({ readings: t.readings + 1, since: t.readings ? t.since : nowSec() });
+const steady = (t: Trend) => t.readings >= 2 && nowSec() - t.since >= STEADY_SECONDS;
+let over = none();
+let clear = none();
+/** Tests start each case from a fresh trend. */
 export function resetPressure(): void {
-  overTicks = 0;
-  clearTicks = 0;
+  over = none();
+  clear = none();
 }
 
 const working = () => runDirs().filter((d) => dirAlive(d.dir) && (stateOf(d.dir).state ?? 'working') === 'working');
@@ -124,10 +135,11 @@ export function pressure(): void {
   const runs = working();
   const paused = runs.filter((d) => pausedRun(d.dir));
   if (load.hold) {
-    clearTicks = 0;
+    clear = none();
+    over = extend(over);
     const running = byPriority(runs.filter((d) => !pausedRun(d.dir)));
-    if (++overTicks < STEADY || !running.length) return;
-    overTicks = 0;
+    if (!steady(over) || !running.length) return;
+    over = none();
     const [victim] = running;
     if (isDry()) {
       log(`dry-run: would pause ${victim.name} (${load.hold})`);
@@ -137,9 +149,10 @@ export function pressure(): void {
     log(`paused ${victim.name} — ${load.hold}; it resumes when the machine has room (${paused.length + 1} paused)`);
     return;
   }
-  overTicks = 0;
-  if (++clearTicks < STEADY || !paused.length) return;
-  clearTicks = 0;
+  over = none();
+  clear = extend(clear);
+  if (!steady(clear) || !paused.length) return;
+  clear = none();
   const back = byPriority(paused).at(-1)!;
   if (isDry()) {
     log(`dry-run: would resume ${back.name}`);
