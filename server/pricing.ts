@@ -1,27 +1,21 @@
+import { PROVIDERS, type Price } from './models';
 import type { Rec } from './transcripts';
 
-/** Anthropic API list prices, USD per million tokens. Cache reads, 5m writes and 1h writes are fixed multiples of input. */
-interface Price {
-  input: number;
-  output: number;
+/**
+ * What a run would have cost at list price. The prices themselves live with the providers that charge
+ * them (`models.ts`); this file is only the arithmetic, so a new provider needs nothing here.
+ */
+
+/** A model's price together with the cache multiples that apply to it — its own, or its provider's. */
+function rated(model: string): { price: Price; read: number; write5m: number; write1h: number } | undefined {
+  for (const p of PROVIDERS) {
+    const price = p.prices.find(([re]) => re.test(model))?.[1];
+    if (price) return { price, read: price.cacheRead ?? p.cache.read, write5m: price.cacheWrite5m ?? p.cache.write5m, write1h: price.cacheWrite1h ?? p.cache.write1h };
+  }
+  return undefined;
 }
 
-/** First match wins, so the specific families sit above the broad `opus`/`sonnet`/`haiku` fallbacks. */
-const PRICES: [RegExp, Price][] = [
-  [/^claude-(fable|mythos)-5/, { input: 10, output: 50 }],
-  [/^claude-opus-4-(1|20)/, { input: 15, output: 75 }], // Opus 4 / 4.1
-  [/^claude-opus-/, { input: 5, output: 25 }], // Opus 4.5 → 5
-  [/^claude-sonnet-5/, { input: 2, output: 10 }],
-  [/^claude-sonnet-|^claude-3-7-sonnet/, { input: 3, output: 15 }],
-  [/^claude-haiku-4/, { input: 1, output: 5 }],
-  [/^claude-3-5-haiku/, { input: 0.8, output: 4 }],
-];
-
-const CACHE_READ = 0.1;
-const CACHE_WRITE_5M = 1.25;
-const CACHE_WRITE_1H = 2;
-
-export const priceOf = (model: string): Price | undefined => PRICES.find(([re]) => re.test(model))?.[1];
+export const priceOf = (model: string): Price | undefined => rated(model)?.price;
 
 /**
  * What one API call would have cost at list price, or `undefined` for a model with no known price.
@@ -29,18 +23,18 @@ export const priceOf = (model: string): Price | undefined => PRICES.find(([re]) 
  * without the `cache_creation` split is priced as all-1h rather than silently undercounted.
  */
 export function costOf(model: string, u: Rec): number | undefined {
-  const p = priceOf(model);
-  if (!p) return undefined;
+  const r = rated(model);
+  if (!r) return undefined;
   const written: number = u.cache_creation_input_tokens ?? 0;
   const split = u.cache_creation;
   const w5m: number = split?.ephemeral_5m_input_tokens ?? 0;
   const w1h: number = split ? (split.ephemeral_1h_input_tokens ?? 0) : written;
   const inputCost =
     (u.input_tokens ?? 0) +
-    (u.cache_read_input_tokens ?? 0) * CACHE_READ +
-    w5m * CACHE_WRITE_5M +
-    w1h * CACHE_WRITE_1H;
-  return (inputCost * p.input + (u.output_tokens ?? 0) * p.output) / 1e6;
+    (u.cache_read_input_tokens ?? 0) * r.read +
+    w5m * r.write5m +
+    w1h * r.write1h;
+  return (inputCost * r.price.input + (u.output_tokens ?? 0) * r.price.output) / 1e6;
 }
 
 /**
@@ -49,8 +43,8 @@ export function costOf(model: string, u: Rec): number | undefined {
  * assumption `costOf` makes for a record without the split, and the one that cannot undercount.
  */
 export function costOfUsage(model: string, u: { input: number; output: number; cacheRead: number; cacheWrite: number }): number | undefined {
-  const p = priceOf(model);
-  if (!p) return undefined;
-  const input = u.input + u.cacheRead * CACHE_READ + u.cacheWrite * CACHE_WRITE_1H;
-  return (input * p.input + u.output * p.output) / 1e6;
+  const r = rated(model);
+  if (!r) return undefined;
+  const input = u.input + u.cacheRead * r.read + u.cacheWrite * r.write1h;
+  return (input * r.price.input + u.output * r.price.output) / 1e6;
 }

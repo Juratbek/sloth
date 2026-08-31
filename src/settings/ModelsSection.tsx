@@ -42,7 +42,8 @@ export function Models({ draft, patch }: SectionProps) {
     <>
       <p className="py-3 text-xs text-zinc-400">
         Which model each of Sloth's agents runs on: a Claude Code alias or a full model id, passed as <code>--model</code>. A change
-        applies to sessions started after the save; running ones keep theirs.
+        applies to sessions started after the save; running ones keep theirs. Models from a provider other than Anthropic appear once
+        that provider's key is in the environment Sloth was started with — the greyed-out entries name the variable to set.
       </p>
       <Row
         label="Orchestrator"

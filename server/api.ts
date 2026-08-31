@@ -9,6 +9,7 @@ import { unblock } from './runner/blocked';
 import { openSweep } from './runner/qa';
 import { stop as stopRun } from './runner/triggers';
 import { install } from './install';
+import { modelChoices } from './models';
 import { guard, isLocal, remoteLink, rotateToken, sameOrigin, startTunnel, stopTunnel } from './remote';
 import { agentDetail, overview, sessionDetail, watcherOf } from './sessions';
 import { serviceStatus } from './service';
@@ -81,7 +82,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
   }
   let body: unknown;
   const mutating = (req.method ?? 'GET') !== 'GET';
-  const sensitive = p.startsWith('/api/setup/') || p.startsWith('/api/remote') || p.startsWith('/api/update') || p.startsWith('/api/stack') || p === '/api/service';
+  const sensitive =
+    p.startsWith('/api/setup/') || p.startsWith('/api/remote') || p.startsWith('/api/update') || p.startsWith('/api/stack') || p === '/api/service' || p === '/api/models';
   // CSRF guard: a cross-site page (even one open on the machine itself) must not be able to drive a
   // POST or reach the sensitive endpoints. `sameOrigin` fails closed on a cross-site fetch.
   if ((mutating || sensitive) && !sameOrigin(req)) {
@@ -154,6 +156,10 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
         broadcast();
         body = { ok: true, stopped };
       }
+    } else if (p === '/api/models') {
+      // Which models the settings picker may offer: a provider is only on if its key is in the
+      // environment this Sloth runs in, which only the machine itself can be asked about.
+      body = modelChoices(process.env);
     } else if (p === '/api/overview') body = await overview();
     else if (p === '/api/usage') body = usageSeries(Math.min(31, Number(url.searchParams.get('days')) || 7));
     else if (session) body = sessionDetail(session[1]);

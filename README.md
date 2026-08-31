@@ -176,7 +176,7 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `reviewRounds` / `maxRetries` | `4` / `2` | Reviewer-agent rounds before asking for help; trigger-2 relaunches before parking. `maxRetries` also caps the runs of one head that end without a verdict — a QA test (trigger 9) and a review (trigger 4) alike; past it the card goes to a human instead of being tried again |
 | `boardSeconds` / `commentSeconds` | `300` / `120` | Poll intervals |
 | `machineSeconds` | `15` | Seconds between two readings of memory, CPU and disk. The three limits above and the pausing of a running session can only act on a reading Sloth has, and a session that boots an app, a build and a browser at once can exhaust the memory between two board polls |
-| `models` | `opus` each, `final: fable`, `orchestrator: fable` | Which model each agent runs on (Settings → *Models*): `implement` (triggers 1–3; with `orchestrator` on, the implementor subagent), `orchestrator` (the implement session when `orchestrator` is on), `tester` (the headless-Chrome subagent that screenshots the change — the QA sweep's browser runs on it too), `reviewer` (the in-session review loop), `final` (trigger 4 — the review every Code Review card gets), `status` (mention replies), `qa` (trigger 9 — the session that tests one QA card). An older config's `model` / `approvedModel` still load; its `review` key is ignored |
+| `models` | `opus` each, `final: fable`, `orchestrator: fable` | Which model each agent runs on (Settings → *Models*): `implement` (triggers 1–3; with `orchestrator` on, the implementor subagent), `orchestrator` (the implement session when `orchestrator` is on), `tester` (the headless-Chrome subagent that screenshots the change — the QA sweep's browser runs on it too), `reviewer` (the in-session review loop), `final` (trigger 4 — the review every Code Review card gets), `status` (mention replies), `qa` (trigger 9 — the session that tests one QA card). An older config's `model` / `approvedModel` still load; its `review` key is ignored. A value is a Claude Code alias, a model id, or a model from another provider (see *Model providers*) |
 | `qa` | `{branch: "", at: "20:00", budgetMinutes: 60}` | The daily QA sweep (trigger 9, Settings → *QA sweep*): `at` is the local time of day it starts (`HH:MM`; empty turns it off), `branch` the branch the merged fixes are deployed from and tested on (empty: the default branch), `budgetMinutes` one QA session's own budget. The column it sweeps is the *QA* role in `statusField.columns` — opt-in, chosen in Settings → *Board*; nothing runs without it |
 | `orchestrator` | `true` | Run implement sessions as an orchestrator on `models.orchestrator` that never edits code itself: it reads the issue, briefs one implementor subagent on `models.implement`, verifies, runs the tester and the reviewer, opens the PR. Off, one session on `models.implement` does all of it. Either way the tester and the reviewer are subagents (Settings → *Models*) |
 | `autostart` | `false` | Start Sloth at login through a macOS launch agent (Settings → *Machine*; see *Run at login*). Saved but ignored on other platforms |
@@ -195,6 +195,28 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 
 Environment: `SLOTH_CONFIG`, `SLOTH_PORT` (default `4400`), and `SLOTH_DRY_RUN=1` to log what every
 tick *would* do without doing it. A `.env` in the project root works too.
+
+## Model providers
+
+Every agent runs on Claude Code, which speaks the Anthropic API — so Anthropic's models need nothing
+configured beyond the login the machine already has. A model from someone else is reached by pointing
+that same client at an Anthropic-compatible endpoint, and Sloth does it per session: only the agents you
+put on that provider's models go there, the rest keep running exactly as before.
+
+A provider is offered in Settings → *Models* once its key is in the environment Sloth itself was started
+with. Without the key its models are still listed, greyed out and naming the variable to set.
+
+| Provider | Key | Models |
+| --- | --- | --- |
+| Anthropic | — (the machine's Claude Code login) | `fable`, `opus`, `sonnet`, `haiku` |
+| [Z.ai](https://docs.z.ai/devpack/tool/claude) | `SLOTH_ZAI_TOKEN` | `glm-5.3`, `glm-5.3-flash` |
+
+A session started on a provider's model gets `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` for it, the
+alias defaults a subagent may ask for (`opus`, `sonnet`, `haiku`) mapped onto models that provider serves,
+and no `ANTHROPIC_API_KEY` — an Anthropic key is never forwarded to somebody else's endpoint. The cost the
+UI shows follows the provider's own list prices, cached prompts included. The whole table lives in
+`server/models.ts`: another provider is another row, and a model id that is not on it is still passed to
+`--model` untouched.
 
 ## UI and API
 
