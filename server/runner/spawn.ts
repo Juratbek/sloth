@@ -14,6 +14,7 @@ import { stopPreview } from './preview';
 import { APPEND_PROMPT, sessionEnv, type SessionExtras, type Target } from './session-env';
 import { approvedDir, counter, issueDir, qaDir, slotsFull } from './session-dirs';
 import { machineHold } from './machine';
+import { forgetPause } from './pressure';
 import { leaseSlot } from './slots';
 
 /** Why nothing may start right now: every slot taken, or the machine too loaded to take one more run. */
@@ -103,6 +104,7 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
   fs.mkdirSync(path.join(dir, 'inbox'), { recursive: true });
   remove(path.join(dir, 'state.json'));
   remove(path.join(dir, 'blocked'));
+  forgetPause(dir);
   for (const f of fs.readdirSync(path.join(dir, 'inbox'))) remove(path.join(dir, 'inbox', f));
   await moveCard(issue, cfg().statusField.columns.inProgress.id);
   await run('git', ['-C', cfg().runnerRoot, 'fetch', '-q', 'origin'], 120_000);

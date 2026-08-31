@@ -74,7 +74,11 @@ needs-help notifications carry on) and survives a restart.
   card (trigger 4), which starts regardless of the caps and counts against them, so the sessions that build
   queue behind it, never the other way round. The machine sets a cap of its
   own: with less than `minFreeMemory` percent of the memory available, `minIdleCpu` percent of the
-  CPU idle or `minIdleDisk` percent of the busiest disk idle, nothing new starts either — running sessions go on. A session past
+  CPU idle or `minIdleDisk` percent of the busiest disk idle, nothing new starts either — and when the machine
+  *stays* there with sessions running (two readings in a row), the lowest-priority run is **paused** (SIGSTOP
+  to its processes and the servers it started: QA tests first, then implement runs by their card's priority,
+  the newest among equals; reviews never), and resumed once two readings in a row show room again, one run
+  per tick either way. Its budget clock stands still meanwhile. Not on Windows, which has no SIGSTOP. A session past
   `budgetMinutes + 5` is killed, cleaned up, and its card parked; **stop** in a live session's header
   does the same on demand (a stopped review is not repeated for that PR head), and **end** on a parked
   session whose process is gone cleans it up and takes it off the needs-help list — the card stays put. A Claude usage
@@ -157,7 +161,7 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `roles` | `{admin, developers, testers}` | The team: the one login that orders anything, the logins that order within an issue, the logins that answer and ask. A config from before roles keeps its `orderLogin` as the admin |
 | `mention` / `botPrefix` | `@sloth` / `**Sloth:**` | The keyword that wakes Sloth; the first line of every comment it writes |
 | `maxActive` / `maxAlive` | `2` / `3` | Session caps — `maxActive` is also the size of the worktree pool |
-| `minFreeMemory` / `minIdleCpu` / `minIdleDisk` | `10` / `5` / `10` | No new session while less of the machine's memory is available / of its CPU is idle / of its busiest disk is idle (percent, the last one being 100 minus Task Manager's *Disk*); `0` turns a check off |
+| `minFreeMemory` / `minIdleCpu` / `minIdleDisk` | `10` / `5` / `10` | No new session while less of the machine's memory is available / of its CPU is idle / of its busiest disk is idle (percent, the last one being 100 minus Task Manager's *Disk*), and the lowest-priority running session is paused while it stays that way; `0` turns a check off |
 | `budgetMinutes` / `waitHours` | `60` / `2` | A session's time budget; how long a parked session waits for an answer |
 | `reviewRounds` / `maxRetries` | `4` / `2` | Reviewer-agent rounds before asking for help; trigger-2 relaunches before parking |
 | `boardSeconds` / `commentSeconds` | `300` / `120` | Poll intervals |

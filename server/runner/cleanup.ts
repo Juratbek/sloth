@@ -24,12 +24,15 @@ export async function cleanupRun(kind: Kind, target: number): Promise<void> {
       const pid = Number(line.trim());
       if (!pid) continue;
       // A server started as its own process group (a `set -m` job, `setsid`) takes its children with
-      // it — the dev-server wrappers a project starts fork the real listeners.
+      // it — the dev-server wrappers a project starts fork the real listeners. One that was paused for
+      // the machine's sake is stopped cold and has to be woken first, or the SIGTERM waits with it.
       for (const target of [-pid, pid]) {
-        try {
-          process.kill(target);
-        } catch {
-          /* no such group, or already gone */
+        for (const signal of ['SIGCONT', 'SIGTERM'] as const) {
+          try {
+            process.kill(target, signal);
+          } catch {
+            /* no such group, or already gone */
+          }
         }
       }
     }

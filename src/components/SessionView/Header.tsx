@@ -103,6 +103,7 @@ function WatcherLine({ s }: { s: SessionDetail }) {
         <PreviewLine issue={w.target} preview={w.preview} />
         {w.retries > 0 && <span className="text-amber-400">retries {w.retries}</span>}
         {w.blocked && <span className="text-red-400">blocked</span>}
+        {w.paused && <span className="text-amber-400" title={w.paused.reason}>paused · {w.paused.reason.replace(/^machine busy: /, '')}</span>}
         {w.inbox.length > 0 && <span className="text-sky-400">inbox {w.inbox.length}</span>}
         <span className="text-zinc-500">updated {ago(w.updatedAt)} ago</span>
       </div>
