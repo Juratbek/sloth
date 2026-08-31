@@ -8,7 +8,7 @@ import { limitExit } from './limits';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
 import { APPROVED_LABEL, MARKERS, markerFiles, statePath, unapprove } from './markers';
 import { helpMentions, notify } from './notify';
-import { cleanup, cleanupRun } from './cleanup';
+import { cleanup, cleanupRun, keepWarm } from './cleanup';
 import { exitLine, exitReport, exitsOf, forgetExits, recordExit } from './exits';
 import { previewLink } from './preview';
 import { forgetPause, pausedSeconds, resumeRun } from './pressure';
@@ -94,7 +94,9 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
   if (kind === 'qa') {
     // Its app and worktree are its own; the card stays in QA and the head keeps its marker, like a stopped
     // review — except a budget kill, where `reap` drops the marker so the sweep tests the card again.
-    await cleanupRun('qa', target);
+    // A killed run's database may hold a mutation it never finished: the stack warms the slot tainted,
+    // so the next test of the card reseeds instead of trusting it.
+    await cleanupRun('qa', target, true);
     log(`QA #${target} stopped: ${reason}`);
     return true;
   }
@@ -102,7 +104,7 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
     log(`review PR #${target} stopped: ${reason}`);
     return true;
   }
-  await cleanup(target);
+  await cleanup(target, true);
   log(`#${target} stopped: ${reason}`);
   await park(target, why, exitReport(dir));
   return true;
@@ -152,7 +154,9 @@ export async function reap(): Promise<void> {
             log(`${name} ended without a verdict — ${kind === 'qa' ? 'the card will be tested again' : 'the head will be reviewed again'}`);
           }
           await sweepDead(kind, target);
-        }
+          // A run that finished on its own terms left its stack running for its slot — under the
+          // warm-slots contract the session no longer kills its servers, so it moves to the slot here.
+        } else await keepWarm(kind, target);
         continue;
       }
       log(`${name} stopped on a usage limit — pausing ${LIMIT_PAUSE / 60} min, card untouched`);
@@ -283,6 +287,8 @@ export async function pickup(board: BoardItem[]): Promise<void> {
     if (!isDry()) {
       remove(path.join(issueDir(issue), 'retries'));
       forgetExits(issueDir(issue));
+      // A pickup is a start-over, so the dead run's handoff note goes too — only a retry continues from it.
+      remove(path.join(issueDir(issue), 'handoff.md'));
     }
   }
 }

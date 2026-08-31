@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setDry } from '../server/runner/log';
 import { handover, park, pickup, reap, retryStranded, reviews, stop } from '../server/runner/triggers';
 import { exitsOf } from '../server/runner/exits';
+import { qaVerdicts } from '../server/runner/qa';
 import { sampleMachine, setReaders } from '../server/runner/machine';
 import { resetSpawn, spawned } from './child-process-mock';
 import { called, onGh, resetGh } from './gh-mock';
@@ -101,11 +102,13 @@ describe('pickup (trigger 1)', () => {
     expect(launches()).toEqual(['/sloth:implement 3']);
   });
   it('resets the retry counter and clears the previous run', async () => {
-    makeSession('issue', 3, { retries: '2', blocked: '1', 'state.json': { state: 'done' }, 'inbox/1.md': 'old' });
+    makeSession('issue', 3, { retries: '2', blocked: '1', 'state.json': { state: 'done' }, 'inbox/1.md': 'old', 'handoff.md': 'next: old note' });
     await pickup([card(3, 'Todo')]);
     expect(exists(sessionDir('issue', 3), 'retries')).toBe(false);
     expect(exists(sessionDir('issue', 3), 'blocked')).toBe(false);
     expect(exists(sessionDir('issue', 3), 'inbox', '1.md')).toBe(false);
+    // A pickup is a start-over: the dead run's handoff note must not steer the fresh session.
+    expect(exists(sessionDir('issue', 3), 'handoff.md')).toBe(false);
   });
   it('only logs in a dry run', async () => {
     setDry(true);
@@ -118,9 +121,12 @@ describe('pickup (trigger 1)', () => {
 
 describe('retryStranded (trigger 2)', () => {
   it('relaunches an In Progress card with no live session and counts the retry', async () => {
+    makeSession('issue', 4, { 'handoff.md': 'next: fix the failing check' });
     await retryStranded([card(4, 'In Progress')]);
     expect(launches()).toEqual(['/sloth:implement 4']);
     expect(read(path.join(sessionDir('issue', 4), 'retries'))).toBe('1');
+    // The relaunch keeps the dead run's handoff note — it is how the new run continues instead of re-deriving.
+    expect(read(path.join(sessionDir('issue', 4), 'handoff.md'))).toBe('next: fix the failing check');
   });
   it('parks the card after maxRetries relaunches in a row', async () => {
     makeSession('issue', 4, { retries: '2' });
@@ -154,6 +160,21 @@ describe('retryStranded (trigger 2)', () => {
     makeSession('issue', 4, { retries: '2', 'exits.json': [{ at: 1, how: 'x', tail: '' }, { at: 2, how: 'x', tail: '' }, { at: 3, how: 'x', tail: '' }] });
     await retryStranded([card(4, 'In Progress')]);
     expect(called(/issue comment 4 .*stopped without finishing 3 times/)).toHaveLength(1);
+  });
+});
+
+describe('qaVerdicts (handoff)', () => {
+  it('a failed verdict clears the issue run leftovers, the handoff note among them', async () => {
+    onGh(/project item-add/, 'ITEM');
+    makeSession('qa', 7, { verdict: 'failed', sha: 'abcdef1' });
+    makeSession('issue', 7, { retries: '1', blocked: '1', 'handoff.md': 'next: stale note' });
+    await qaVerdicts();
+    expect(called(/item-edit .*opt-wip/)).toHaveLength(1);
+    expect(exists(sessionDir('issue', 7), 'retries')).toBe(false);
+    expect(exists(sessionDir('issue', 7), 'blocked')).toBe(false);
+    // The fresh implement run works from the QA findings on the issue, not the dead run's note.
+    expect(exists(sessionDir('issue', 7), 'handoff.md')).toBe(false);
+    expect(exists(sessionDir('qa', 7), 'handled')).toBe(true);
   });
 });
 

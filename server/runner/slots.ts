@@ -5,6 +5,7 @@ import { run } from './gh';
 import { log, readFile, remove, write } from './log';
 import { statePath } from './markers';
 import { dirAlive, dirOf, issueDir, type Kind } from './session-dirs';
+import { warmOf } from './warm';
 
 /**
  * The pool of worktrees the runs work in. A checkout is cheap; what is not is the install a fresh one
@@ -56,15 +57,22 @@ export async function leaseSlot(kind: Kind, target: number): Promise<string | un
   const c = cfg();
   const me = runName(kind, target);
   let free: string | undefined;
+  let mine: string | undefined;
   for (let n = 1; n <= c.maxActive; n++) {
     const name = slotName(n);
     const lease = readFile(leaseFile(name))?.trim();
     if (lease === me) {
       free = name;
+      mine = undefined;
       break;
     }
-    if (!free && (!lease || !holds(lease))) free = name;
+    if (lease && holds(lease)) continue;
+    // The slot whose warm stack this very run left behind beats any other free one: leasing it back
+    // is what turns a retry into a session that starts with everything already up (`warm.ts`).
+    if (!mine && warmOf(name)?.run === me) mine = name;
+    if (!free) free = name;
   }
+  free = mine ?? free;
   if (!free) return undefined;
   const dir = slotDir(free);
   if (!fs.existsSync(dir)) {

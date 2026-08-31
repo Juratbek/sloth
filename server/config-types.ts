@@ -169,6 +169,12 @@ export interface SlothConfig {
    */
   previewHours: number;
   /**
+   * Keep a slot's runtime stack — the dev servers, Redis and demo database a run booted — alive between
+   * sessions (`runner/warm.ts`): the next run that leases the slot inherits it and skips the ten-minute
+   * boot. Off, every run tears its stack down as before.
+   */
+  warmSlots: boolean;
+  /**
    * How long a finished run is kept: its session directory, its transcript under `~/.claude/projects` and
    * the markers of the status replies it prompted. Worktrees are not kept: a run's leftover per-issue
    * checkout goes as soon as it is over, and the pool's slots are reused.
@@ -244,6 +250,7 @@ export const CONFIG_DEFAULTS = {
   chrome: true,
   autostart: false,
   previewHours: 24,
+  warmSlots: true,
   keepDays: 30,
   priorityField: 'Priority',
   helpLogins: [] as string[],

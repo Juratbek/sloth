@@ -62,6 +62,15 @@ Then **claim the card**: move it to `$SLOTH_COL_IN_PROGRESS_NAME` (`$SLOTH_COL_I
 `item-edit` per `board`, wrapped in `retry`) before reading further, so a second run cannot take the issue.
 Keep `ITEM_ID` and `ISSUE_URL`.
 
+**A handoff from a dead run.** `$SESSION_DIR/handoff.md`, when it exists, is the note the previous run on
+this issue left before it died: `head:`, `done:`, `next:`, `don't redo:` (`session` skill). Once the wired
+PR is known (Step 1), compare its `head:` with the current head of the PR's branch — or, with no PR yet,
+with the branch's tip (`git ls-remote origin`). A match means the note is current: continue from its
+`next:`, trust `done:` and `don't redo:`, and skip the discovery it already paid for. No match — the
+branch moved since — `rm -f` it and start from scratch. Either way, from here on **rewrite `handoff.md`
+at every step boundary**, the same moment `state.json` is written, so the run that continues this one
+starts where it stopped instead of re-deriving everything.
+
 ## Step 1 — Read and scope
 
 ```bash
@@ -118,7 +127,8 @@ Install dependencies the way the repo does — `CLAUDE.md` wins; otherwise detec
 No manifest → nothing to install. In a reused slot this is seconds when the lockfile is unchanged — but
 then the install runs **no `postinstall`**, so run the project's generate steps yourself (a Prisma client,
 GraphQL or API codegen: whatever `CLAUDE.md` or the manifests' `postinstall` / `generate` scripts name),
-or the slot serves code generated for the branch the last run was on.
+or the slot serves code generated for the branch the last run was on. **Install once per run**: re-run it
+only when the lockfile changed since — a "Lockfile is up to date" install is a minute wasted.
 
 ## Step 3 — Implement
 
@@ -172,6 +182,17 @@ Run what the project declares, in this order of preference:
    changed. Then exercise the change as far as the session allows — `curl` the endpoint, query the database,
    run the CLI, read the rendered markup from the dev server, drive a headless browser if one is installed.
 
+**A warm stack** (`SLOTH_WARM=1`, `session` skill): the slot's servers, Redis and database from the
+previous run are already up — their pids and name already in `$SESSION_DIR`. Skip createdb, redis-server,
+the build and the server starts: sync the schema onto the existing database, reseed, `FLUSHALL` Redis —
+the watch-mode servers pick your checkout up themselves. `SLOTH_WARM_SAME=1` (a retry on the same head):
+skip even that and go straight to the behaviour. A reset step fails → kill the pids in
+`$SESSION_DIR/dev.pid` / `redis.pid` yourself and boot cold as the run skill says.
+
+**Do not repeat work.** While the dev servers run in watch mode, never build just to check — the watcher
+recompiles on save; read its output instead. When a build or typecheck *is* needed, scope it to what
+changed (`turbo … --filter=<pkg>`, the package's own script), never the whole repo.
+
 Record the exact commands and their output: they become the PR's `## Verification`, which states precisely
 **what was verified and what was not**. A failing check you cannot fix is Step Q — do not push over it.
 
@@ -213,7 +234,8 @@ checks of Step 4, and ask the tester to re-test — **and to re-screenshot what 
 PNGs first (`rm -f`) so the set in `$SLOTH_SCREENSHOTS_DIR` is only what is true now.
 
 **Then stop the app** — unless `SLOTH_PREVIEW_HOURS` is above `0`, when it stays up for the hand-off in
-Step 6. The dev servers are the run's biggest cost in memory, and the commit, the PR and the reviewer rounds
+Step 6, or `SLOTH_WARM_SLOTS=1`, when it stays up for the next run to inherit (`session` skill). The dev
+servers are the run's biggest cost in memory, and the commit, the PR and the reviewer rounds
 do not need them: kill every pid in `$SESSION_DIR/dev.pid` and `redis.pid` (their process groups too —
 `kill -- -<pid>` then `kill <pid>`), empty both files, `SERVERS=stopped`. Keep the database. A re-test in
 Step 5.5 brings the app back up the same way, on the same database. Its report is the
@@ -294,9 +316,12 @@ wait window. Never open or finish a PR built on a guess.
 
 ## Step 7 — Clean up, report
 
-Teardown per the `session` skill: stop this session's processes (if any are still up) and drop its
-database, `set_state done`; the worktree slot stays for the server to return. After a preview hand-off (Step 6) skip the stopping and removing — only `set_state done`
+Teardown per the `session` skill: with `SLOTH_WARM_SLOTS=1` leave the servers and database running —
+the server keeps them warm for the next run; otherwise stop this session's processes (if any are still
+up) and drop its database. Either way `set_state done`; the worktree slot stays for the server to
+return. After a preview hand-off (Step 6) skip the stopping and removing — only `set_state done`
 with `SERVERS=preview`; the server takes the environment down later. The branch stays on the remote.
+Delete `$SESSION_DIR/handoff.md` — a finished run leaves no handoff.
 
 Finish with the report — it is the transcript's last message and the monitor shows it: branch, PR URL, files
 changed, what Step 4 and the tester verified and what they did not, how many screenshots the PR carries, review rounds, where the card ended up. For a blocked run:

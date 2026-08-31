@@ -190,6 +190,7 @@ export function normalizeConfig(input: unknown): SlothConfig {
     chrome: b.chrome !== false,
     autostart: b.autostart === true,
     previewHours: int(b.previewHours, d.previewHours, 0),
+    warmSlots: b.warmSlots !== false,
     keepDays: int(b.keepDays, d.keepDays),
     // An explicit "" turns the ranking off, so it has to survive: `text` would hand back the default.
     priorityField: typeof b.priorityField === 'string' ? b.priorityField.trim() : d.priorityField,
