@@ -104,6 +104,9 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
   fs.mkdirSync(path.join(dir, 'inbox'), { recursive: true });
   remove(path.join(dir, 'state.json'));
   remove(path.join(dir, 'blocked'));
+  // `handoff.md` stays on purpose: it is the dead run's note to the run launched here, and a retry that
+  // reads it continues where the last one stopped instead of re-deriving everything. A fresh start —
+  // pickup, a QA fail — removes it before calling launch.
   forgetPause(dir);
   for (const f of fs.readdirSync(path.join(dir, 'inbox'))) remove(path.join(dir, 'inbox', f));
   await moveCard(issue, cfg().statusField.columns.inProgress.id);

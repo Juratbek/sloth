@@ -283,6 +283,8 @@ export async function pickup(board: BoardItem[]): Promise<void> {
     if (!isDry()) {
       remove(path.join(issueDir(issue), 'retries'));
       forgetExits(issueDir(issue));
+      // A pickup is a start-over, so the dead run's handoff note goes too — only a retry continues from it.
+      remove(path.join(issueDir(issue), 'handoff.md'));
     }
   }
 }

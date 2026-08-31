@@ -73,6 +73,11 @@ Other files the server understands, all inside `$SLOTH_SESSION_DIR`:
 
 - `inbox/<commentId>.md` — forwarded comments (below).
 - `blocked` — `touch` it when the run is parked in a way the server must not retry; `rm -f` it on resume.
+- `handoff.md` — a short note for the run that continues this one's work if it dies. Rewrite it at every
+  step boundary, alongside `state.json`; the server keeps it across a retry and wipes it on a fresh start.
+  Plain markdown, short: `head:` the PR head sha (or branch tip) the note describes, `done:` what is
+  finished and verified, `next:` the single next action with the exact PR/comment/file it points at,
+  `don't redo:` what is already green at that head (install, build, checks).
 - `asked_at` — epoch seconds of the question comment, written when parking.
 - `dev.pid`, `redis.pid`, `demo.db` — pids / database name of anything this session started, one per line;
   the server kills and drops these during cleanup. Write them the moment a process or database exists.
