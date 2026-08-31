@@ -18,6 +18,7 @@ import { leaseSlot } from './slots';
 
 /** Why nothing may start right now: every slot taken, or the machine too loaded to take one more run. */
 const held = (): string | undefined => (slotsFull() ? 'slots full' : machineHold());
+const noSlot = (what: string): false => (log(`${what} queued (no free worktree slot)`), false);
 
 const trusted = new Set<string>();
 /** Claude Code exits silently in an untrusted directory, so headless runs need the flag pre-set. */
@@ -52,8 +53,7 @@ interface StartOptions {
   chrome?: boolean;
   /** Extra environment on top of `sessionEnv` — the stack install session names what it has to install. */
   env?: NodeJS.ProcessEnv;
-  /** The run's budget and the worktree slot it leased — a review has neither. */
-  extras?: SessionExtras;
+  extras?: SessionExtras; // the run's budget and the worktree slot it leased — a review has neither
 }
 export function start(bookDir: string, sessionDir: string, prompt: string, target: Target, logFile: string, options: StartOptions): void {
   const c = cfg();
@@ -99,10 +99,7 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
   await stopPreview(issue, 'a new session starts on the issue');
   await cleanup(issue);
   const slot = await leaseSlot('issue', issue);
-  if (!slot) {
-    log(`#${issue} queued (no free worktree slot)`);
-    return false;
-  }
+  if (!slot) return noSlot(`#${issue}`);
   fs.mkdirSync(path.join(dir, 'inbox'), { recursive: true });
   remove(path.join(dir, 'state.json'));
   remove(path.join(dir, 'blocked'));
@@ -169,10 +166,7 @@ export async function launchQa(issue: number, sha: string, branch: string): Prom
     return true;
   }
   const slot = await leaseSlot('qa', issue);
-  if (!slot) {
-    log(`QA #${issue} queued (no free worktree slot)`);
-    return false;
-  }
+  if (!slot) return noSlot(`QA #${issue}`);
   const retries = (readFile(path.join(dir, 'sha')) ?? '').trim() === sha ? counter(dir, 'retries') : 0;
   for (const f of ['state.json', 'verdict', 'handled']) remove(path.join(dir, f));
   write(path.join(dir, 'sha'), sha);
