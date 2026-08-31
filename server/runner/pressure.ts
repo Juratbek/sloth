@@ -10,10 +10,11 @@ import { dirAlive, pidOf, runDirs, startedAt, stateOf, type RunDir } from './ses
  * `machine.ts` only keep new ones from starting, so a laptop pushed to the edge by the ones it has was
  * on its own. Now the lowest-priority run is paused — SIGSTOP to its process group and to the servers
  * it recorded, which stops their CPU and disk use on the spot and lets the OS page their memory out —
- * and resumed with SIGCONT once the machine has had room for a while. One run per tick, either way,
+ * and resumed with SIGCONT once the machine has had room for a while. One run per reading, either way,
  * and only after two readings in a row say the same, so a launch's install storm does not pause the
- * session doing it. Status replies are not runs and are never paused. Windows has no SIGSTOP; there
- * the holds are all Sloth can do.
+ * session doing it. Readings are `machineSeconds` apart and not a board poll apart, so this acts while
+ * the memory is going rather than minutes after the kernel has already killed something. Status replies
+ * are not runs and are never paused. Windows has no SIGSTOP; there the holds are all Sloth can do.
  */
 
 export interface PausedRun {

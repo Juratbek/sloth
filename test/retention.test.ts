@@ -3,7 +3,7 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setDry } from '../server/runner/log';
 import { prune } from '../server/runner/retention';
-import { called, resetGh } from './gh-mock';
+import { called, fail, onCommand, resetGh } from './gh-mock';
 import { cfg } from '../server/config';
 import { alivePid, configure, exists, makeSession, readLog, sessionDir, statePath, wipe } from './harness';
 
@@ -135,6 +135,64 @@ describe('prune', () => {
     await prune();
     expect(fs.readFileSync(`${c.watcherLog}.1`, 'utf8')).toHaveLength((5 << 20) + 1);
     expect(readLog().join('\n')).toMatch(/rotated the watcher log at 5 MB/);
+  });
+
+  it('deletes a worktree git has already forgotten, instead of failing on it for ever', async () => {
+    makeSession('issue', 1, { 'state.json': { state: 'done' }, 'run.log': 'done' });
+    const dir = makeWorktree(1);
+    onCommand(/worktree remove/, fail(`fatal: '${dir}' is not a working tree`));
+    await prune();
+    expect(exists(dir)).toBe(false);
+    expect(readLog().join('\n')).toMatch(/worktree issue-1 deleted — git has no record of it/);
+  });
+
+  it('leaves a worktree whose removal failed for any other reason to the next sweep', async () => {
+    makeSession('issue', 1, { 'state.json': { state: 'done' }, 'run.log': 'done' });
+    const dir = makeWorktree(1);
+    onCommand(/worktree remove/, fail('fatal: Unable to read current working directory'));
+    await prune();
+    expect(exists(dir)).toBe(true);
+    expect(readLog().join('\n')).toMatch(/worktree issue-1 could not be removed/);
+  });
+
+  it('cuts a build cache back to its size cap, oldest entry first', async () => {
+    const cache = path.join(cfg().runnerRoot, '.turbo', 'cache');
+    fs.mkdirSync(cache, { recursive: true });
+    // Three 256 MB entries against a 512 MB cap: the oldest one goes and the two newest stay. Sparse,
+    // so the test costs no disk — the sweep goes by the size the entry reports.
+    for (const [name, days] of [['old', 3] as const, ['mid', 2] as const, ['new', 1] as const]) {
+      const file = path.join(cache, `${name}.tar.zst`);
+      fs.writeFileSync(file, '');
+      fs.truncateSync(file, 256 << 20);
+      age(file, days);
+    }
+    await prune();
+    expect(fs.readdirSync(cache).sort()).toEqual(['mid.tar.zst', 'new.tar.zst']);
+    expect(readLog().join('\n')).toMatch(/pruned 1 entry \(256 MB\) from runner\/\.turbo\/cache/);
+  });
+
+  it('leaves a build cache under the cap alone', async () => {
+    const cache = path.join(cfg().worktreesDir, 'slot-1', '.turbo', 'cache');
+    fs.mkdirSync(cache, { recursive: true });
+    fs.writeFileSync(path.join(cache, 'a.tar.zst'), Buffer.alloc(1 << 20));
+    await prune();
+    expect(fs.readdirSync(cache)).toEqual(['a.tar.zst']);
+  });
+
+  it('trims the server logs of a finished run to their tail, and leaves a live run alone', async () => {
+    const done = makeSession('issue', 1, { 'state.json': { state: 'done' }, 'run.log': 'short' });
+    fs.writeFileSync(path.join(done, 'dev.log'), `${'x'.repeat(3 << 20)}THE END`);
+    const live = makeSession('issue', 2, { pid: alivePid() });
+    fs.writeFileSync(path.join(live, 'dev.log'), 'y'.repeat(3 << 20));
+
+    await prune();
+
+    const trimmed = fs.readFileSync(path.join(done, 'dev.log'), 'utf8');
+    expect(trimmed.length).toBeLessThan((2 << 20) + 100);
+    expect(trimmed.startsWith('… 1 MB trimmed by Sloth')).toBe(true);
+    expect(trimmed.endsWith('THE END')).toBe(true);
+    expect(fs.statSync(path.join(live, 'dev.log')).size).toBe(3 << 20);
+    expect(readLog().join('\n')).toMatch(/trimmed dev\.log of issue-1 by 1 MB/);
   });
 
   it('only logs in a dry run, and does not remember the sweep', async () => {

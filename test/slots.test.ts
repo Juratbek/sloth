@@ -104,7 +104,7 @@ describe('launch with slots', () => {
   });
   it('gives a review no worktree at all', async () => {
     const { launchApproved } = await import('../server/runner/spawn');
-    expect(launchApproved(10, 1)).toBe(true);
+    expect(launchApproved(10, 1, 'abc1234')).toBe(true);
     expect(spawned[0].options.env.SLOTH_WORKTREE).toBeUndefined();
   });
 });

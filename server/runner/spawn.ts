@@ -123,8 +123,13 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
  * it is held by the machine alone, never by the session caps — a card in Code Review is work that is done
  * and waiting, and a short read-only look must not queue behind the hour-long sessions that build. It
  * still counts as a session, so those queue behind it instead.
+ *
+ * The head under review is written beside the run and a run that ended without a verdict counts against
+ * `retries` — reset when the PR is pushed to, since a new head is a new review. `reap` clears the head's
+ * marker so trigger 4 comes straight back; without a count that pair is a loop, and one PR was reviewed
+ * seven times in a day on the same commit.
  */
-export function launchApproved(pr: number, issue: number): boolean {
+export function launchApproved(pr: number, issue: number, sha: string): boolean {
   const c = cfg();
   const why = machineHold();
   if (why) {
@@ -136,6 +141,9 @@ export function launchApproved(pr: number, issue: number): boolean {
     return true;
   }
   log(`review PR #${pr} (issue #${issue}) on ${c.models.final}`);
+  const retries = (readFile(path.join(approvedDir(pr), 'sha')) ?? '').trim() === sha ? counter(approvedDir(pr), 'retries') : 0;
+  write(path.join(approvedDir(pr), 'sha'), sha);
+  write(path.join(approvedDir(pr), 'retries'), String(retries + 1));
   // The previous run's final state must not speak for this one: `reap` reads `working` as "died without
   // a verdict" and clears the head's marker, which a leftover `done` would mask.
   remove(path.join(approvedDir(pr), 'state.json'));

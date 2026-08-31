@@ -255,6 +255,39 @@ describe('reviews (trigger 4)', () => {
     expect(launches()).toEqual([]);
     expect(called(/item-edit|issue edit/)).toHaveLength(0);
   });
+  it('counts the reviews of one head that died without a verdict, and gives the head up after maxRetries', async () => {
+    configure({ maxRetries: 2 });
+    wired({ 1: [{ pr: 10, sha: 'aaa', head: 'x' }] });
+    const board = [card(1, 'Code Review')];
+    // Each round is a review that died: `reap` clears the head's marker, so the trigger comes straight back.
+    for (const round of [1, 2, 3]) {
+      resetSpawn();
+      await reviews(board);
+      expect(launches()).toEqual(['/sloth:review 10 final']);
+      expect(read(path.join(sessionDir('approved', 10), 'retries'))).toBe(String(round));
+      fs.rmSync(statePath('approved', '10-aaa'), { force: true });
+    }
+    resetSpawn();
+    await reviews(board);
+    expect(launches()).toEqual([]);
+    expect(exists(statePath('approved', '10-aaa'))).toBe(true);
+    expect(readLog().join('\n')).toMatch(/review PR #10 given up: it ended without a verdict 3 times on aaa/);
+    expect(called(/item-edit .*opt-help/)).toHaveLength(1);
+  });
+
+  it('starts the count over when the PR is pushed to — a new head is a new review', async () => {
+    configure({ maxRetries: 2 });
+    wired({ 1: [{ pr: 10, sha: 'aaa', head: 'x' }] });
+    await reviews([card(1, 'Code Review')]);
+    expect(read(path.join(sessionDir('approved', 10), 'retries'))).toBe('1');
+    resetGh();
+    resetSpawn();
+    wired({ 1: [{ pr: 10, sha: 'bbb', head: 'x' }] });
+    await reviews([card(1, 'Code Review')]);
+    expect(launches()).toEqual(['/sloth:review 10 final']);
+    expect(read(path.join(sessionDir('approved', 10), 'retries'))).toBe('1');
+  });
+
   it('still reviews Code Review without an Approved column', async () => {
     configure({ statusField: { id: 'PVTSSF_1', columns: { ...COLUMNS, approved: { id: '', name: '' } } } });
     wired({ 1: [{ pr: 10, sha: 'aaa', head: 'x' }] });

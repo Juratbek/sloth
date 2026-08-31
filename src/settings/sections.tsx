@@ -105,6 +105,12 @@ export function Sessions({ draft, patch }: SectionProps) {
       <Row label="Min idle disk %" hint="No session starts while the busiest disk is idle less than this much of the time since the previous tick — the opposite of Task Manager's Disk column. 0 turns the check off.">
         <NumberInput min={0} value={draft.minIdleDisk} onChange={(minIdleDisk) => patch({ minIdleDisk })} />
       </Row>
+      <Row
+        label="Machine poll"
+        hint="Seconds between two readings of memory, CPU and disk. Short: the three limits above and the pausing of a running session can only act on a reading Sloth has, and memory can be gone between two board polls. At least 5."
+      >
+        <NumberInput min={5} value={draft.machineSeconds} onChange={(machineSeconds) => patch({ machineSeconds })} />
+      </Row>
       <Row label="Budget minutes" hint="A session's time budget. Five minutes past it the session is killed, cleaned up and its card parked.">
         <NumberInput value={draft.budgetMinutes} onChange={(budgetMinutes) => patch({ budgetMinutes })} />
       </Row>
