@@ -20,13 +20,17 @@ const TAIL = 30;
 /** Absolute path of an executable, or undefined when it is nowhere to be found. */
 export function which(cmd: string): string | undefined {
   if (cmd.includes('/')) return fs.existsSync(cmd) ? cmd : undefined;
+  // Windows executables carry an extension (PATHEXT); `cmd` arrives without one.
+  const exts = process.platform === 'win32' ? ['', ...(process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD').split(';')] : [''];
   for (const dir of [...(process.env.PATH ?? '').split(path.delimiter), ...EXTRA_DIRS]) {
-    const file = path.join(dir, cmd);
-    try {
-      fs.accessSync(file, fs.constants.X_OK);
-      return file;
-    } catch {
-      /* not here */
+    for (const ext of exts) {
+      const file = path.join(dir, cmd + ext);
+      try {
+        fs.accessSync(file, fs.constants.X_OK);
+        return file;
+      } catch {
+        /* not here */
+      }
     }
   }
   return undefined;

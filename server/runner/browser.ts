@@ -22,11 +22,15 @@ export const ASSETS_BRANCH = 'sloth-assets';
 export type Browser = { channel: 'chrome' } | { executable: string };
 
 const MAC_APP = 'Google Chrome.app/Contents/MacOS/Google Chrome';
+const WIN_APP = 'Google\\Chrome\\Application\\chrome.exe';
 
 /** Google Chrome on this machine, or Chromium as a stand-in; undefined when neither is installed. */
 export function chromeBinary(): Browser | undefined {
-  const apps = [path.join('/Applications', MAC_APP), path.join(os.homedir(), 'Applications', MAC_APP)];
-  if (apps.some((app) => which(app)) || which('google-chrome') || which('google-chrome-stable')) return { channel: 'chrome' };
+  const apps =
+    process.platform === 'win32'
+      ? ['C:\\Program Files', 'C:\\Program Files (x86)', path.join(os.homedir(), 'AppData', 'Local')].map((dir) => path.join(dir, WIN_APP))
+      : [path.join('/Applications', MAC_APP), path.join(os.homedir(), 'Applications', MAC_APP)];
+  if (apps.some((app) => fs.existsSync(app)) || which('google-chrome') || which('google-chrome-stable')) return { channel: 'chrome' };
   const chromium = which('chromium') ?? which('chromium-browser');
   return chromium ? { executable: chromium } : undefined;
 }
