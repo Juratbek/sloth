@@ -170,9 +170,10 @@ async function unlock(body: unknown): Promise<string | undefined> {
 export async function handleStack(pathname: string, method: string, root: string | undefined, body: unknown): Promise<StackStatus> {
   let installError: string | undefined;
   if (method === 'POST' && pathname === '/api/stack/install') {
-    const ids = stackOf((body as { ids?: unknown } | undefined)?.ids);
     const ai = (body as { ai?: unknown } | undefined)?.ai === true;
-    installError = (await installStack(ids === 'auto' ? [] : ids, ai ? { session: true } : {})).error;
+    // `auto` (or no ids at all) means what it means on the unlock path: whatever the configured stack
+    // still lacks. Mapped to `[]` it installed nothing and reported no error — a silent no-op.
+    installError = (await installStack(await wanted(body), ai ? { session: true } : {})).error;
   } else if (method === 'POST' && pathname === '/api/stack/unlock') {
     installError = await unlock(body);
   }

@@ -12,9 +12,6 @@ running** for the issue; the server only calls this command in that case. Answer
 thread the question was asked on: the PR when `$SLOTH_PR` is set, else the issue. Never change code, never
 move a card, never open or edit a PR.
 
-If `$ARGUMENTS` contains `--help-check`, this is the server's load check: print the command's contract (what
-it answers, which environment variables it needs) and stop, without calling `gh` or writing anything.
-
 Comment conventions come from the **`session`** skill; the board queries from the **`board`** skill.
 
 ## Gather the facts

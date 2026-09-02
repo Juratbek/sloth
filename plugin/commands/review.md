@@ -106,18 +106,25 @@ EOF
 retry gh api "repos/$SLOTH_REPO/pulls/<N>/reviews" --method POST --input /tmp/sloth-review-<N>.json
 ```
 
-Body in final mode — the first line is `$SLOTH_BOT_PREFIX`, the second the verdict, then the findings:
+Body in final mode — the first line is `$SLOTH_BOT_PREFIX`, the second the verdict, then the findings, and
+the last line says **who reviewed**: the reviewer's kind and the model it ran on, so a person reading the
+PR knows which pass this was and what produced it:
 
 ```
 **Sloth:**
 Review: **passed** — <rating>/10, resolves #<issue>, no new bugs. Labelled `Fable: approved`; card in <Approved column name>, ready for a human to test.
+_Final reviewer on `$SLOTH_MODEL`._
 ```
 
 ```
 **Sloth:**
 Review: **failed** — <rating>/10. <how many bugs>; card back to <In Progress column name>.
 - <unmet requirement, where it is missing>
+_Final reviewer on `$SLOTH_MODEL`._
 ```
+
+Outside final mode the same last line reads `_Reviewer on \`$SLOTH_MODEL\`._` — the model this session runs
+on is the one that produced the findings.
 
 - `line` is the **new-file** line number and must fall inside a diff hunk, or GitHub rejects the whole
   review. Use `"side": "LEFT"` with the old-file line for a removed line; add `"start_line"` +

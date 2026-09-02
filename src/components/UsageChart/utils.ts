@@ -1,13 +1,18 @@
 import type { UsageBucket } from '../../../server/types';
 import { usd } from '../../lib/format';
 
-const MANTISSAS = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+const STEPS = [1, 2, 2.5, 5, 10];
 
-/** Smallest "nice" ceiling at or above `max`, so gridlines land on round numbers. */
-export function niceMax(max: number) {
+/**
+ * The chart's ceiling: `ticks` gridlines of one round step each, the smallest that clear `max`. The
+ * ceiling used to be rounded on its own and then divided by the tick count, which left the labels
+ * between the round numbers — a 900k peak read `0.3M / 0.7M / 1.0M`; now it reads `0.5M / 1.0M / 1.5M`.
+ */
+export function niceMax(max: number, ticks = 3) {
   if (max <= 0) return 1e6;
-  const exp = 10 ** Math.floor(Math.log10(max));
-  return (MANTISSAS.find((m) => m >= max / exp - 1e-9) ?? 10) * exp;
+  const raw = max / ticks;
+  const exp = 10 ** Math.floor(Math.log10(raw));
+  return (STEPS.find((m) => m * exp >= raw - 1e-9) ?? 10) * exp * ticks;
 }
 
 export const millions = (n: number) => `${(n / 1e6).toFixed(n >= 1e7 || n === 0 ? 0 : 1)}M`;

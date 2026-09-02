@@ -39,7 +39,8 @@ export default function Card({ card, role, onSelect }: { card: BoardCard; role: 
       tabIndex={pick ? 0 : undefined}
       onClick={pick}
       onKeyDown={(e) => {
-        if (!pick || (e.key !== 'Enter' && e.key !== ' ')) return;
+        // A key pressed on a link inside the card is the link's: Enter must open it, not select the run.
+        if (!pick || e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
         e.preventDefault();
         pick();
       }}

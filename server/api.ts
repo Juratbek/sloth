@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import path from 'node:path';
 import type { Plugin, PreviewServer, ViteDevServer } from 'vite';
 import { cfg } from './config';
 import { broadcast, sse, watchAll } from './events';
@@ -9,6 +10,7 @@ import { unblock } from './runner/blocked';
 import { openSweep } from './runner/qa';
 import { stop as stopRun } from './runner/triggers';
 import { handleSettings, isSettings } from './api-settings';
+import { previewIndex, withTitle } from './preview-index';
 import { guard, isLocal, sameOrigin, startTunnel, stopTunnel } from './remote';
 import { agentDetail, overview, sessionDetail, watcherOf } from './sessions';
 import { ensureSkipLabel } from './runner/markers';
@@ -30,10 +32,6 @@ function fail(res: ServerResponse, e: unknown): boolean {
   res.end(String(e));
   return true;
 }
-
-/** Escapes text bound for HTML — the page title comes from config and must not be able to inject markup. */
-const escapeHtml = (s: string) =>
-  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   const url = new URL(req.url ?? '/', 'http://localhost');
@@ -164,8 +162,12 @@ export function monitorApi(): Plugin {
   };
   return {
     name: 'sloth-api',
-    transformIndexHtml: (html) => html.replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(cfg().title)}</title>`),
+    transformIndexHtml: (html) => withTitle(html, cfg().title),
     configureServer: mount,
-    configurePreviewServer: mount,
+    // The preview server transforms no HTML: the built page is served here with today's title instead.
+    configurePreviewServer: (server) => {
+      server.middlewares.use(previewIndex(path.resolve(server.config.root, server.config.build.outDir)));
+      mount(server);
+    },
   };
 }

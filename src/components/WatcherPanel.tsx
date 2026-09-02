@@ -4,20 +4,9 @@ import { duration } from '../lib/format';
 import useFollowBottom from '../hooks/use-follow-bottom';
 import useQaRun from '../hooks/use-qa-run';
 import useUnblock from '../hooks/use-unblock';
+import { queued } from '../lib/queued';
 import IssuesTable from './IssuesTable';
 import UsageChart from './UsageChart';
-
-/** Queue as the log tells it: a "queued (slots full)" / "queued (machine busy …)" line stands until the same target is launched. */
-function queued(logTail: string[]): string[] {
-  const pending = new Set<string>();
-  for (const line of logTail) {
-    const target = /(?:(?:final )?review PR )?#(\d+)/.exec(line)?.[0];
-    if (!target) continue;
-    if (/queued \((slots full|machine busy)/.test(line)) pending.add(target);
-    else if (/^\[[^\]]+\] (launch|launch QA|review PR|final review PR) /.test(line)) pending.delete(target);
-  }
-  return [...pending];
-}
 
 /** The QA sweep's line on the panel: its column, when it runs, and a button that runs it now. Nothing without a column. */
 function QaSweep({ column, at }: { column: string; at: string }) {

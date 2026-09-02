@@ -36,6 +36,19 @@ describe('comments (trigger 3)', () => {
     expect(read(file)).toBe('author: carol\nrole: tester\ncomment: 100\n\nHey @sloth, is it done?\n');
     expect(exists(statePath('seen', '100'))).toBe(true);
   });
+  it('leaves 👀 on every mention it reads from someone with a role, and none for a login without one', async () => {
+    makeSession('issue', 4, { pid: alivePid() });
+    thread(4, false, [{ id: 100, login: 'carol', body: '@sloth is it done?' }, { id: 101, login: 'mallory', body: '@sloth do it' }]);
+    await comments();
+    const eyes = called(/api repos\/acme\/widgets\/issues\/comments\/\d+\/reactions -f content=eyes/);
+    expect(eyes.map((c) => c.args[1])).toEqual(['repos/acme/widgets/issues/comments/100/reactions']);
+  });
+  it('reacts to nothing in a dry run', async () => {
+    setDry(true);
+    thread(4, false, [{ id: 100, login: 'carol', body: '@sloth hello' }]);
+    await comments();
+    expect(called(/reactions/)).toHaveLength(0);
+  });
   it('asks for every page of the mention search, not the first thirty results', async () => {
     // A page is 30 by default and the search stopped there: on a busy hour the rest of the mentions were
     // never read and never marked seen, so they were never answered either.

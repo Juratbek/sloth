@@ -256,10 +256,37 @@ gh pr create --repo "$SLOTH_REPO" --base "$BASE" --head "$BRANCH" --draft \
   --title "<type>: <what changed>" --body-file "$SESSION_DIR/pr-body.md"
 ```
 
-Body: `Closes #ISSUE`, the root cause, what changed, `## Verification` (Step 4's commands and what they
-showed, the tester's browser run from Step 4.5, plus anything left unverified), then `## Screenshots`
-directly after it, and, for a design-driven fix, `## Design fidelity`. **No reviewer
-request, no assignee** — a human picks it up from the board. Record `PR` / `PR_URL` in `state.json`.
+Body: exactly this shape, in this order, nothing before `Closes` and no section that is not listed here.
+It is read by a reviewer and by the person who tests the card, on a phone as often as not — **under 40
+lines** all told, one fact per line, no narration of the steps you took, no walk through the diff file by
+file, no restating of the issue.
+
+```markdown
+Closes #ISSUE
+
+## Why
+<1–3 lines: the root cause, or what was missing>
+
+## What changed
+- <one line per change a reviewer has to know about — at most 6>
+
+## Verification
+- `<command>` → <what it showed, in a few words>            # one line per Step 4 check
+- Tester (`$SLOTH_TESTER_MODEL`): <passed|N findings, all fixed> — <what was driven>   # or: skipped — no screen
+- Reviewer (`$SLOTH_REVIEWER_MODEL`): passed on round <N> of `$SLOTH_REVIEW_ROUNDS`
+- Not verified: <what, and why>                                # or the single word `nothing`
+
+## Screenshots
+<see below>
+
+## Design fidelity
+<only for a design-driven fix: the written comparison from Step 3>
+```
+
+The tester and reviewer lines name the **subagent and the model it ran on** — a human reading the PR
+sees who checked what; **orchestrator:** add `- Implementor (`$SLOTH_IMPLEMENTOR_MODEL`)` above them.
+Write the reviewer line after Step 5.5 and re-edit the body then (`gh pr edit`). **No reviewer request, no
+assignee** — a human picks it up from the board. Record `PR` / `PR_URL` in `state.json`.
 
 `## Screenshots` is **never absent**. One of three:
 
