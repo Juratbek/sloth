@@ -5,8 +5,12 @@ import { add, digestFile, promptFrom, readRecords, statsOf, toMessages, zero } f
 import { agentsDirOf, applyLinks, linkAgents, listAgents } from './agents';
 import { costOfUsage } from './pricing';
 import { rollup } from './issue-costs';
-import { boardFromSnapshot } from './board-view';
+import { boardFromSnapshot, type HoldState } from './board-view';
 import { blockedCards } from './runner/blocked';
+import { machineHold } from './runner/machine';
+import { isPaused } from './runner/pause';
+import { pausedUntil } from './runner/run-control';
+import { slotsFull } from './runner/session-dirs';
 import { remoteStatus } from './remote';
 import { listSessionDirs, rateLimit, titleFor, watcherInfo } from './watcher';
 import type { AgentDetail, AgentSummary, ModelUsage, Overview, SessionDetail, SessionKind, SessionSummary, WatcherSession } from './types';
@@ -91,6 +95,19 @@ function listSessions(): { sessions: SessionSummary[]; orphans: WatcherSession[]
   return { sessions, orphans };
 }
 
+/**
+ * Why the loop is starting nothing just now, for the board's per-card hold lines. Read here rather than
+ * inside `board-view.ts` so the join itself stays a pure function of what it is given: these four are
+ * live state — a pause file, the last machine reading, the session directories on disk.
+ */
+const holdState = (): HoldState => ({
+  paused: isPaused(),
+  pausedUntil: pausedUntil(),
+  machine: machineHold(),
+  slotsFull: slotsFull(),
+  maxRetries: cfg().maxRetries,
+});
+
 export async function overview(): Promise<Overview> {
   const [rate, { sessions, orphans }] = [await rateLimit(), listSessions()];
   for (const s of sessions) if (s.target) s.title = titleFor(s.target, rate?.core?.remaining);
@@ -104,7 +121,7 @@ export async function overview(): Promise<Overview> {
     sessions,
     orphans,
     issues,
-    board: boardFromSnapshot(sessions, issues),
+    board: boardFromSnapshot(sessions, issues, holdState()),
     blocked: blockedCards(),
   };
 }

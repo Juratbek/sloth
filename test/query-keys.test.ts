@@ -11,6 +11,7 @@ const MOUNTED = {
   usage: queryKeys.usage(7),
   otherUsage: queryKeys.usage(31),
   models: queryKeys.models,
+  health: queryKeys.health,
   remote: queryKeys.remote,
   stack: queryKeys.stack(),
   stackAt: queryKeys.stack('/src/medora'),
@@ -69,6 +70,7 @@ describe('queryKeys', () => {
     for (const [name, key] of [
       ['overview', queryKeys.overview],
       ['models', queryKeys.models],
+      ['health', queryKeys.health],
       ['remote', queryKeys.remote],
       ['update', queryKeys.update],
       ['service', queryKeys.service],
@@ -78,7 +80,7 @@ describe('queryKeys', () => {
   });
 
   it('never lets a live key reach one that shells out to gh or claude', () => {
-    const expensive = ['config', 'env', 'projects', 'fields', 'service', 'remote', 'stack', 'stackAt', 'models', 'update'];
+    const expensive = ['config', 'env', 'projects', 'fields', 'service', 'remote', 'stack', 'stackAt', 'models', 'update', 'health'];
     for (const key of [queryKeys.overview, queryKeys.sessions, queryKeys.allUsage]) {
       expect(reachedBy(key).filter((name) => expensive.includes(name))).toEqual([]);
     }

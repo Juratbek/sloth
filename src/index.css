@@ -1,12 +1,80 @@
 @import 'tailwindcss';
 
+/**
+ * The palette, named for what a colour means rather than for which zinc it is. Every value is an alias
+ * of a Tailwind shade, so the rendered colours are exactly what they were before the names existed —
+ * and so a repaint is a line here rather than a sweep through forty components.
+ *
+ * Alias, not copy: Tailwind 4 ships its palette in oklch, and the old v3 hexes for zinc-400/500/600 do
+ * not round-trip to the same sRGB byte. `var(--color-zinc-400)` is identical by construction; a hex
+ * would have shifted the most-used text colour in the UI by a hair.
+ *
+ * Names are on a ladder. Surfaces go up (`surface` is the page, `-raised` sits on it, `-inset` on that);
+ * text goes down (`-strong` for a heading, plain for body, then `-soft`, `-muted`, `-faint`). A status
+ * tone has the same six slots: the tone itself (its dot or its plain text), `-fg` for text on its tint,
+ * `-edge`/`-edge-strong` for borders, `-tint`/`-tint-strong` for the filled box behind them.
+ */
+@theme {
+  /* Surfaces — the page, and the two levels the UI stacks on it.
+     `--color-surface` is the one literal: `use-remote.ts` reads it for the QR code's dark squares and
+     the encoder wants a hex, while `getPropertyValue` on an alias hands back the oklch it points at.
+     zinc-950's oklch renders to exactly #09090b, so the literal costs nothing. */
+  --color-surface: #09090b;
+  --color-surface-raised: var(--color-zinc-900);
+  --color-surface-inset: var(--color-zinc-800);
+
+  /* Borders. `-focus` is the one a focused input or a chosen option draws. */
+  --color-edge: var(--color-zinc-800);
+  --color-edge-strong: var(--color-zinc-700);
+  --color-edge-focus: var(--color-zinc-600);
+
+  /* Text. `-disabled` is the same zinc-600 as `--color-edge-focus`, kept apart because a disabled
+     word and a focus ring are not the same decision even where they are the same colour. */
+  --color-fg-strong: var(--color-zinc-100);
+  --color-fg: var(--color-zinc-200);
+  --color-fg-soft: var(--color-zinc-300);
+  --color-fg-muted: var(--color-zinc-400);
+  --color-fg-faint: var(--color-zinc-500);
+  --color-fg-disabled: var(--color-zinc-600);
+
+  /* The one non-status accent: a switch that is on, a tab that is chosen. */
+  --color-accent: var(--color-indigo-500);
+
+  /* Status: ok, warn, danger, info. */
+  --color-ok: var(--color-emerald-400);
+  --color-ok-fg: var(--color-emerald-300);
+  --color-ok-edge: var(--color-emerald-900);
+  --color-ok-edge-strong: var(--color-emerald-700);
+  --color-ok-tint: var(--color-emerald-950);
+
+  --color-warn: var(--color-amber-400);
+  --color-warn-fg: var(--color-amber-300);
+  --color-warn-edge: var(--color-amber-900);
+  --color-warn-edge-strong: var(--color-amber-800);
+  --color-warn-tint: var(--color-amber-950);
+  --color-warn-tint-strong: var(--color-amber-900);
+
+  --color-danger: var(--color-red-400);
+  --color-danger-fg: var(--color-red-300);
+  --color-danger-edge: var(--color-red-900);
+  --color-danger-tint: var(--color-red-950);
+
+  --color-info: var(--color-sky-400);
+  --color-info-fg: var(--color-sky-300);
+  --color-info-fg-strong: var(--color-sky-200);
+  --color-info-edge: var(--color-sky-900);
+  --color-info-edge-strong: var(--color-sky-800);
+  --color-info-tint: var(--color-sky-950);
+  --color-info-tint-strong: var(--color-sky-900);
+}
+
 html,
 body,
 #root {
   height: 100%;
   margin: 0;
-  background: #09090b;
-  color: #e4e4e7;
+  background: var(--color-surface);
+  color: var(--color-fg);
   font-family:
     ui-sans-serif,
     system-ui,

@@ -30,7 +30,7 @@ describe('Button', () => {
       </Button>,
     );
     const button = screen.getByRole('button', { name: 'Stop' });
-    expect(button.className).toContain('border-red-900'); // danger
+    expect(button.className).toContain('border-danger-edge'); // danger
     expect(button.className).toContain('text-[11px]'); // inline
     expect(button.className).toContain('ml-auto');
   });
@@ -38,7 +38,7 @@ describe('Button', () => {
   it('falls back to the outline button in a form, which is what most of the UI wants', () => {
     render(<Button>Install</Button>);
     const button = screen.getByRole('button', { name: 'Install' });
-    expect(button.className).toContain('border-zinc-800'); // ghost
+    expect(button.className).toContain('border-edge'); // ghost
     expect(button.className).toContain('text-sm'); // form
   });
 
@@ -83,7 +83,7 @@ describe('Chip', () => {
     );
     const chip = screen.getByTitle('two working');
     expect(chip.textContent).toBe('sessions 2 working');
-    expect(chip.className).toContain('border-emerald-900');
+    expect(chip.className).toContain('border-ok-edge');
     expect(chip.className).toContain('text-[10px]');
   });
 
@@ -107,7 +107,7 @@ describe('ErrorNote', () => {
     render(<ErrorNote error={new Error('the tunnel is not up')} />);
     const note = screen.getByRole('alert');
     expect(note.textContent).toBe('the tunnel is not up'); // no "Error:" in front of it
-    expect(note.className).toContain('text-red-400');
+    expect(note.className).toContain('text-danger');
   });
 
   it('shows a thrown string and an unhelpful object rather than swallowing either', () => {

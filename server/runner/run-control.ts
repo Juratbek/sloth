@@ -5,7 +5,8 @@ import { moveCard, reviewVerdict } from './board';
 import { cleanup, cleanupRun, keepWarm } from './cleanup';
 import { exitLine, exitReport, forgetExits, recordExit } from './exits';
 import { comment } from './gh';
-import { limitExit } from './limits';
+import { killTree } from './kill';
+import { usageLimit } from './limits';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
 import { MARKERS, markerFiles, statePath } from './markers';
 import { helpMentions, notify } from './notify';
@@ -91,14 +92,9 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
   if (kind === 'issue') recordExit(dir, `stopped by Sloth: ${reason}`);
   // A run paused for the machine's sake is stopped cold: it has to be woken to act on the signal.
   resumeRun(dir);
-  // Detached, so the run leads its own group: the negative pid takes its subagents and servers with it.
-  for (const t of [-pid!, pid!]) {
-    try {
-      process.kill(t);
-    } catch {
-      /* raced with its own exit */
-    }
-  }
+  // Detached, so the run leads its own group — and on Windows a tree `taskkill` walks (`kill.ts`): either
+  // way its subagents, servers and browser go with it.
+  await killTree(pid!);
   remove(path.join(dir, 'pid'));
   if (kind === 'qa') {
     // Its app and worktree are its own; the card stays in QA and the head keeps its marker, like a stopped
@@ -178,7 +174,8 @@ export async function reap(): Promise<void> {
     if (!dirAlive(dir)) {
       remove(pidFile);
       forgetPause(dir);
-      if (!limitExit(readFile(path.join(dir, 'run.log')))) {
+      const limit = usageLimit(dir);
+      if (!limit) {
         if ((stateOf(dir).state ?? 'working') === 'working' && !(await verdictPosted(kind, target, dir))) {
           if (kind === 'issue') {
             log(`${name} ended without finishing — ${exitLine(recordExit(dir, 'the session ended on its own'))}`);
@@ -200,7 +197,8 @@ export async function reap(): Promise<void> {
         }
         continue;
       }
-      log(`${name} stopped on a usage limit — pausing ${LIMIT_PAUSE / 60} min, card untouched`);
+      // Which of the two signals fired is in the line: the transcript's own error entry, or the CLI's prose.
+      log(`${name} stopped on a usage limit (${limit}) — pausing ${LIMIT_PAUSE / 60} min, card untouched`);
       write(statePath('paused_until'), String(nowSec() + LIMIT_PAUSE));
       await notify('usageLimit', {
         issue: kind === 'issue' ? target : undefined,

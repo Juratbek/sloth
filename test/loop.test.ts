@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loopStatus, startLoop, stopLoop, tick } from '../server/runner/loop';
+import { loopStatus, serial, startLoop, stopLoop, tick } from '../server/runner/loop';
 import { handleSetup } from '../server/setup';
 import { cfg } from '../server/config';
 import { snapshot } from '../server/runner/board-snapshot';
@@ -78,6 +78,46 @@ describe('a board tick', () => {
     onGh(/items\(first: 100/, { ok: false, out: '', err: 'HTTP 502' });
     await tick({ board: true });
     expect(snapshot()?.items.map((i) => i.number)).toEqual([1]);
+  });
+});
+
+describe('serial', () => {
+  it('waits for the tick in flight, and the next tick waits for it', async () => {
+    // The monitor's stop / sweep-now / unblock buttons used to run the moment the request arrived — over
+    // the same pid files and preview state a tick's `reap` and `previews` were walking at that very moment.
+    const order: string[] = [];
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    let boards = 0;
+    onGh(/items\(first: 100/, async () => {
+      const n = ++boards;
+      order.push(`tick ${n} board`);
+      if (n === 1) await held;
+      order.push(`tick ${n} done`);
+      return board([]);
+    });
+    const first = tick({ board: true });
+    await new Promise((r) => setImmediate(r));
+    const mutation = serial('stop session', async () => {
+      order.push('mutation');
+      return 'stopped';
+    });
+    const second = tick({ board: true });
+    expect(order).toEqual(['tick 1 board']); // nothing ran while the first tick was in flight
+    release();
+    await Promise.all([first, mutation, second]);
+    // The mutation sits between the two ticks: never inside one, and never starting one of its own.
+    expect(order).toEqual(['tick 1 board', 'tick 1 done', 'mutation', 'tick 2 board', 'tick 2 done']);
+    await expect(mutation).resolves.toBe('stopped');
+  });
+
+  it('answers a failing mutation with undefined and logs it, leaving the chain usable', async () => {
+    onGh(/items\(first: 100/, board([]));
+    await expect(serial('stop session', async () => {
+      throw new Error('no such run\nsecond line');
+    })).resolves.toBeUndefined();
+    expect(readLog().join('\n')).toMatch(/stop session failed: no such run/);
+    await expect(tick({ board: true })).resolves.toBeUndefined();
   });
 });
 

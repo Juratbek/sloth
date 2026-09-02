@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { SessionStatus, SessionSummary } from '../../server/types';
-import { STATUS_COLOR, dayLabel, elapsed, k, label, modelName, stepLabel } from '../lib/format';
+import { STATUS_COLOR, dayLabel, elapsed, k, label, modelName, stepLabel, usd } from '../lib/format';
 import { inputStyle } from '../setup/ui';
 import { LoadBrief } from './SessionLoad';
 import Chip from './ui/Chip';
@@ -39,22 +39,22 @@ function Row({ s, active, onSelect }: { s: SessionSummary; active: boolean; onSe
   return (
     <button
       onClick={onSelect}
-      className={`w-full border-b border-zinc-900 px-3 py-2 text-left hover:bg-zinc-900 ${active ? 'bg-zinc-900' : ''}`}
+      className={`w-full border-b border-surface-raised px-3 py-2 text-left hover:bg-surface-raised ${active ? 'bg-surface-raised' : ''}`}
     >
       <div className="flex items-center gap-2">
         <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_COLOR[s.status]} ${s.status === 'running' ? 'animate-pulse' : ''}`} />
-        <span className="text-sm font-medium text-zinc-100">{label(s)}</span>
+        <span className="text-sm font-medium text-fg-strong">{label(s)}</span>
         {step && (
           <Chip tone="solidDim" size="2xs">
             {step}
           </Chip>
         )}
-        <span className="ml-auto text-[11px] text-zinc-400">{elapsed(s)}</span>
+        <span className="ml-auto text-[11px] text-fg-muted">{elapsed(s)}</span>
       </div>
-      {s.title && <div className="mt-0.5 truncate pl-4 text-xs text-zinc-400">{s.title}</div>}
-      <div className="mt-0.5 flex gap-2 pl-4 text-[11px] text-zinc-400">
+      {s.title && <div className="mt-0.5 truncate pl-4 text-xs text-fg-muted">{s.title}</div>}
+      <div className="mt-0.5 flex gap-2 pl-4 text-[11px] text-fg-muted">
         {model && (
-          <span className="text-zinc-300" title={s.model}>
+          <span className="text-fg-soft" title={s.model}>
             {model}
           </span>
         )}
@@ -62,6 +62,14 @@ function Row({ s, active, onSelect }: { s: SessionSummary; active: boolean; onSe
         <span>↑{k(s.usage.output)}</span>
         {s.agents.length > 0 && <span>{s.agents.length} agents</span>}
         <LoadBrief load={s.watcher?.load} />
+        {/* What this run cost, at the far end of the row — the same list-price estimate the board header
+            and the session header show. A run with a model nobody has a price for shows nothing rather
+            than a zero. */}
+        {s.cost !== null && s.cost !== undefined && (
+          <span className="ml-auto shrink-0 tabular-nums text-fg-faint" title="API list-price estimate for this run and its subagents">
+            {usd(s.cost)}
+          </span>
+        )}
       </div>
     </button>
   );
@@ -82,8 +90,8 @@ export default function Sidebar({
   const [query, setQuery] = useState('');
   const shown = sessions.filter((s) => matches(s, query));
   return (
-    <aside className={`${open ? 'flex' : 'hidden'} w-full shrink-0 flex-col border-r border-zinc-800 md:flex md:w-80`}>
-      <div className="border-b border-zinc-900 p-2">
+    <aside className={`${open ? 'flex' : 'hidden'} w-full shrink-0 flex-col border-r border-edge md:flex md:w-80`}>
+      <div className="border-b border-surface-raised p-2">
         <input
           type="search"
           value={query}
@@ -100,13 +108,13 @@ export default function Sidebar({
           if (!rows.length) return null;
           return (
             <section key={g.title}>
-              <h2 className="sticky top-0 bg-zinc-950 px-3 py-1.5 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">
+              <h2 className="sticky top-0 bg-surface px-3 py-1.5 text-[11px] font-semibold tracking-wide text-fg-muted uppercase">
                 {g.title} · {rows.length}
               </h2>
               {g.byDay
                 ? groupByDay(rows).map((d) => (
                     <div key={d.day}>
-                      <h3 className="border-b border-zinc-900 bg-zinc-950/80 px-3 py-1 text-[10px] font-medium text-zinc-500">
+                      <h3 className="border-b border-surface-raised bg-surface/80 px-3 py-1 text-[10px] font-medium text-fg-faint">
                         {d.day} · {d.rows.length}
                       </h3>
                       {d.rows.map((s) => (
@@ -118,8 +126,8 @@ export default function Sidebar({
             </section>
           );
         })}
-        {!sessions.length && <p className="p-4 text-sm text-zinc-400">No transcripts yet.</p>}
-        {sessions.length > 0 && !shown.length && <p className="p-4 text-sm text-zinc-400">No sessions match “{query.trim()}”.</p>}
+        {!sessions.length && <p className="p-4 text-sm text-fg-muted">No transcripts yet.</p>}
+        {sessions.length > 0 && !shown.length && <p className="p-4 text-sm text-fg-muted">No sessions match “{query.trim()}”.</p>}
       </div>
     </aside>
   );

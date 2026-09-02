@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { cfg } from '../config';
 import { run } from './gh';
+import { killTree } from './kill';
 import { log, nowSec, readFile, remove, write } from './log';
 import { statePath } from './markers';
 import { dirOf, pidAlive, type Kind } from './session-dirs';
@@ -86,18 +87,8 @@ export async function killWarm(slot: string, reason: string): Promise<void> {
   const w = warmOf(slot);
   if (!w) return;
   remove(warmFile(slot));
-  for (const pid of [...w.dev, ...w.redis]) {
-    // Like `cleanup.ts`: the group first, woken first — a paused process cannot act on SIGTERM.
-    for (const target of [-pid, pid]) {
-      for (const signal of ['SIGCONT', 'SIGTERM'] as const) {
-        try {
-          process.kill(target, signal);
-        } catch {
-          /* no such group, or already gone */
-        }
-      }
-    }
-  }
+  // Like `cleanup.ts`: the whole tree of each server, woken first — a paused process cannot act on SIGTERM.
+  for (const pid of [...w.dev, ...w.redis]) await killTree(pid);
   if (w.db) await run('dropdb', ['--if-exists', w.db], { timeout: 60_000 });
   log(`the warm stack of ${slot} taken down (${reason})`);
 }

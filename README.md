@@ -41,6 +41,13 @@ The board is read every 5 minutes, comments every 2; **Tick now** runs both at o
 stops Sloth from starting anything new (running sessions, inbox deliveries, status replies and
 needs-help notifications carry on) and survives a restart.
 
+The header's **runner** chip says whether this machine can do the work at all: `gh` signed in, the runner
+checkout's `origin` reachable, a browser for the screenshots when `chrome` is on, and passwordless sudo
+where installing the stack needs it. Green when all four are in order, red naming the ones that are not,
+with every check's own answer on the hover; clicking it asks again. The checks are read-only and cached —
+taken once at start-up, then at most every 10 minutes from the board tick, so a `gh auth status` never
+rides the 5-minute poll (`GET /api/health`, `POST /api/health/check`).
+
 - **The `Sloth: skip` label keeps Sloth off a card.** Put it on an issue and Sloth leaves it alone in
   any column — no pickup, no relaunch, no fixing its checks; take it off and the card is Sloth's again.
   Sloth creates the label in the repo when it starts. Every row above but 4 reads "an issue without
@@ -238,7 +245,7 @@ UI shows follows the provider's own list prices, cached prompts included. The wh
 ## UI and API
 
 The UI lists sessions (live / needs help / finished) with their transcript, subagents, token spend, what
-the run cost at list price, the machine load of a live run (see *Sessions*) and watcher state, plus a home panel with hourly spend, **cost by issue** — every
+the run cost at list price — on the row in the list as well as in the session header — the machine load of a live run (see *Sessions*) and watcher state, plus a home panel with hourly spend, **cost by issue** — every
 issue Sloth touched, its runs rolled up into one line, dearest first — the queue and the log. It refreshes on a 15s poll
 and an SSE stream. Transcripts are read from `~/.claude/projects/<runner root, non-alphanumerics as '-'>`.
 
@@ -250,7 +257,11 @@ unclaimed ones waiting in pickup. A card someone else moved by hand — no run, 
 listed, only counted in a `not Sloth's · 3` chip. Beside the counts, **today** and **7 days** say what every run has cost at list price, so spend is in view without going back to the chart. A card is two lines: the number and title, a
 state dot with what Sloth's newest run on that issue is doing, and then only what applies — what the issue
 has cost, its PR, a live preview link, retries, the human who owns it, a `Fable: approved` badge, how long a
-parked card has been waiting. Clicking a card goes back to the monitor with that run open. It is a
+parked card has been waiting. Under those, when there is one, the **hold**: one line saying why nothing is
+happening on that card — a pause, a usage limit, the machine, no free slot, the `Sloth: skip` label, a
+give-up, the relaunches it has used up, a review waiting for the session that wrote the PR. Reasons that
+used to be in `watcher.log` only; a card a session is live on has none. Clicking a card goes back to the
+monitor with that run open. It is a
 **mirror**: the view is built from the board the last tick already read (no extra GitHub call, and
 `as of 14:02` says how fresh it is), Done shows the last 7 days, every other Status column is one
 `elsewhere · 14` chip, and nothing on it writes back — no dragging, no buttons. On a phone the columns take

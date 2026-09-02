@@ -2,9 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setSnapshot } from '../server/runner/board-snapshot';
-import { setDry } from '../server/runner/log';
+import { nowSec, setDry } from '../server/runner/log';
 import { sampleMachine, setReaders } from '../server/runner/machine';
-import { pausedSeconds, pressure, resetPressure } from '../server/runner/pressure';
+import { pausedSeconds, pressure, resetPressure, resumeRun } from '../server/runner/pressure';
 import { reap, stop } from '../server/runner/triggers';
 import { resetGh } from './gh-mock';
 import { alivePid, card, configure, exists, makeSession, read, readLog, sessionDir, wipe } from './harness';
@@ -158,5 +158,21 @@ describe('pressure', () => {
       Object.defineProperty(process, 'platform', { value: platform });
     }
     expect(signals).toHaveLength(0);
+  });
+
+  it('sends no SIGCONT on Windows either — the name is ignored there and the process would be killed', () => {
+    // `process.kill(pid, 'SIGCONT')` on Windows does not resume anything: the signal name is ignored and
+    // the process is terminated. Resuming is what every stop path does first, so this must be a no-op.
+    makeSession('issue', 3, { pid: alivePid(), paused: JSON.stringify({ since: nowSec() - 30, reason: 'memory' }) });
+    const platform = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    try {
+      expect(resumeRun(sessionDir('issue', 3))).toBe(true); // the bookkeeping still happens
+    } finally {
+      Object.defineProperty(process, 'platform', { value: platform, configurable: true });
+    }
+    expect(signals).toHaveLength(0);
+    expect(exists(sessionDir('issue', 3), 'paused')).toBe(false);
+    expect(readLog().join('\n')).toMatch(/SIGCONT is not available on win32/);
   });
 });

@@ -21,18 +21,25 @@ export interface Executed {
   args: string[];
   line: string;
   stdin: string;
+  /** The options the caller passed — `timeout`, `cwd`, `maxBuffer`. */
+  options: Record<string, any>;
 }
 export const executed: Executed[] = [];
 
-/** How the next matching `execFile` ends; anything not matched succeeds silently, as it always has. */
-const replies: { match: RegExp; code: number; stderr: string }[] = [];
-export const onExecFile = (match: RegExp, { code = 0, stderr = '' }: { code?: number; stderr?: string }) => replies.unshift({ match, code, stderr });
+/**
+ * How the next matching `execFile` ends; anything not matched succeeds silently, as it always has.
+ * `stdout` may be a function, for a command whose answer differs from call to call (`gh api …/issues/<n>`).
+ */
+const replies: { match: RegExp; code: number; stderr: string; stdout: string | ((line: string) => string) }[] = [];
+export const onExecFile = (match: RegExp, { code = 0, stderr = '', stdout = '' }: { code?: number; stderr?: string; stdout?: string | ((line: string) => string) }) =>
+  replies.unshift({ match, code, stderr, stdout });
 
-export const execFile = vi.fn((cmd: string, args: string[], _opts: unknown, cb: (e: Error | null, out: string, err: string) => void) => {
-  const call: Executed = { cmd, args, line: [cmd, ...args].join(' '), stdin: '' };
+export const execFile = vi.fn((cmd: string, args: string[], opts: Record<string, any>, cb: (e: Error | null, out: string, err: string) => void) => {
+  const call: Executed = { cmd, args, line: [cmd, ...args].join(' '), stdin: '', options: opts ?? {} };
   executed.push(call);
   const reply = replies.find((r) => r.match.test(call.line));
-  cb(reply?.code ? Object.assign(new Error(`exited with ${reply.code}`), { code: reply.code }) : null, '', reply?.stderr ?? '');
+  const out = typeof reply?.stdout === 'function' ? reply.stdout(call.line) : (reply?.stdout ?? '');
+  cb(reply?.code ? Object.assign(new Error(`exited with ${reply.code}`), { code: reply.code }) : null, out, reply?.stderr ?? '');
   return {
     stdin: {
       end(text?: string) {

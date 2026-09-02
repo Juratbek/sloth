@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { buildBoardView } from '../server/board-view';
+import { buildBoardView, type HoldState } from '../server/board-view';
 import { clearSnapshot, setSnapshot, snapshot } from '../server/runner/board-snapshot';
 import { reloadConfig } from '../server/config';
 import type { ConfigColumns } from '../server/config-types';
@@ -43,7 +43,8 @@ const view = (
   issues: IssueCost[] = [],
   columns: ConfigColumns = COLUMNS,
   blocked: BlockedCard[] = [],
-) => buildBoardView({ at: NOW, items }, columns, sessions, issues, blocked, NOW);
+  hold: HoldState = {},
+) => buildBoardView({ at: NOW, items }, columns, sessions, issues, blocked, NOW, hold);
 
 const names = (v: ReturnType<typeof buildBoardView>) => v.columns.map((c) => c.role);
 const issuesIn = (v: ReturnType<typeof buildBoardView>, role: string) => v.columns.find((c) => c.role === role)?.cards.map((c) => c.issue);
@@ -138,6 +139,7 @@ describe('buildBoardView', () => {
       pr: 'https://github.com/acme/widgets/pull/91',
       preview: { url: 'https://p.example', key: 'k3y' },
       cost: 4.5,
+      hold: 'Parked for a human: answer in the issue thread and Sloth carries on.',
     });
   });
 
@@ -154,6 +156,97 @@ describe('buildBoardView', () => {
   it('offers no preview link before the tunnel has an address', () => {
     const s = session({ id: 'x', target: 1, watcher: dir('issue', 1, { preview: { issue: 1, key: 'k', startedAt: 0, expiresAt: 0 } }) });
     expect(view([card(1, 'In Progress')], [s]).columns[1].cards[0].preview).toBeUndefined();
+  });
+});
+
+/** Every card's hold in one call: the issue number against the sentence, or undefined. */
+const holds = (v: ReturnType<typeof buildBoardView>) =>
+  Object.fromEntries(v.columns.flatMap((c) => c.cards.map((card) => [card.issue, card.hold])));
+
+describe('why nothing is happening — the per-card hold', () => {
+  const live = (n: number) => session({ id: `live${n}`, target: n, status: 'running', live: true, watcher: dir('issue', n, { alive: true }) });
+  const dead = (n: number, over: Partial<WatcherSession> = {}) => session({ id: `s${n}`, target: n, status: 'done', watcher: dir('issue', n, over) });
+
+  it('says nothing about a card a session is live on, wherever it sits', () => {
+    const v = view([card(1, 'In Progress'), card(2, 'Approved')], [live(1), live(2)], [], COLUMNS, [], { paused: true, slotsFull: true });
+    expect(holds(v)).toEqual({ 1: undefined, 2: undefined });
+  });
+
+  it('tells a queued card the user has paused Sloth, and an In Progress card with nobody on it too', () => {
+    const v = view([card(1, 'Todo'), card(2, 'In Progress')], [dead(2)], [], COLUMNS, [], { paused: true });
+    expect(holds(v)[1]).toBe('Sloth is paused — it starts no new work until you resume it.');
+    expect(holds(v)[2]).toBe(holds(v)[1]);
+  });
+
+  it('puts the usage-limit pause ahead of the user pause and says how much longer it has to run', () => {
+    const v = view([card(1, 'Todo')], [], [], COLUMNS, [], { paused: true, pausedUntil: NOW / 1000 + 25 * 60 });
+    expect(holds(v)[1]).toBe('Sloth hit a Claude usage limit and starts nothing new for another 25 min.');
+  });
+
+  it('forgets a usage-limit pause that has run out', () => {
+    const v = view([card(1, 'Todo')], [], [], COLUMNS, [], { pausedUntil: NOW / 1000 - 60 });
+    expect(holds(v)[1]).toBeUndefined();
+  });
+
+  it('passes the machine reading on in the words the log uses, and the full slots after it', () => {
+    expect(holds(view([card(1, 'Todo')], [], [], COLUMNS, [], { machine: 'machine busy: 7% memory free, under 20%' }))[1]).toBe(
+      'The machine is busy (7% memory free, under 20%) — no new session until that clears.',
+    );
+    expect(holds(view([card(1, 'Todo')], [], [], COLUMNS, [], { slotsFull: true }))[1]).toBe(
+      'Every session slot is taken; this card starts as soon as one frees up.',
+    );
+  });
+
+  it('leaves the columns Sloth would not start anything from out of the global reasons', () => {
+    const v = view([card(1, 'Code Review'), card(2, 'Approved'), card(3, 'Done')], [dead(1), dead(2), dead(3)], [], COLUMNS, [], {
+      paused: true,
+      slotsFull: true,
+      machine: 'machine busy: nothing left',
+    });
+    expect(holds(v)).toEqual({ 1: undefined, 2: undefined, 3: undefined });
+  });
+
+  it('answers with the card\'s own reason before the loop\'s — a give-up, then the skip label', () => {
+    const blocked: BlockedCard[] = [{ issue: 1, title: 'Issue 1', reason: 'its QA test died 3 times on one head.', sha: 'abc', at: 0 }];
+    const v = view([card(1, 'In Progress'), card(2, 'In Progress', { labels: ['Sloth: skip'] })], [dead(1), dead(2)], [], COLUMNS, blocked, { paused: true });
+    expect(holds(v)[1]).toBe('Sloth has given up on this card — its QA test died 3 times on one head. Unblock it from the home panel.');
+    expect(holds(v)[2]).toBe('The Sloth: skip label holds this card back — take it off and Sloth works it again.');
+  });
+
+  it('says nothing about the skip label in Code Review, where a skipped card is reviewed like any other', () => {
+    const v = view([card(1, 'Code Review', { labels: ['Sloth: skip'] })], [dead(1)], [], COLUMNS, [], { paused: true });
+    expect(holds(v)[1]).toBeUndefined();
+  });
+
+  it('names the one hold a live session raises: the review waiting for the session that wrote the PR', () => {
+    const v = view([card(1, 'Code Review')], [live(1)]);
+    expect(holds(v)[1]).toBe('The review waits for the session on this issue to finish.');
+  });
+
+  it('says a parked run is waiting for a human, in needs-help and wherever else it sits', () => {
+    const parked = session({ id: 'p', target: 1, status: 'parked', watcher: dir('issue', 1) });
+    expect(holds(view([card(1, 'Sloth needs help')], [parked]))[1]).toBe('Parked for a human: answer in the issue thread and Sloth carries on.');
+    // …and a needs-help card whose run is long gone says the same rather than nothing.
+    expect(holds(view([card(1, 'Sloth needs help')], [dead(1)]))[1]).toContain('Parked for a human');
+  });
+
+  it('warns an In Progress card that has used up its relaunches, before it is parked', () => {
+    const items = [card(1, 'In Progress'), card(2, 'In Progress')];
+    const v = view(items, [dead(1, { retries: 3 }), dead(2, { retries: 2 })], [], COLUMNS, [], { maxRetries: 3 });
+    expect(holds(v)[1]).toBe('3 runs in a row stopped without finishing — the next tick parks this card instead of relaunching it.');
+    // Under the cap the card is still Sloth's to retry, so there is nothing holding it.
+    expect(holds(v)[2]).toBeUndefined();
+  });
+
+  it('says nothing about a card in Done, which is not waiting for anything', () => {
+    const blocked: BlockedCard[] = [{ issue: 1, title: 'Issue 1', reason: 'it died.', sha: 'abc', at: 0 }];
+    const v = view([card(1, 'Done', { closed: true, labels: ['Sloth: skip'] })], [dead(1)], [], COLUMNS, blocked, { paused: true });
+    expect(holds(v)[1]).toBeUndefined();
+  });
+
+  it('leaves every card free when the loop is free', () => {
+    const v = view([card(1, 'Todo'), card(2, 'In Progress'), card(3, 'Code Review')], [dead(2), dead(3)], [], COLUMNS, [], { maxRetries: 3 });
+    expect(holds(v)).toEqual({ 1: undefined, 2: undefined, 3: undefined });
   });
 });
 

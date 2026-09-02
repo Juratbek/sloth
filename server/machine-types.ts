@@ -86,3 +86,23 @@ export interface ServiceStatus {
   /** Why the last change failed — a missing build, mostly. */
   error?: string;
 }
+
+/** One thing the runner needs in order to do any work at all — see `server/health.ts`. */
+export type HealthId = 'gh' | 'git' | 'chrome' | 'sudo';
+export interface HealthCheck {
+  id: HealthId;
+  ok: boolean;
+  /** One line: what was found, or what the command said when it failed. */
+  detail: string;
+  /** Nothing to check here — the browser is off, the stack needs no sudo — so `ok` says nothing. */
+  skipped?: boolean;
+}
+/**
+ * Whether this machine can actually do the work: `gh` signed in, the runner checkout's `origin`
+ * reachable, a browser for the screenshots, and passwordless sudo where installing the stack needs it.
+ * `at` is when the checks were taken — they are cached and re-run at most every ten minutes.
+ */
+export interface Health {
+  at: number;
+  checks: HealthCheck[];
+}

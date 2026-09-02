@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
 import { run } from './gh';
+import { killTree } from './kill';
 import { log, readFile, remove } from './log';
 import { dirOf, pidAlive, predatesBoot, worktreeName, type Kind } from './session-dirs';
 import { releaseSlot, slotOf } from './slots';
@@ -50,20 +51,10 @@ export async function cleanupRun(kind: Kind, target: number, tainted = false): P
       const file = path.join(dir, name);
       const { pids, stale } = pidsOf(file);
       if (stale) log(`${kind}-${target}: ${name} was written before the last boot — its pids are other processes now and are left alone`);
-      for (const pid of pids) {
-        // A server started as its own process group (a `set -m` job, `setsid`) takes its children with
-        // it — the dev-server wrappers a project starts fork the real listeners. One that was paused for
-        // the machine's sake is stopped cold and has to be woken first, or the SIGTERM waits with it.
-        for (const target of [-pid, pid]) {
-          for (const signal of ['SIGCONT', 'SIGTERM'] as const) {
-            try {
-              process.kill(target, signal);
-            } catch {
-              /* no such group, or already gone */
-            }
-          }
-        }
-      }
+      // A server started as its own process group (a `set -m` job, `setsid`) takes its children with
+      // it — the dev-server wrappers a project starts fork the real listeners. `killTree` is that group
+      // on macOS and Linux and a `taskkill /T` tree on Windows, woken first either way.
+      for (const pid of pids) await killTree(pid);
       remove(file);
     }
     // One name per line, like the pid files beside it: a project skill that seeds two databases writes

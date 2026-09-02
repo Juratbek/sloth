@@ -52,6 +52,13 @@ function pidsOf(dir: string): number[] {
 }
 
 export function signalRun(dir: string, signal: 'SIGSTOP' | 'SIGCONT'): void {
+  // Windows has no SIGSTOP and no SIGCONT: `process.kill` there ignores the name and *terminates* the
+  // process instead, so pausing a session would silently kill it. Nothing is signalled — `canPause` keeps
+  // `pressure` from ever pausing there, and this is the guard for the `resumeRun` the stop paths call.
+  if (!canPause()) {
+    log(`${signal} is not available on ${process.platform} — the run is left running`);
+    return;
+  }
   for (const pid of pidsOf(dir)) {
     for (const target of [-pid, pid]) {
       try {
