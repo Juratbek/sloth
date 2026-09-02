@@ -16,6 +16,7 @@ import { qaSweep, qaVerdicts } from './qa';
 import { prune } from './retention';
 import { answered } from './answers';
 import { handover, pausedUntil, pickup, reap, retryStranded, reviews } from './triggers';
+import { autoUpdate } from '../update';
 import type { LoopStatus } from '../types';
 
 export interface TickOptions {
@@ -109,14 +110,23 @@ async function runTick({ board = false, comments: wantComments = false, dryRun =
   }
 }
 
-type Timed = 'board' | 'comments' | 'machine';
-const TIMED: Timed[] = ['board', 'comments', 'machine'];
+type Timed = 'board' | 'comments' | 'machine' | 'update';
+const TIMED: Timed[] = ['board', 'comments', 'machine', 'update'];
 
-const intervalOf = (kind: Timed) => (kind === 'board' ? cfg().boardSeconds : kind === 'comments' ? cfg().commentSeconds : cfg().machineSeconds);
+const intervalOf = (kind: Timed) =>
+  kind === 'board' ? cfg().boardSeconds : kind === 'comments' ? cfg().commentSeconds : kind === 'machine' ? cfg().machineSeconds : cfg().updateSeconds;
 
 /** What one timer does when it fires. The machine's is its own pass, and never runs inside a tick. */
 function fire(kind: Timed): Promise<unknown> {
-  if (kind !== 'machine') return tick(kind === 'board' ? { board: true } : { comments: true });
+  if (kind === 'board' || kind === 'comments') return tick(kind === 'board' ? { board: true } : { comments: true });
+  if (kind === 'update') {
+    // Sloth's own update goes on the tick chain: it waits for the tick in flight and holds the next one,
+    // because the last step is a restart and a card half-moved through one is a card in two places.
+    if (isDry()) return Promise.resolve();
+    const queued = chain.then(() => autoUpdate()).catch((e) => log(`auto-update failed: ${e}`));
+    chain = queued;
+    return queued;
+  }
   // A tick reads the machine itself; a user pause stops the reading with the launching it is for.
   if (state.ticking || isPaused() || isDry()) return Promise.resolve();
   return readMachine().catch((e) => log(`machine reading failed: ${e}`));
@@ -137,9 +147,9 @@ function schedule(kind: Timed, delaySeconds: number): void {
 
 /**
  * Starts the timers — the board every `boardSeconds`, `@sloth` comments every `commentSeconds`, the
- * machine every `machineSeconds`. The last one is short on purpose: the holds and the pausing in
+ * machine every `machineSeconds`. The machine's is short on purpose: the holds and the pausing in
  * `pressure` can only act on a reading they have, and a reading every five minutes is one the kernel's
- * OOM killer beats to the punch.
+ * OOM killer beats to the punch. Sloth's own update gets a timer only when `autoUpdate` is on.
  */
 export function startLoop(): void {
   stopLoop();
@@ -147,11 +157,13 @@ export function startLoop(): void {
   if (!c.configured) return;
   state.running = true;
   log(
-    `watching ${c.repo} · board #${c.project.number} · pickup "${c.statusField.columns.pickup.name}" · board ${c.boardSeconds}s / comments ${c.commentSeconds}s / machine ${c.machineSeconds}s`,
+    `watching ${c.repo} · board #${c.project.number} · pickup "${c.statusField.columns.pickup.name}" · board ${c.boardSeconds}s / comments ${c.commentSeconds}s / machine ${c.machineSeconds}s${c.autoUpdate ? ` / auto-update ${c.updateSeconds}s` : ''}`,
   );
   schedule('board', 5);
   schedule('comments', 20);
   schedule('machine', c.machineSeconds);
+  // A minute in, so a Sloth that was just started is watching before it thinks about replacing itself.
+  if (c.autoUpdate) schedule('update', 60);
 }
 
 export function stopLoop(): void {
