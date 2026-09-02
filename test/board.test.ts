@@ -91,7 +91,9 @@ describe('moveCard', () => {
 });
 
 describe('wiredPrs', () => {
-  const rollup = (state: string) => ({ commits: { nodes: [{ commit: { statusCheckRollup: { state } } } ] } });
+  const rollup = (state: string, ...contexts: Record<string, unknown>[]) => ({
+    commits: { nodes: [{ commit: { statusCheckRollup: { state, ...(contexts.length ? { contexts: { nodes: contexts } } : {}) } } }] },
+  });
   /** Sloth reviews as they sit on the PR: `(sha, verdict)` pairs, oldest first. */
   const reviewed = (...pairs: string[]) => ({
     reviews: { nodes: Array.from({ length: pairs.length / 2 }, (_, i) => ({ body: `**Sloth:**\nReview: **${pairs[2 * i + 1]}** — 8/10.`, commit: { oid: pairs[2 * i] } })) },
@@ -114,6 +116,34 @@ describe('wiredPrs', () => {
     ]);
     // A repository that runs no checks reports no rollup at all — that is not a pending one.
     expect((await wiredPrs([2], { states: ['MERGED'] })).map((p) => [p.pr, p.state, p.checks])).toEqual([[12, 'MERGED', 'NONE']]);
+  });
+  it('leaves account-level Vercel failures out of a red rollup; a real failure still counts', async () => {
+    const pr = (n: number, r: object) => ({ number: n, state: 'OPEN', isDraft: false, headRefOid: 'aaa', headRefName: 'x', mergeable: 'MERGEABLE', ...r });
+    const blocked = { state: 'FAILURE', description: 'Deployment was blocked' };
+    const noAccess = { state: 'ERROR', description: 'Git author sarzeez must have access to the project on Vercel to create deployments.' };
+    onGh(/api graphql/, {
+      data: {
+        repository: {
+          // Every failure is Vercel refusing at the account: the head is green.
+          i1: { closedByPullRequestsReferences: { nodes: [pr(10, rollup('FAILURE', blocked, noAccess, { state: 'SUCCESS' }, { conclusion: 'SUCCESS' }))] } },
+          // A failing check run beside them is a failure of the code.
+          i2: { closedByPullRequestsReferences: { nodes: [pr(11, rollup('FAILURE', blocked, { conclusion: 'FAILURE' }))] } },
+          // A blocked deployment beside a running check: still pending, not failed.
+          i3: { closedByPullRequestsReferences: { nodes: [pr(12, rollup('FAILURE', noAccess, { conclusion: null }))] } },
+          // A real Vercel build failure carries another message and counts.
+          i4: { closedByPullRequestsReferences: { nodes: [pr(13, rollup('FAILURE', { state: 'FAILURE', description: 'Deployment failed' }))] } },
+          // A red rollup whose checks could not be read stays red.
+          i5: { closedByPullRequestsReferences: { nodes: [pr(14, rollup('FAILURE'))] } },
+        },
+      },
+    });
+    expect((await wiredPrs([1, 2, 3, 4, 5])).map((p) => [p.pr, p.checks])).toEqual([
+      [10, 'SUCCESS'],
+      [11, 'FAILURE'],
+      [12, 'PENDING'],
+      [13, 'FAILURE'],
+      [14, 'FAILURE'],
+    ]);
   });
   it('reads one PR’s verdict for its head, ignoring a human’s review and a verdict on another head', async () => {
     onGh(/pullRequest\(number: 10\)/, { data: { repository: { pullRequest: { reviews: { nodes: [

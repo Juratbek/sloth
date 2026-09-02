@@ -143,8 +143,46 @@ export interface WiredOptions {
   states?: PrState[];
 }
 
-const checksOf = (state: string | undefined): Checks =>
-  state === 'SUCCESS' ? 'SUCCESS' : state === 'FAILURE' || state === 'ERROR' ? 'FAILURE' : state ? 'PENDING' : 'NONE';
+/**
+ * A Vercel deployment refused at the account — `Deployment was blocked` (a spend cap, a paused project),
+ * a git author without access to the team — says nothing about the code on the branch. GitHub's rollup is
+ * all-or-nothing, so one such status would keep every head red for ever: no session can fix it, no PR
+ * merges, and trigger 7 burns a run on it per head. A real Vercel build failure carries neither message
+ * and still counts.
+ */
+const ACCOUNT_FAILURE = /deployment was blocked|must have access to the project on vercel/i;
+
+interface CheckNode {
+  state?: string; // StatusContext
+  description?: string;
+  conclusion?: string | null; // CheckRun; null while it runs
+}
+interface Rollup {
+  state?: string;
+  contexts?: { nodes?: CheckNode[] };
+}
+
+const contextChecks = (n: CheckNode): Checks => {
+  if (n.state) {
+    if (n.state === 'SUCCESS') return 'SUCCESS';
+    if (n.state !== 'FAILURE' && n.state !== 'ERROR') return 'PENDING';
+    return ACCOUNT_FAILURE.test(n.description ?? '') ? 'SUCCESS' : 'FAILURE';
+  }
+  if (n.conclusion === undefined || n.conclusion === null) return 'PENDING';
+  return ['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(n.conclusion) ? 'SUCCESS' : 'FAILURE';
+};
+
+/** The rollup's word, except that a red one is re-read check by check with the account-level failures left out. */
+function checksOf(rollup: Rollup | undefined): Checks {
+  const state = rollup?.state;
+  if (state === 'SUCCESS') return 'SUCCESS';
+  if (!state) return 'NONE';
+  if (state !== 'FAILURE' && state !== 'ERROR') return 'PENDING';
+  const nodes = rollup?.contexts?.nodes ?? [];
+  if (!nodes.length) return 'FAILURE';
+  const each = nodes.map(contextChecks);
+  return each.includes('FAILURE') ? 'FAILURE' : each.includes('PENDING') ? 'PENDING' : 'SUCCESS';
+}
 
 export type Verdict = 'passed' | 'failed';
 interface ReviewNode {
@@ -152,7 +190,9 @@ interface ReviewNode {
   commit?: { oid?: string };
 }
 const REVIEW_FIELDS = 'reviews(last: 30) { nodes { body commit { oid } } }';
-const PR_FIELDS = `number state isDraft headRefOid headRefName mergeable commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } ${REVIEW_FIELDS}`;
+const ROLLUP_FIELDS = `statusCheckRollup { state contexts(first: 100) { nodes {
+  ... on StatusContext { state description } ... on CheckRun { conclusion } } } }`;
+const PR_FIELDS = `number state isDraft headRefOid headRefName mergeable commits(last: 1) { nodes { commit { ${ROLLUP_FIELDS} } } } ${REVIEW_FIELDS}`;
 
 /**
  * The verdict `/sloth:review … final` posted on a PR for the head `sha`, read off the PR itself: the
@@ -206,7 +246,7 @@ export async function wiredPrs(issues: number[], { states = ['OPEN'] }: WiredOpt
           head: String(p.headRefName ?? ''),
           state: p.state as PrState,
           draft: !!p.isDraft,
-          checks: checksOf(p.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state),
+          checks: checksOf(p.commits?.nodes?.[0]?.commit?.statusCheckRollup),
           mergeable: p.mergeable === 'MERGEABLE' || p.mergeable === 'CONFLICTING' ? p.mergeable : 'UNKNOWN',
           verdict: verdictOf(p.reviews?.nodes, p.headRefOid),
         })),
