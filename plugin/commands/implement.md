@@ -81,6 +81,18 @@ gh issue view "$ISSUE" --repo "$SLOTH_REPO" --json comments \
 
 - **The comment thread is part of the requirements.** Earlier questions and their answers are binding;
   never re-ask what the thread already answers.
+- **Scope so far.** When the thread holds more than the issue body asks for — any binding order or answer
+  that adds or changes a requirement, typically a card that came back from testing with a new
+  `$SLOTH_MENTION` comment — number every requirement in thread order, the issue's own ask first, and post
+  **one** comment `$SLOTH_BOT_PREFIX Scope so far:` with that list (`retry gh issue comment`, and no
+  `$SLOTH_MENTION` in it). A later run **edits that same comment** instead of posting a second one:
+  ```bash
+  CID=$(gh api "repos/$SLOTH_REPO/issues/$ISSUE/comments" --paginate \
+    --jq ".[] | select(.body | startswith(\"$SLOTH_BOT_PREFIX\") and contains(\"Scope so far\")) | .id" | tail -1)
+  [ -n "$CID" ] && retry gh api -X PATCH "repos/$SLOTH_REPO/issues/comments/$CID" -f body="$(cat "$SESSION_DIR/scope.md")"
+  ```
+  That list is the spec from here on: the tester (Step 4.5) and the reviewer loop (Step 5.5) check **every**
+  item on it, not only the latest order. No comment when the issue body is the whole spec.
 - **Project conventions first.** Read the repo's `CLAUDE.md` / `AGENTS.md`, the rules it points at, and the
   skills available in this session. Implement the way the project says, not the way you would by default.
 - **Behaviour specs.** If the repo documents the behaviour (a `docs/` tree or equivalent), implement to
@@ -135,6 +147,11 @@ only when the lockfile changed since — a "Lockfile is up to date" install is a
 Scope tightly to the issue plus any order or extra instructions. Follow the project's rules and conventions
 exactly. Do not add tests unless the issue asks or the repo requires them with the change.
 
+**Name the cause of a reported bug**, in the code, before fixing it. When the order, the extra instructions
+or the fix you chose remove the symptom and leave that cause standing, carry it into the PR's `## Why` as
+one line — `Root cause left: <what it is, what still breaks because of it>`. The order stands: this is a
+statement in the PR, not a Step Q question. Never ship a symptom fix silently.
+
 **A referenced design is the spec** — not the issue text, not the current screen. Reproduce every value:
 layout, spacing, sizes, colors, typography, radii, borders, icons, copy, and each state shown. Reuse the
 project's design tokens and components; where none matches, use the design's exact value. Before Step 5,
@@ -160,8 +177,9 @@ Its brief carries everything it cannot read for itself, and nothing it can:
   and follows them itself;
 - the scope: tightly the issue, no unrelated cleanup, no tests unless the issue or the repo asks;
 - the time it has: `$SLOTH_DEADLINE` minus what Steps 4–6 need (`session` skill);
-- what to return: the files changed and why, the exact checks it ran (the repo's `test` / `lint` / `build`
-  / `typecheck` scripts scoped to its change, per Step 4) with their outcome, the design-fidelity walk when
+- what to return: the files changed and why, on a reported bug its cause in the code and whether the change
+  removes it, the exact checks it ran (the repo's `test` / `lint` / `build` / `typecheck` scripts scoped to
+  its change, per Step 4) with their outcome, the design-fidelity walk when
   there is a design, and anything it could not do or found ambiguous — **as a question for you, never a
   guess**. It writes no commits, no comments, no PR, no board moves: those are yours.
 
@@ -207,7 +225,8 @@ When `SLOTH_CHROME=1` and the change has a screen a user can reach, spawn **one*
 (`Agent`, `subagent_type: "general-purpose"`, `model: "$SLOTH_TESTER_MODEL"`, `run_in_background: false`) and
 reuse it for every re-test via `SendMessage`. The app is already up from Step 4: give the tester its URL,
 how to log in (from the project's run skill), the exact behaviour the issue describes, the old behaviour that
-must be gone, and `$SLOTH_SCREENSHOTS_DIR`. Its task:
+must be gone, every numbered item of the *Scope so far* list when Step 1 wrote one, and
+`$SLOTH_SCREENSHOTS_DIR`. Its task:
 
 1. Load the browser tools with **one** `ToolSearch` call for the `browser_*` Playwright tools:
    `browser_navigate, browser_snapshot, browser_click, browser_type, browser_fill_form, browser_press_key,
@@ -218,8 +237,13 @@ must be gone, and `$SLOTH_SCREENSHOTS_DIR`. Its task:
    in. Log in the way the run skill says. Act from `browser_snapshot` refs (`[ref=eN]`), never from pixels; a
    `confirm` / `alert` is answered with `browser_handle_dialog`, not avoided.
 3. Drive the issue's behaviour as the user would: the new behaviour works, the old one is gone, the
-   surrounding flow still works. After each screen read `browser_console_messages` and
-   `browser_network_requests`; uncaught exceptions and failed app requests are findings.
+   surrounding flow still works, and every item of the *Scope so far* list, not only the newest one. After
+   each screen read `browser_console_messages` and `browser_network_requests`; uncaught exceptions and
+   failed app requests are findings.
+   **The issue's own subject goes through every new mode the change adds** — the entity, type, value or
+   state named in its title, paired with each other kind that carries its own fields: a field made
+   multi-select is driven with the issue's own value plus each other value that has a section of its own,
+   never two unrelated values.
 4. **Screenshot every screen it verifies** — `browser_take_screenshot` with
    `filename: "$SLOTH_SCREENSHOTS_DIR/NN-<kebab-what>.png"`: an **absolute** path (a relative one lands in the
    process's working directory, where nothing will find it), a two-digit order, then lowercase letters, digits
@@ -266,13 +290,14 @@ Closes #ISSUE
 
 ## Why
 <1–3 lines: the root cause, or what was missing>
+Root cause left: <what it is, what still breaks>          # only when the fix removes the symptom and leaves the cause (Step 3)
 
 ## What changed
 - <one line per change a reviewer has to know about — at most 6>
 
 ## Verification
 - `<command>` → <what it showed, in a few words>            # one line per Step 4 check
-- Tester (`$SLOTH_TESTER_MODEL`): <passed|N findings, all fixed> — <what was driven>   # or: skipped — no screen
+- Tester (`$SLOTH_TESTER_MODEL`): <passed|N findings, all fixed> — <what was driven, every *Scope so far* item named>   # or: skipped — no screen
 - Reviewer (`$SLOTH_REVIEWER_MODEL`): passed on round <N> of `$SLOTH_REVIEW_ROUNDS`
 - Not verified: <what, and why>                                # or the single word `nothing`
 
@@ -300,7 +325,8 @@ assignee** — a human picks it up from the board. Record `PR` / `PR_URL` in `st
 Spawn **one** reviewer subagent (`Agent`, `model: "$SLOTH_REVIEWER_MODEL"`, `run_in_background: false`) and **reuse
 it every round** via `SendMessage` — never a fresh reviewer per round. Its task: run
 `/sloth:review <PR_URL> feedback-only` exactly as that command says (no PR comments, no board moves) and
-report the verdict block verbatim.
+report the verdict block verbatim. With a *Scope so far* comment on the issue (Step 1), say so in its task:
+every numbered item on that list is a requirement, not only the latest order.
 
 1. Round 1 via `Agent`; later rounds via `SendMessage`: "The PR has been updated — re-run the feedback-only review".
 2. `OK to merge: yes` → Step 6.
