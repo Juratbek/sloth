@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
+import { block, isCardBlocked } from './blocked';
 import { moveCard } from './board';
 import type { BoardItem } from './board';
 import { forgetExits } from './exits';
@@ -20,6 +21,8 @@ import { launchQa } from './spawn';
  * reads the findings on the issue), `inconclusive` → the card stays. One test per card per head
  * (`state/qa/<issue>-<sha>`), so a card that passed is not tested again until the branch moves. A sweep
  * that cannot start every card at once (the caps, the machine) stays open across ticks until it has.
+ * A card whose tests keep dying before they reach a verdict is given up on and blocked (`blocked.ts`):
+ * announced once, skipped by every sweep after, and waiting on a human to hand it back.
  */
 
 /** `YYYY-MM-DD` on this machine's clock — the sweep is a once-a-day thing in local time. */
@@ -97,13 +100,17 @@ export async function qaSweep(board: BoardItem[]): Promise<void> {
   if (!sweep) return;
   const col = c.statusField.columns.qa;
   const cards = board.filter((i) => i.status === col.name && !i.closed && !skipped(i));
-  for (const { number: issue } of cards) {
+  for (const item of cards) {
+    const issue = item.number;
     const marker = statePath(MARKERS.qa, `${issue}-${sweep.sha}`);
-    if (fs.existsSync(marker) || dirAlive(qaDir(issue))) continue;
-    // `reap` drops the marker of a run that died without a verdict, so the card is tried again — this often, no more.
+    if (fs.existsSync(marker) || isCardBlocked(issue) || dirAlive(qaDir(issue))) continue;
+    // `reap` drops the marker of a run that died — or hung and was killed — without a verdict, so the card is tried again — this often, no more.
     if (counter(qaDir(issue), 'retries') > c.maxRetries) {
-      log(`QA #${issue} given up: its test ended without a verdict ${c.maxRetries + 1} times on ${sweep.sha.slice(0, 7)}`);
+      const head = sweep.sha.slice(0, 7);
+      log(`QA #${issue} given up: its test ended without a verdict ${c.maxRetries + 1} times on ${head}`);
       if (!isDry()) write(marker, '');
+      // Giving up used to end here, silently, with nothing to undo it short of the branch moving.
+      await block(item, `its QA test ended without a verdict ${c.maxRetries + 1} times on ${sweep.branch} @ ${head}.`, sweep.sha);
       continue;
     }
     if (!(await launchQa(issue, sweep.sha, sweep.branch))) return;
@@ -138,7 +145,9 @@ export async function qaVerdicts(): Promise<void> {
       await notify('qaPassed', { issue, column: col.done.name, text: `#${issue} passed the QA sweep on ${where}` });
     } else if (verdict === 'failed') {
       if (!(await moveCard(issue, col.inProgress.id))) continue;
-      for (const f of ['retries', 'blocked']) remove(path.join(issueDir(issue), f));
+      // A stale handoff note goes with them: the new run works from the QA findings on the issue, not
+      // from where a run long over thought it stopped.
+      for (const f of ['retries', 'blocked', 'handoff.md']) remove(path.join(issueDir(issue), f));
       forgetExits(issueDir(issue));
       log(`QA #${issue} failed on ${where} — card to ${col.inProgress.name}, a new implement run reads the findings`);
       await notify('qaFailed', { issue, column: col.inProgress.name, text: `#${issue} failed the QA sweep on ${where} — back to ${col.inProgress.name}` });

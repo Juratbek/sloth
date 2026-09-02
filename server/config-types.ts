@@ -67,7 +67,7 @@ export const MERGE_METHODS: MergeMethod[] = ['', 'squash', 'merge', 'rebase'];
  * What the `helpWebhook` hears about. `needsHelp` is the one Sloth has always sent, and the only one a
  * config that predates the rest gets: an existing setup keeps behaving exactly as it did.
  */
-export const WEBHOOK_EVENTS = ['needsHelp', 'codeReview', 'finalPassed', 'finalFailed', 'merged', 'qaPassed', 'qaFailed', 'stopped', 'usageLimit'] as const;
+export const WEBHOOK_EVENTS = ['needsHelp', 'codeReview', 'finalPassed', 'finalFailed', 'merged', 'qaPassed', 'qaFailed', 'blocked', 'stopped', 'usageLimit'] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 
 /** One admin, any number of developers and testers. A login holds one role: admin wins, then developer. */
@@ -125,6 +125,7 @@ export interface SlothConfig {
   roles: Roles;
   mention: string;
   botPrefix: string;
+  /** Sessions working at once — and the size of the worktree pool the implement and QA runs lease from (`slots.ts`). */
   maxActive: number;
   maxAlive: number;
   /**
@@ -141,6 +142,12 @@ export interface SlothConfig {
   maxRetries: number;
   boardSeconds: number;
   commentSeconds: number;
+  /**
+   * How often the machine is read, in seconds — the holds above and the pausing in `pressure.ts` can
+   * only act on a reading they have. Short: the board is read every few minutes, and a session that
+   * boots an app, a build and a browser at once can exhaust the memory between two of those readings.
+   */
+  machineSeconds: number;
   /** One model per agent; a config from before this had `model` for every session and `approvedModel` for the final review. */
   models: AgentModels;
   /**
@@ -162,8 +169,15 @@ export interface SlothConfig {
    */
   previewHours: number;
   /**
-   * How long a finished run is kept: its session directory, its worktree and the markers of the status
-   * replies it prompted. The transcripts belong to Claude Code and are never touched.
+   * Keep a slot's runtime stack — the dev servers, Redis and demo database a run booted — alive between
+   * sessions (`runner/warm.ts`): the next run that leases the slot inherits it and skips the ten-minute
+   * boot. Off, every run tears its stack down as before.
+   */
+  warmSlots: boolean;
+  /**
+   * How long a finished run is kept: its session directory, its transcript under `~/.claude/projects` and
+   * the markers of the status replies it prompted. Worktrees are not kept: a run's leftover per-issue
+   * checkout goes as soon as it is over, and the pool's slots are reused.
    */
   keepDays: number;
   /**
@@ -219,8 +233,8 @@ export const CONFIG_DEFAULTS = {
   watcherLog: '~/.sloth/watcher.log',
   mention: '@sloth',
   botPrefix: '**Sloth:**',
-  maxActive: 3,
-  maxAlive: 5,
+  maxActive: 2,
+  maxAlive: 3,
   minFreeMemory: 10,
   minIdleCpu: 5,
   minIdleDisk: 10,
@@ -230,11 +244,13 @@ export const CONFIG_DEFAULTS = {
   maxRetries: 2,
   boardSeconds: 300,
   commentSeconds: 120,
+  machineSeconds: 15,
   models: DEFAULT_MODELS,
   orchestrator: true,
   chrome: true,
   autostart: false,
   previewHours: 24,
+  warmSlots: true,
   keepDays: 30,
   priorityField: 'Priority',
   helpLogins: [] as string[],

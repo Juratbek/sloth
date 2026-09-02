@@ -184,11 +184,13 @@ export function normalizeConfig(input: unknown): SlothConfig {
     maxRetries: int(b.maxRetries, d.maxRetries, 0),
     boardSeconds: int(b.boardSeconds, d.boardSeconds, 30),
     commentSeconds: int(b.commentSeconds, d.commentSeconds, 30),
+    machineSeconds: int(b.machineSeconds, d.machineSeconds, 5),
     models: models(b.models, b.model, b.approvedModel),
     orchestrator: b.orchestrator !== false,
     chrome: b.chrome !== false,
     autostart: b.autostart === true,
     previewHours: int(b.previewHours, d.previewHours, 0),
+    warmSlots: b.warmSlots !== false,
     keepDays: int(b.keepDays, d.keepDays),
     // An explicit "" turns the ranking off, so it has to survive: `text` would hand back the default.
     priorityField: typeof b.priorityField === 'string' ? b.priorityField.trim() : d.priorityField,

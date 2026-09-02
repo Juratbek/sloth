@@ -137,8 +137,9 @@ function diskIdlePercent(before: DiskTimes, now: DiskTimes): number {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * One reading per tick, before anything may launch. The CPU and disk idle are averaged over the window
- * since the previous tick — the first reading after a start measures a short window of its own.
+ * One reading, taken every `machineSeconds` and again on a tick before anything may launch. The CPU and
+ * disk idle are averaged over the window since the previous reading — the first one after a start
+ * measures a short window of its own.
  */
 export async function sampleMachine(): Promise<MachineLoad> {
   const { minFreeMemory, minIdleCpu, minIdleDisk } = cfg();

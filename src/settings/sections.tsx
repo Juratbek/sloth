@@ -90,7 +90,7 @@ export function Team({ draft, patch }: SectionProps) {
 export function Sessions({ draft, patch }: SectionProps) {
   return (
     <>
-      <Row label="Max active sessions" hint="How many sessions run at once. A trigger with no free slot is retried on the next tick.">
+      <Row label="Max active sessions" hint="How many sessions run at once, and how many worktree slots the pool holds. A trigger with no free slot is retried on the next tick.">
         <NumberInput value={draft.maxActive} onChange={(maxActive) => patch({ maxActive })} />
       </Row>
       <Row label="Max alive sessions" hint="Running plus parked sessions waiting for an answer, before Sloth stops picking cards up.">
@@ -104,6 +104,18 @@ export function Sessions({ draft, patch }: SectionProps) {
       </Row>
       <Row label="Min idle disk %" hint="No session starts while the busiest disk is idle less than this much of the time since the previous tick — the opposite of Task Manager's Disk column. 0 turns the check off.">
         <NumberInput min={0} value={draft.minIdleDisk} onChange={(minIdleDisk) => patch({ minIdleDisk })} />
+      </Row>
+      <Row
+        label="Machine poll"
+        hint="Seconds between two readings of memory, CPU and disk. Short: the three limits above and the pausing of a running session can only act on a reading Sloth has, and memory can be gone between two board polls. At least 5."
+      >
+        <NumberInput min={5} value={draft.machineSeconds} onChange={(machineSeconds) => patch({ machineSeconds })} />
+      </Row>
+      <Row
+        label="Warm slots"
+        hint="Keep a finished session's dev servers, Redis and demo database running in its worktree slot, so the next session inherits them instead of booting from scratch. Off tears everything down after every run."
+      >
+        <Toggle checked={draft.warmSlots} onChange={(warmSlots) => patch({ warmSlots })} label="Warm slots" />
       </Row>
       <Row label="Budget minutes" hint="A session's time budget. Five minutes past it the session is killed, cleaned up and its card parked.">
         <NumberInput value={draft.budgetMinutes} onChange={(budgetMinutes) => patch({ budgetMinutes })} />
@@ -122,7 +134,7 @@ export function Sessions({ draft, patch }: SectionProps) {
       </Row>
       <Row
         label="Keep days"
-        hint="Finished runs older than this are deleted — their session directory, worktree and status replies. Transcripts belong to Claude Code and are left alone."
+        hint="Finished runs older than this are deleted — their session directory, their transcript under ~/.claude and their status replies."
       >
         <NumberInput value={draft.keepDays} onChange={(keepDays) => patch({ keepDays })} />
       </Row>

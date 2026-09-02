@@ -2,6 +2,7 @@ import type { MonitorConfig, SessionDetail } from '../../../server/types';
 import useStopPreview from '../../hooks/use-preview';
 import useStopSession from '../../hooks/use-stop-session';
 import { STATUS_COLOR, ago, elapsed, githubUrl, k, label, modelName, newInput, safeUrl, stepLabel, untilLabel, usd } from '../../lib/format';
+import { LoadChips } from '../SessionLoad';
 import { ToolChips } from './Usage';
 
 function Stats({ s }: { s: SessionDetail }) {
@@ -103,7 +104,9 @@ function WatcherLine({ s }: { s: SessionDetail }) {
         <PreviewLine issue={w.target} preview={w.preview} />
         {w.retries > 0 && <span className="text-amber-400">retries {w.retries}</span>}
         {w.blocked && <span className="text-red-400">blocked</span>}
+        {w.paused && <span className="text-amber-400" title={w.paused.reason}>paused · {w.paused.reason.replace(/^machine busy: /, '')}</span>}
         {w.inbox.length > 0 && <span className="text-sky-400">inbox {w.inbox.length}</span>}
+        <LoadChips load={w.load} />
         <span className="text-zinc-500">updated {ago(w.updatedAt)} ago</span>
       </div>
       {st?.note && <p className="text-zinc-400">{st.note}</p>}

@@ -35,7 +35,7 @@ The short version; the tick-by-tick account is in [docs/how-it-works.md](docs/ho
 | 6 | An issue Sloth was working on is **closed** | Moves the card to Done, takes its preview, servers, database and worktree down, and deletes the `sloth/issue-<n>-…` branch of the PR that closed it. A PR closed *without* being merged parks its still-open issue instead |
 | 7 | The checks on a PR **Sloth wrote** are red, its card in Code Review or Approved | Sends the session back to the branch to make them pass — once per commit, keeping the PR. A human's PR is left to its author |
 | 8 | A PR that passed its review is green and merges cleanly | Merges it with the `autoMerge` method — as soon as that is true, so nobody tests it in Approved first. Off by default: merging stays a human's call until you ask for it |
-| 9 | It is `qa.at` o'clock and the QA column holds cards | **The QA sweep**: every card there — a merged fix, deployed to `qa.branch` — gets `/sloth:qa <n>` on `models.qa`, a session of its own that checks the branch out at its current head, boots the app and tests the fix in the browser as the user it concerns. The findings go on the issue with screenshots; a pass moves the card to Done, a fail to In Progress (row 2 then starts an implement run on the findings), an inconclusive test leaves it for a human. Once per card per head, so a passed card is not tested again until the branch moves. Off until a QA column is chosen — then daily at `qa.at`, 20:00 unless changed; **sweep now** on the home panel runs one regardless |
+| 9 | It is `qa.at` o'clock and the QA column holds cards | **The QA sweep**: every card there — a merged fix, deployed to `qa.branch` — gets `/sloth:qa <n>` on `models.qa`, a session of its own that checks the branch out at its current head, boots the app and tests the fix in the browser as the user it concerns. The findings go on the issue with screenshots; a pass moves the card to Done, a fail to In Progress (row 2 then starts an implement run on the findings), an inconclusive test leaves it for a human. Once per card per head, so a passed card is not tested again until the branch moves. A card whose tests keep dying before they reach a verdict (`maxRetries + 1` of them on one head) is **blocked** instead — see *Blocked cards*. Off until a QA column is chosen — then daily at `qa.at`, 20:00 unless changed; **sweep now** on the home panel runs one regardless |
 
 The board is read every 5 minutes, comments every 2; **Tick now** runs both at once. **Pause**
 stops Sloth from starting anything new (running sessions, inbox deliveries, status replies and
@@ -74,11 +74,39 @@ needs-help notifications carry on) and survives a restart.
   card (trigger 4), which starts regardless of the caps and counts against them, so the sessions that build
   queue behind it, never the other way round. The machine sets a cap of its
   own: with less than `minFreeMemory` percent of the memory available, `minIdleCpu` percent of the
-  CPU idle or `minIdleDisk` percent of the busiest disk idle, nothing new starts either — running sessions go on. A session past
+  CPU idle or `minIdleDisk` percent of the busiest disk idle, nothing new starts either — and when the machine
+  *stays* there with sessions running (a minute of readings, two at least), the lowest-priority run is **paused**
+  (SIGSTOP to its processes and the servers it started), and resumed once the readings have shown room for a
+  minute again, one run per reading either way. The machine is read every `machineSeconds` and not only on a tick: a board
+  poll is minutes apart, and a session that boots an app, a build and a browser at once can exhaust the
+  memory in seconds. Priority is the card's column — QA highest, Code Review next, In Progress and the
+  rest under them — then, within a column, the card's `priorityField` value, and among equals the newest run
+  goes first. Its budget clock stands still meanwhile. Not on Windows, which has no SIGSTOP. A session past
   `budgetMinutes + 5` is killed, cleaned up, and its card parked; **stop** in a live session's header
   does the same on demand (a stopped review is not repeated for that PR head), and **end** on a parked
   session whose process is gone cleans it up and takes it off the needs-help list — the card stays put. A Claude usage
-  limit pauses the watcher for 30 minutes without costing the card its place.
+  limit pauses the watcher for 30 minutes without costing the card its place. A live session's row and
+  header show what it is taking of the machine right now — CPU, memory and, except on macOS, the disk it
+  is reading and writing — summed over its whole process tree, so the app it booted, its database and its
+  browser count with it. **Subagents get no figure of their own**: they run inside the session's own
+  process, so the OS has nothing to tell them apart by; the session's number already contains them.
+- **Warm slots** (`warmSlots`, default on): when a run ends, the stack it booted — the dev servers, Redis
+  and the seeded demo database — stays running in its worktree slot instead of being torn down. The next
+  session that leases the slot inherits it: a retry of the same issue on the same head reuses everything
+  untouched, any other run syncs the schema, reseeds and flushes Redis — seconds instead of the ten-minute
+  boot. The stack dies only when its slot leaves the pool, when one of its processes is found dead, or
+  with the toggle off (Settings → *Sessions*); a run that hands its app to a preview hands nothing to the
+  slot, so a preview's stack never has two owners.
+- **Blocked cards** are the one state Sloth will not leave by itself. A QA test that dies before it writes
+  a verdict is retried, but `maxRetries + 1` deaths on the same head of the QA branch mean the sweep is
+  burning runs on a card it cannot test — so it gives up. Giving up used to be a line in the log and a
+  marker that looked exactly like a passed test, which left the card sitting in QA looking untested with
+  nothing short of a new head to ever pick it up again. Now the card is *blocked*: Sloth comments on the
+  issue saying why (mentioning `helpLogins`), raises the `blocked` webhook event, shows a red **blocked**
+  badge on the board card, and lists it on the home panel with the **unblock** button beside it. Unblocking
+  forgets the block, the heads already tested and the run's count of verdict-less tests, so the next sweep
+  meets the card fresh — **sweep now** makes that next sweep immediate. Moving the card out of the QA
+  column (or closing the issue) lifts the block on its own, since the sweep no longer owns it.
 - **Previews** (`previewHours`, default 24): an implement session that hands its PR to Code Review leaves
   the app it tested running — its own database, seeded, nothing shared — and Sloth puts a tunnel in front
   of it and posts the link on the PR, with how to sign in; once the PR passes its review the link is posted
@@ -99,10 +127,11 @@ needs-help notifications carry on) and survives a restart.
 ├── config.json                     the whole configuration
 ├── watcher.log                     one line per event — the log the UI tails (rotated to .1 past 5 MB)
 ├── runners/<repo>/                 the checkout the sessions run from
-├── worktrees/<repo>/issue-42/      one worktree per issue — and qa-42/ while the QA sweep tests it
+├── worktrees/<repo>/slot-1/        the pool of worktrees the runs work in — maxActive of them, made once, reused (their node_modules survive)
 ├── sessions/<repo>/                issue-42/, approved-91/, qa-42/ — pid, state.json, inbox/, run.log, preview.json, verdict …
 └── state/                          seen/, approved/, handed/, notified/, finished/, closed/, checks/, merged/,
-                                    merge-failed/, qa/ dedupe markers; paused, paused_until, pruned_at, qa_sweep, qa_ran
+                                    merge-failed/, qa/ dedupe markers; blocked/ the cards Sloth gave up on;
+                                    paused, paused_until, pruned_at, qa_sweep, qa_ran; slots/ which run holds which worktree slot, and slot-<n>.warm for the stack a slot keeps warm
 ```
 
 ## The plugin
@@ -145,23 +174,25 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `runnersDir` / `worktreesDir` / `sessionsDir` / `stateDir` / `watcherLog` | under `~/.sloth/` | Where checkouts, worktrees, session directories, markers and the log live |
 | `roles` | `{admin, developers, testers}` | The team: the one login that orders anything, the logins that order within an issue, the logins that answer and ask. A config from before roles keeps its `orderLogin` as the admin |
 | `mention` / `botPrefix` | `@sloth` / `**Sloth:**` | The keyword that wakes Sloth; the first line of every comment it writes |
-| `maxActive` / `maxAlive` | `3` / `5` | Session caps |
-| `minFreeMemory` / `minIdleCpu` / `minIdleDisk` | `10` / `5` / `10` | No new session while less of the machine's memory is available / of its CPU is idle / of its busiest disk is idle (percent, the last one being 100 minus Task Manager's *Disk*); `0` turns a check off |
+| `maxActive` / `maxAlive` | `2` / `3` | Session caps — `maxActive` is also the size of the worktree pool |
+| `minFreeMemory` / `minIdleCpu` / `minIdleDisk` | `10` / `5` / `10` | No new session while less of the machine's memory is available / of its CPU is idle / of its busiest disk is idle (percent, the last one being 100 minus Task Manager's *Disk*), and the lowest-priority running session is paused while it stays that way; `0` turns a check off |
 | `budgetMinutes` / `waitHours` | `60` / `2` | A session's time budget; how long a parked session waits for an answer |
-| `reviewRounds` / `maxRetries` | `4` / `2` | Reviewer-agent rounds before asking for help; trigger-2 relaunches before parking |
+| `reviewRounds` / `maxRetries` | `4` / `2` | Reviewer-agent rounds before asking for help; trigger-2 relaunches before parking. `maxRetries` also caps the runs of one head that end without a verdict — a QA test (trigger 9) and a review (trigger 4) alike; past it the card goes to a human instead of being tried again |
 | `boardSeconds` / `commentSeconds` | `300` / `120` | Poll intervals |
-| `models` | `opus` each, `final: fable`, `orchestrator: fable` | Which model each agent runs on (Settings → *Models*): `implement` (triggers 1–3; with `orchestrator` on, the implementor subagent), `orchestrator` (the implement session when `orchestrator` is on), `tester` (the headless-Chrome subagent that screenshots the change — the QA sweep's browser runs on it too), `reviewer` (the in-session review loop), `final` (trigger 4 — the review every Code Review card gets), `status` (mention replies), `qa` (trigger 9 — the session that tests one QA card). An older config's `model` / `approvedModel` still load; its `review` key is ignored |
+| `machineSeconds` | `15` | Seconds between two readings of memory, CPU and disk. The three limits above and the pausing of a running session can only act on a reading Sloth has, and a session that boots an app, a build and a browser at once can exhaust the memory between two board polls |
+| `models` | `opus` each, `final: fable`, `orchestrator: fable` | Which model each agent runs on (Settings → *Models*): `implement` (triggers 1–3; with `orchestrator` on, the implementor subagent), `orchestrator` (the implement session when `orchestrator` is on), `tester` (the headless-Chrome subagent that screenshots the change — the QA sweep's browser runs on it too), `reviewer` (the in-session review loop), `final` (trigger 4 — the review every Code Review card gets), `status` (mention replies), `qa` (trigger 9 — the session that tests one QA card). An older config's `model` / `approvedModel` still load; its `review` key is ignored. A value is a Claude Code alias, a model id, or a model from another provider (see *Model providers*) |
 | `qa` | `{branch: "", at: "20:00", budgetMinutes: 60}` | The daily QA sweep (trigger 9, Settings → *QA sweep*): `at` is the local time of day it starts (`HH:MM`; empty turns it off), `branch` the branch the merged fixes are deployed from and tested on (empty: the default branch), `budgetMinutes` one QA session's own budget. The column it sweeps is the *QA* role in `statusField.columns` — opt-in, chosen in Settings → *Board*; nothing runs without it |
 | `orchestrator` | `true` | Run implement sessions as an orchestrator on `models.orchestrator` that never edits code itself: it reads the issue, briefs one implementor subagent on `models.implement`, verifies, runs the tester and the reviewer, opens the PR. Off, one session on `models.implement` does all of it. Either way the tester and the reviewer are subagents (Settings → *Models*) |
 | `autostart` | `false` | Start Sloth at login through a macOS launch agent (Settings → *Machine*; see *Run at login*). Saved but ignored on other platforms |
 | `chrome` | `true` | Give implement sessions a headless Chrome (Playwright MCP), so a tester subagent clicks through the change and its screenshots go on the PR; needs Google Chrome installed |
 | `previewHours` | `24` | How long a finished implement session's app stays up behind a public link posted on its PR (see *Previews* above); `0` turns previews off |
+| `warmSlots` | `true` | Keep a finished run's stack — dev servers, Redis, demo database — running in its worktree slot for the next session to inherit (see *Warm slots* above). Off tears everything down after every run, as before |
 | `priorityField` | `Priority` | A single-select field on the board whose option order ranks the watched column. Missing from the board, or empty here: cards are picked up in board order |
-| `keepDays` | `30` | How long a finished run is kept. Once an hour Sloth deletes the session directories, worktrees and status-reply markers older than this — never a live, parked or previewing run, and never a transcript (those are Claude Code's, under `~/.claude`). `watcher.log` is rotated to `watcher.log.1` past 5 MB |
+| `keepDays` | `30` | How long a finished run is kept. Once an hour Sloth deletes the session directories, transcripts (under `~/.claude/projects`) and status-reply markers older than this — never a live, parked or previewing run. Worktrees go sooner: a leftover per-issue one as soon as its run is over (one git has already forgotten is deleted outright), a pool slot past `maxActive` once nobody holds it. The same sweep caps what a run leaves behind whatever its age: every `.turbo/cache` back under 512 MB, oldest entry first, and the server logs of a finished run back to their last 2 MB. `watcher.log` is rotated to `watcher.log.1` past 5 MB |
 | `helpLogins` | `[]` | GitHub logins `@`-mentioned in the comment that parks a card in *needs help*, so GitHub notifies them (not the login `gh` writes with — GitHub skips self-mentions) |
 | `autoMerge` | `""` | How trigger 8 merges a PR whose review passed, whose checks are green and which merges cleanly: `squash`, `merge` or `rebase` (the `gh pr merge` methods) — as soon as it passes, skipping the human test in Approved. Empty leaves merging to a human |
 | `helpWebhook` | `""` | URL POSTed once per event in `webhookEvents` (`{event, text, content, repo, issue, title, url, column, pr?}` — Slack and Discord incoming webhooks read `text` / `content` as is) |
-| `webhookEvents` | `["needsHelp"]` | What `helpWebhook` hears about (Settings → *Notifications*, one toggle each): `needsHelp` (a card is parked), `codeReview` (a PR awaits Sloth's review), `finalPassed` (the review passed and the card is in Approved, with the preview link) / `finalFailed` (the `Fable: approved` label was taken back), `merged` (Sloth filed a closed issue away), `qaPassed` / `qaFailed` (the QA sweep's verdict on a card), `stopped` (a run was stopped or parked), `usageLimit` (a Claude limit paused the watcher) |
+| `webhookEvents` | `["needsHelp"]` | What `helpWebhook` hears about (Settings → *Notifications*, one toggle each): `needsHelp` (a card is parked), `codeReview` (a PR awaits Sloth's review), `finalPassed` (the review passed and the card is in Approved, with the preview link) / `finalFailed` (the `Fable: approved` label was taken back), `merged` (Sloth filed a closed issue away), `qaPassed` / `qaFailed` (the QA sweep's verdict on a card), `blocked` (Sloth gave up on a card), `stopped` (a run was stopped or parked), `usageLimit` (a Claude limit paused the watcher) |
 | `tunnel` | `["cloudflared", "tunnel", "--url", "http://localhost:{port}"]` | The command Sloth runs so the UI is reachable from outside (see *Remote access*); the first bare `https://` URL it prints is the address |
 | `publicUrl` | — | Where the UI is already reachable — your own tunnel or domain. Set, no tunnel is started |
 | `stack` | `"auto"` | What the sessions' app needs on this machine, out of the stack Sloth can install: `postgresql`, `redis`, `node`, `python`, `java` (see *Stack* below). `auto` reads the checkout at every start; a list pins it |
@@ -169,10 +200,32 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 Environment: `SLOTH_CONFIG`, `SLOTH_PORT` (default `4400`), and `SLOTH_DRY_RUN=1` to log what every
 tick *would* do without doing it. A `.env` in the project root works too.
 
+## Model providers
+
+Every agent runs on Claude Code, which speaks the Anthropic API — so Anthropic's models need nothing
+configured beyond the login the machine already has. A model from someone else is reached by pointing
+that same client at an Anthropic-compatible endpoint, and Sloth does it per session: only the agents you
+put on that provider's models go there, the rest keep running exactly as before.
+
+A provider is offered in Settings → *Models* once its key is in the environment Sloth itself was started
+with. Without the key its models are still listed, greyed out and naming the variable to set.
+
+| Provider | Key | Models |
+| --- | --- | --- |
+| Anthropic | — (the machine's Claude Code login) | `fable`, `opus`, `sonnet`, `haiku` |
+| [Z.ai](https://docs.z.ai/devpack/tool/claude) | `SLOTH_ZAI_TOKEN` | `glm-5.3`, `glm-5.3-flash` |
+
+A session started on a provider's model gets `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` for it, the
+alias defaults a subagent may ask for (`opus`, `sonnet`, `haiku`) mapped onto models that provider serves,
+and no `ANTHROPIC_API_KEY` — an Anthropic key is never forwarded to somebody else's endpoint. The cost the
+UI shows follows the provider's own list prices, cached prompts included. The whole table lives in
+`server/models.ts`: another provider is another row, and a model id that is not on it is still passed to
+`--model` untouched.
+
 ## UI and API
 
 The UI lists sessions (live / needs help / finished) with their transcript, subagents, token spend, what
-the run cost at list price and watcher state, plus a home panel with hourly spend, **cost by issue** — every
+the run cost at list price, the machine load of a live run (see *Sessions*) and watcher state, plus a home panel with hourly spend, **cost by issue** — every
 issue Sloth touched, its runs rolled up into one line, dearest first — the queue and the log. It refreshes on a 15s poll
 and an SSE stream. Transcripts are read from `~/.claude/projects/<runner root, non-alphanumerics as '-'>`.
 

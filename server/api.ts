@@ -5,53 +5,15 @@ import { broadcast, sse, watchAll } from './events';
 import { startLoop, stopLoop, tick } from './runner/loop';
 import { isPaused, setPaused } from './runner/pause';
 import { closeTunnels, stopPreview } from './runner/preview';
+import { unblock } from './runner/blocked';
 import { openSweep } from './runner/qa';
 import { stop as stopRun } from './runner/triggers';
-import { install } from './install';
-import { guard, isLocal, remoteLink, rotateToken, sameOrigin, startTunnel, stopTunnel } from './remote';
+import { handleSettings, isSettings } from './api-settings';
+import { guard, isLocal, sameOrigin, startTunnel, stopTunnel } from './remote';
 import { agentDetail, overview, sessionDetail, watcherOf } from './sessions';
-import { serviceStatus } from './service';
-import { handleSetup } from './setup';
 import { ensureSkipLabel } from './runner/markers';
-import { ensureStack, handleStack } from './stack';
-import { check, update, versionInfo } from './update';
+import { ensureStack } from './stack';
 import { usageSeries } from './usage';
-
-const MAX_BODY = 1 << 20; // 1 MiB — a config payload is a few KB; anything larger is rejected
-
-function readBody(req: IncomingMessage): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    let raw = '';
-    let size = 0;
-    req.on('data', (chunk) => {
-      size += chunk.length;
-      if (size > MAX_BODY) {
-        reject(new Error('request body too large'));
-        req.destroy();
-        return;
-      }
-      raw += chunk;
-    });
-    req.on('end', () => {
-      try {
-        resolve(JSON.parse(raw || '{}'));
-      } catch {
-        resolve({});
-      }
-    });
-    req.on('error', () => reject(new Error('request body error')));
-  });
-}
-
-/** Escapes text bound for HTML — the page title comes from config and must not be able to inject markup. */
-const escapeHtml = (s: string) =>
-  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
-
-const json = (res: ServerResponse, body: unknown) => {
-  res.setHeader('content-type', 'application/json');
-  res.end(JSON.stringify(body));
-  return true;
-};
 
 /**
  * Answers a handler that threw. Nothing can be said once the response has begun — an SSE stream, a body
@@ -69,22 +31,9 @@ function fail(res: ServerResponse, e: unknown): boolean {
   return true;
 }
 
-/** /api/setup/* — the get-started wizard. A rejected payload answers 400, a missing config 404. */
-async function setup(p: string, req: IncomingMessage, res: ServerResponse): Promise<boolean> {
-  const method = req.method ?? 'GET';
-  try {
-    const body = await handleSetup(p, method, method === 'POST' ? await readBody(req) : undefined);
-    if (body === undefined) {
-      res.statusCode = 404;
-      res.end('not found');
-      return true;
-    }
-    return json(res, body);
-  } catch (e) {
-    res.statusCode = 400;
-    return json(res, { error: e instanceof Error ? e.message : String(e) });
-  }
-}
+/** Escapes text bound for HTML — the page title comes from config and must not be able to inject markup. */
+const escapeHtml = (s: string) =>
+  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   const url = new URL(req.url ?? '/', 'http://localhost');
@@ -96,7 +45,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
   }
   let body: unknown;
   const mutating = (req.method ?? 'GET') !== 'GET';
-  const sensitive = p.startsWith('/api/setup/') || p.startsWith('/api/remote') || p.startsWith('/api/update') || p.startsWith('/api/stack') || p === '/api/service';
+  // The settings endpoints (`api-settings.ts`) are exactly the sensitive ones.
+  const sensitive = isSettings(p);
   // CSRF guard: a cross-site page (even one open on the machine itself) must not be able to drive a
   // POST or reach the sensitive endpoints. `sameOrigin` fails closed on a cross-site fetch.
   if ((mutating || sensitive) && !sameOrigin(req)) {
@@ -111,33 +61,15 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     res.end('only from the machine Sloth runs on');
     return true;
   }
-  if (p.startsWith('/api/setup/')) return setup(p, req, res);
-  // Every route below is inside the one `try`: `readBody` alone rejects on an oversized body and on a
-  // client that hangs up mid-POST, and a rejection nothing catches would take the whole process with it.
+  // Awaited inside the `try`, not returned from outside it: `readBody` rejects on an oversized body and
+  // on a client that hangs up mid-POST, and a rejection nothing catches would take the whole process with it.
   try {
-    // Whether this machine starts Sloth at login; the toggle itself is a config key, saved with the rest.
-    if (p === '/api/service') return json(res, serviceStatus());
-    if (p.startsWith('/api/remote')) {
-      if (p === '/api/remote/rotate' && req.method === 'POST') rotateToken();
-      // Once the tool is there the tunnel starts on its own and the QR follows.
-      else if (p === '/api/remote/install' && req.method === 'POST') install(cfg().tunnel[0], () => startTunnel());
-      return json(res, remoteLink());
-    }
-    if (p.startsWith('/api/stack')) {
-      // The project's stack on this machine; `?root=` asks about a checkout other than the configured one (the wizard, before saving).
-      const stackBody = req.method === 'POST' ? await readBody(req) : undefined;
-      return json(res, await handleStack(p, req.method ?? 'GET', url.searchParams.get('root') || undefined, stackBody));
-    }
-    if (p.startsWith('/api/update')) {
-      // Sloth's own version and update: fetch to see what is new, pull-install-build-restart to get it.
-      if (p === '/api/update/check' && req.method === 'POST') await check();
-      else if (p === '/api/update/run' && req.method === 'POST') update();
-      return json(res, await versionInfo());
-    }
+    if (sensitive) return await handleSettings(p, url, req, res);
     const session = /^\/api\/sessions\/([\w-]+)$/.exec(p);
     const agent = /^\/api\/sessions\/([\w-]+)\/agents\/(\w+)$/.exec(p);
     const preview = /^\/api\/previews\/(\d+)\/stop$/.exec(p);
     const stopSession = /^\/api\/sessions\/([\w-]+)\/stop$/.exec(p);
+    const unblockIssue = /^\/api\/issues\/(\d+)\/unblock$/.exec(p);
     if (p === '/api/tick' && req.method === 'POST') {
       const dryRun = url.searchParams.get('dry') === '1';
       await tick({ board: true, comments: true, dryRun });
@@ -147,6 +79,13 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       const sweep = await openSweep(true);
       if (sweep) await tick({ board: true });
       body = { ok: !!sweep, sweep };
+    } else if (unblockIssue && req.method === 'POST') {
+      // Lifts a give-up. The card is only handed back to the sweep — the next one tests it, and "sweep
+      // now" beside it makes that next one immediate.
+      const issue = Number(unblockIssue[1]);
+      const unblocked = unblock(issue, 'from the monitor');
+      broadcast();
+      body = { ok: unblocked, issue };
     } else if ((p === '/api/pause' || p === '/api/resume') && req.method === 'POST') {
       // Pause / resume the launching triggers; running sessions and replies are untouched.
       setPaused(p === '/api/pause');

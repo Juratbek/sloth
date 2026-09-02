@@ -9,13 +9,18 @@ import { mcpConfig } from './browser';
 import { runHeader } from './exits';
 import { run } from './gh';
 import { isDry, log, readFile, remove, write } from './log';
+import { cleanup } from './cleanup';
 import { stopPreview } from './preview';
 import { APPEND_PROMPT, sessionEnv, type SessionExtras, type Target } from './session-env';
-import { approvedDir, counter, issueDir, qaDir, slotsFull, worktreeName } from './session-dirs';
+import { approvedDir, issueDir, qaDir, slotsFull, triesOn } from './session-dirs';
 import { machineHold } from './machine';
+import { forgetPause } from './pressure';
+import { leaseSlot } from './slots';
+import { claimWarm, warmOf } from './warm';
 
 /** Why nothing may start right now: every slot taken, or the machine too loaded to take one more run. */
 const held = (): string | undefined => (slotsFull() ? 'slots full' : machineHold());
+const noSlot = (what: string): false => (log(`${what} queued (no free worktree slot)`), false);
 
 const trusted = new Set<string>();
 /** Claude Code exits silently in an untrusted directory, so headless runs need the flag pre-set. */
@@ -50,8 +55,7 @@ interface StartOptions {
   chrome?: boolean;
   /** Extra environment on top of `sessionEnv` — the stack install session names what it has to install. */
   env?: NodeJS.ProcessEnv;
-  /** A budget or worktree of the run's own — the QA sweep's sessions have both. */
-  extras?: SessionExtras;
+  extras?: SessionExtras; // the run's budget and the worktree slot it leased — a review has neither
 }
 export function start(bookDir: string, sessionDir: string, prompt: string, target: Target, logFile: string, options: StartOptions): void {
   const c = cfg();
@@ -92,19 +96,37 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
     log(`dry-run: would launch #${issue}${order ? ` (${order.slice(0, 120)})` : ''}`);
     return true;
   }
-  // One environment per issue: a preview of the previous run makes way for the new one.
+  // One environment per issue: a preview of the previous run makes way for the new one, and a crashed
+  // run's leftovers go too — stopPreview alone skips a run that never wrote preview.json.
   await stopPreview(issue, 'a new session starts on the issue');
+  await cleanup(issue);
+  const slot = await leaseSlot('issue', issue);
+  if (!slot) return noSlot(`#${issue}`);
   fs.mkdirSync(path.join(dir, 'inbox'), { recursive: true });
   remove(path.join(dir, 'state.json'));
   remove(path.join(dir, 'blocked'));
+  // `handoff.md` stays on purpose: it is the dead run's note to the run launched here, and a retry that
+  // reads it continues where the last one stopped instead of re-deriving everything. A fresh start —
+  // pickup, a QA fail — removes it before calling launch.
+  forgetPause(dir);
   for (const f of fs.readdirSync(path.join(dir, 'inbox'))) remove(path.join(dir, 'inbox', f));
   await moveCard(issue, cfg().statusField.columns.inProgress.id);
   await run('git', ['-C', cfg().runnerRoot, 'fetch', '-q', 'origin'], 120_000);
+  // The slot may hold a warm stack (`warm.ts`). "Same head" for an implement run means the branch the
+  // stack last served has not moved on the remote — the fetch above just made that answerable; a branch
+  // that was never pushed resolves to nothing and counts as new work, which only costs a reseed.
+  let head: string | undefined;
+  const w = warmOf(slot);
+  if (w?.run === `issue-${issue}` && w.branch) {
+    const r = await run('git', ['-C', cfg().runnerRoot, 'rev-parse', `origin/${w.branch}`], 30_000);
+    if (r.ok) head = r.out.trim();
+  }
+  const warm = await claimWarm('issue', issue, slot, head);
   const { models, orchestrator, chrome } = cfg();
   // An orchestrator session runs on its own model and hands the coding to an implementor subagent on `models.implement`.
   const model = orchestrator ? models.orchestrator : models.implement;
   log(`launch #${issue} on ${model}${orchestrator ? ` (orchestrator, implementor on ${models.implement})` : ''}${order ? ` (${order.slice(0, 120)})` : ''}`);
-  start(dir, dir, `/sloth:implement ${issue}${order ? ` ${order}` : ''}`, { issue }, path.join(dir, 'run.log'), { model, chrome });
+  start(dir, dir, `/sloth:implement ${issue}${order ? ` ${order}` : ''}`, { issue }, path.join(dir, 'run.log'), { model, chrome, extras: { worktree: slot, warm: !!warm, warmSame: warm?.same } });
   return true;
 }
 
@@ -115,8 +137,13 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
  * it is held by the machine alone, never by the session caps — a card in Code Review is work that is done
  * and waiting, and a short read-only look must not queue behind the hour-long sessions that build. It
  * still counts as a session, so those queue behind it instead.
+ *
+ * The head under review is written beside the run and a run that ended without a verdict counts against
+ * `retries` — reset when the PR is pushed to, since a new head is a new review. `reap` clears the head's
+ * marker so trigger 4 comes straight back; without a count that pair is a loop, and one PR was reviewed
+ * seven times in a day on the same commit.
  */
-export function launchApproved(pr: number, issue: number): boolean {
+export function launchApproved(pr: number, issue: number, sha: string): boolean {
   const c = cfg();
   const why = machineHold();
   if (why) {
@@ -128,6 +155,10 @@ export function launchApproved(pr: number, issue: number): boolean {
     return true;
   }
   log(`review PR #${pr} (issue #${issue}) on ${c.models.final}`);
+  const dir = approvedDir(pr);
+  const retries = triesOn(dir, sha);
+  write(path.join(dir, 'sha'), sha);
+  write(path.join(dir, 'retries'), String(retries + 1));
   // The previous run's final state must not speak for this one: `reap` reads `working` as "died without
   // a verdict" and clears the head's marker, which a leftover `done` would mask.
   remove(path.join(approvedDir(pr), 'state.json'));
@@ -159,16 +190,21 @@ export async function launchQa(issue: number, sha: string, branch: string): Prom
     log(`dry-run: would launch QA #${issue} on ${c.models.qa} (${where})`);
     return true;
   }
-  const retries = (readFile(path.join(dir, 'sha')) ?? '').trim() === sha ? counter(dir, 'retries') : 0;
+  const slot = await leaseSlot('qa', issue);
+  if (!slot) return noSlot(`QA #${issue}`);
+  const retries = triesOn(dir, sha);
   for (const f of ['state.json', 'verdict', 'handled']) remove(path.join(dir, f));
   write(path.join(dir, 'sha'), sha);
   write(path.join(dir, 'retries'), String(retries + 1));
   await run('git', ['-C', c.runnerRoot, 'fetch', '-q', 'origin'], 120_000);
+  // The head under test is known here, so a warm stack from an earlier test of this card on the same
+  // head is reused untouched; the same stack on a moved branch still saves the boot, minus a reseed.
+  const warm = await claimWarm('qa', issue, slot, sha);
   log(`launch QA #${issue} on ${c.models.qa} (${where})`);
   start(dir, dir, `/sloth:qa ${issue}`, { issue }, path.join(dir, 'run.log'), {
     model: c.models.qa,
     chrome: c.chrome,
-    extras: { budgetMinutes: c.qa.budgetMinutes, worktree: worktreeName('qa', issue) },
+    extras: { budgetMinutes: c.qa.budgetMinutes, worktree: slot, warm: !!warm, warmSame: warm?.same },
   });
   return true;
 }

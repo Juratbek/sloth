@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { SlothConfig } from '../../server/config-types';
+import { useModels } from '../hooks/use-models';
 import { TextInput, inputStyle } from '../setup/ui';
 
 /** What every settings section gets: the config being edited and a way to change part of it. */
@@ -97,21 +98,24 @@ export function ListInput({
   );
 }
 
-/** The Claude Code model aliases; anything else is typed in as a custom id. */
-export const MODEL_PRESETS = [
-  { id: 'fable', name: 'Fable', hint: 'most capable' },
-  { id: 'opus', name: 'Opus' },
-  { id: 'sonnet', name: 'Sonnet' },
-  { id: 'haiku', name: 'Haiku', hint: 'fastest and cheapest' },
-];
-
+/**
+ * One agent's model, grouped by the provider that serves it. A provider whose key this machine does not
+ * have is still listed — greyed out and naming the variable that would turn it on — so a model can be
+ * seen before it can be picked. Anything not on the list is typed in as a custom id, which still routes:
+ * `server/models.ts` recognises a versioned id by its family.
+ */
 export function ModelPicker({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
-  const preset = MODEL_PRESETS.some((p) => p.id === value);
-  const [custom, setCustom] = useState(!preset);
-  // A restore or a discard that lands on an alias closes the custom field.
-  useEffect(() => {
-    if (preset) setCustom(false);
-  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+  const choices = useModels();
+  const listed = choices.some((c) => c.id === value);
+  const [custom, setCustom] = useState(!listed);
+  // A restore or a discard that lands on a listed model closes the custom field — adjusted while
+  // rendering, so no effect is needed for what is not a subscription to anything outside React.
+  const [prev, setPrev] = useState(value);
+  if (value !== prev) {
+    setPrev(value);
+    if (listed && custom) setCustom(false);
+  }
+  const providers = [...new Map(choices.map((c) => [c.provider, c.providerLabel])).entries()];
   return (
     <div className="w-full space-y-1.5">
       <select
@@ -126,11 +130,20 @@ export function ModelPicker({ value, onChange, label }: { value: string; onChang
         }}
         className={inputStyle}
       >
-        {MODEL_PRESETS.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name}
-            {p.hint ? ` — ${p.hint}` : ''}
-          </option>
+        {providers.map(([id, providerLabel]) => (
+          <optgroup key={id} label={providerLabel}>
+            {choices
+              .filter((c) => c.provider === id)
+              // The configured model stays selectable even where its key has gone missing, so opening
+              // the page cannot silently rewrite a saved choice.
+              .map((c) => (
+                <option key={c.id} value={c.id} disabled={!c.available && c.id !== value}>
+                  {c.name}
+                  {c.hint ? ` — ${c.hint}` : ''}
+                  {c.available ? '' : ` — set ${c.tokenEnv}`}
+                </option>
+              ))}
+          </optgroup>
         ))}
         <option value="custom">Custom model id…</option>
       </select>

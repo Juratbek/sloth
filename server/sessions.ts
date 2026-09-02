@@ -1,11 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from './config';
-import { add, promptOf, readRecords, summarize, toMessages, zero } from './transcripts';
-import { agentsDirOf, linkAgents, listAgents } from './agents';
+import { add, digestFile, promptFrom, readRecords, statsOf, toMessages, zero } from './transcripts';
+import { agentsDirOf, applyLinks, linkAgents, listAgents } from './agents';
 import { costOfUsage } from './pricing';
 import { rollup } from './issue-costs';
 import { boardFromSnapshot } from './board-view';
+import { blockedCards } from './runner/blocked';
 import { remoteStatus } from './remote';
 import { listSessionDirs, rateLimit, titleFor, watcherInfo } from './watcher';
 import type { AgentDetail, AgentSummary, ModelUsage, Overview, SessionDetail, SessionKind, SessionSummary, WatcherSession } from './types';
@@ -39,14 +40,15 @@ function costOfRun(byModel: ModelUsage[], agents: AgentSummary[]): number | null
   return total;
 }
 
+/** One transcript's row in the list, out of its digest — the records themselves are never held for this. */
 function summary(file: string): SessionSummary {
-  const records = readRecords(file);
-  const prompt = promptOf(records);
+  const d = digestFile(file);
+  const prompt = promptFrom(d);
   const agents = listAgents(file);
-  linkAgents(records, agents);
+  applyLinks(d, agents);
   const agentsUsage = zero();
   for (const a of agents) add(agentsUsage, a.usage);
-  const stats = summarize(records);
+  const stats = statsOf(d);
   return {
     id: path.basename(file, '.jsonl'),
     prompt,
@@ -103,6 +105,7 @@ export async function overview(): Promise<Overview> {
     orphans,
     issues,
     board: boardFromSnapshot(sessions, issues),
+    blocked: blockedCards(),
   };
 }
 

@@ -5,6 +5,8 @@ import { cfg } from './config';
 import { loopStatus } from './runner/loop';
 import { isPaused } from './runner/pause';
 import { previewState } from './runner/preview';
+import { pausedRun } from './runner/pressure';
+import { sampleSessions } from './runner/session-load';
 import type { Overview, RateBucket, WatcherSession, WatcherState } from './types';
 
 const read = (f: string) => {
@@ -15,6 +17,23 @@ const read = (f: string) => {
   }
 };
 const num = (f: string) => Number(read(f)?.trim() ?? 0) || 0;
+/** The last `bytes` of a file, read from the end — a run log is megabytes, and the UI shows its tail. */
+export function tailOf(f: string, bytes: number): string {
+  try {
+    const size = fs.statSync(f).size;
+    const fd = fs.openSync(f, 'r');
+    try {
+      const buf = Buffer.alloc(Math.min(size, bytes));
+      fs.readSync(fd, buf, 0, buf.length, size - buf.length);
+      return buf.toString('utf8');
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return '';
+  }
+}
+
 const mtime = (f: string) => {
   try {
     return fs.statSync(f).mtime;
@@ -39,7 +58,7 @@ export function listSessionDirs(): WatcherSession[] {
   } catch {
     return [];
   }
-  return names.flatMap((name): WatcherSession[] => {
+  const sessions = names.flatMap((name): WatcherSession[] => {
     const m = /^(issue|review|approved|qa)-(\d+)$/.exec(name);
     if (!m) return [];
     const d = path.join(cfg().sessionsDir, name);
@@ -71,13 +90,18 @@ export function listSessionDirs(): WatcherSession[] {
         preview: m[1] === 'issue' ? previewState(Number(m[2])) : undefined,
         retries: num(path.join(d, 'retries')),
         blocked: fs.existsSync(path.join(d, 'blocked')),
+        paused: pausedRun(d),
         issue: num(path.join(d, 'issue')) || undefined,
-        runLogTail: (read(path.join(d, 'run.log')) ?? '').slice(-4000),
+        runLogTail: tailOf(path.join(d, 'run.log'), 4000),
         inbox,
         updatedAt: updated?.toISOString(),
       },
     ];
   });
+  // One reading of the process table for all the live runs at once, then each takes its own tree's share.
+  const loads = sampleSessions(sessions.filter((s) => s.alive).map((s) => s.pid!));
+  for (const s of sessions) s.load = s.alive ? loads.get(s.pid!) : undefined;
+  return sessions;
 }
 
 export function watcherInfo(): Overview['watcher'] {

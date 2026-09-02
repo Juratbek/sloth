@@ -8,10 +8,11 @@ import { limitExit } from './limits';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
 import { APPROVED_LABEL, MARKERS, markerFiles, statePath, unapprove } from './markers';
 import { helpMentions, notify } from './notify';
-import { cleanup, cleanupRun } from './cleanup';
+import { cleanup, cleanupRun, keepWarm } from './cleanup';
 import { exitLine, exitReport, exitsOf, forgetExits, recordExit } from './exits';
 import { previewLink } from './preview';
-import { approvedDir, counter, dirAlive, dirOf, isBlocked, issueAlive, issueDir, pidAlive, pidOf, runDirs, startedAt, stateOf } from './session-dirs';
+import { forgetPause, pausedSeconds, resumeRun } from './pressure';
+import { approvedDir, counter, dirAlive, dirOf, isBlocked, issueAlive, issueDir, pidAlive, pidOf, runDirs, startedAt, stateOf, triesOn } from './session-dirs';
 import type { Kind } from './session-dirs';
 import { launch, launchApproved } from './spawn';
 
@@ -79,6 +80,8 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
   }
   // What the run was doing when it was killed is all the human will get: it never prints a final report.
   if (kind === 'issue') recordExit(dir, `stopped by Sloth: ${reason}`);
+  // A run paused for the machine's sake is stopped cold: it has to be woken to act on the signal.
+  resumeRun(dir);
   // Detached, so the run leads its own group: the negative pid takes its subagents and servers with it.
   for (const t of [-pid!, pid!]) {
     try {
@@ -89,8 +92,11 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
   }
   remove(path.join(dir, 'pid'));
   if (kind === 'qa') {
-    // Its app and worktree are its own; the card stays in QA and the head keeps its marker, like a stopped review.
-    await cleanupRun('qa', target);
+    // Its app and worktree are its own; the card stays in QA and the head keeps its marker, like a stopped
+    // review — except a budget kill, where `reap` drops the marker so the sweep tests the card again.
+    // A killed run's database may hold a mutation it never finished: the stack warms the slot tainted,
+    // so the next test of the card reseeds instead of trusting it.
+    await cleanupRun('qa', target, true);
     log(`QA #${target} stopped: ${reason}`);
     return true;
   }
@@ -98,10 +104,28 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
     log(`review PR #${target} stopped: ${reason}`);
     return true;
   }
-  await cleanup(target);
+  await cleanup(target, true);
   log(`#${target} stopped: ${reason}`);
   await park(target, why, exitReport(dir));
   return true;
+}
+
+/**
+ * What a run that died before its own teardown leaves behind: its dev server, Redis and database, all
+ * still up and holding the machine's memory and disk. An implement run or a QA test is cleaned up like
+ * the session itself would have; a review starts nothing and has nothing to leave. An implement run
+ * that ended with `preview.json` written is not swept — that app was handed over on purpose, and
+ * `previews` tunnels it or, with previews off, cleans it up itself.
+ */
+async function sweepDead(kind: Kind, target: number): Promise<void> {
+  if (kind === 'qa') {
+    await cleanupRun('qa', target);
+    return;
+  }
+  if (kind !== 'issue') return;
+  const dir = issueDir(target);
+  if (fs.existsSync(path.join(dir, 'preview.json')) || fs.existsSync(path.join(dir, 'preview-state.json'))) return;
+  await cleanup(target);
 }
 
 /**
@@ -109,7 +133,9 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
  * while still `working` finished nothing: how it ended is recorded before trigger 2 relaunches it and
  * `launch` wipes its state, so the comment that finally parks the card can say what each run got to.
  * A review that died the same way posted no verdict, but `launchApproved` already marked its head as
- * reviewed — the marker goes, so trigger 4 gives the head the review it never got.
+ * reviewed — the marker goes, so trigger 4 gives the head the review it never got. A hung QA run is
+ * killed with no verdict either, so its head marker goes the same way — `launchQa` counts the retry, and
+ * the sweep gives the card up once they run out, instead of stranding it in QA with a head it never tested.
  */
 export async function reap(): Promise<void> {
   for (const { kind, target, dir } of runDirs()) {
@@ -118,17 +144,19 @@ export async function reap(): Promise<void> {
     const name = `${kind}-${target}`;
     if (!dirAlive(dir)) {
       remove(pidFile);
+      forgetPause(dir);
       if (!limitExit(readFile(path.join(dir, 'run.log')))) {
         if ((stateOf(dir).state ?? 'working') === 'working') {
           if (kind === 'issue') {
             log(`${name} ended without finishing — ${exitLine(recordExit(dir, 'the session ended on its own'))}`);
           } else {
             for (const f of markerFiles(kind, target)) remove(statePath(MARKERS[kind], f));
-            // A QA run that died mid-test may have left its app up; a review has nothing to leave.
-            if (kind === 'qa') await cleanupRun('qa', target);
             log(`${name} ended without a verdict — ${kind === 'qa' ? 'the card will be tested again' : 'the head will be reviewed again'}`);
           }
-        }
+          await sweepDead(kind, target);
+          // A run that finished on its own terms left its stack running for its slot — under the
+          // warm-slots contract the session no longer kills its servers, so it moves to the slot here.
+        } else await keepWarm(kind, target);
         continue;
       }
       log(`${name} stopped on a usage limit — pausing ${LIMIT_PAUSE / 60} min, card untouched`);
@@ -138,11 +166,18 @@ export async function reap(): Promise<void> {
         text: `${name} stopped on a Claude usage limit — Sloth waits ${LIMIT_PAUSE / 60} minutes, the card keeps its place`,
       });
       if (kind !== 'issue') for (const f of markerFiles(kind, target)) remove(statePath(MARKERS[kind], f));
+      await sweepDead(kind, target);
       continue;
     }
     const budget = (kind === 'qa' ? cfg().qa.budgetMinutes : cfg().budgetMinutes) * 60;
-    if ((stateOf(dir).state ?? 'working') !== 'working' || nowSec() - startedAt(dir) <= budget + KILL_GRACE) continue;
-    await stop(kind, target, 'hung past the budget', 'the run for this issue hung past its time budget and was stopped by Sloth.');
+    // The time a run spent paused for the machine is not its own: the budget clock stands still meanwhile.
+    if ((stateOf(dir).state ?? 'working') !== 'working' || nowSec() - startedAt(dir) - pausedSeconds(dir) <= budget + KILL_GRACE) continue;
+    const stopped = await stop(kind, target, 'hung past the budget', 'the run for this issue hung past its time budget and was stopped by Sloth.');
+    // A hang is not a verdict: the head's marker goes so the sweep tests the card again, `retries` allowing.
+    if (stopped && kind === 'qa' && !isDry()) {
+      for (const f of markerFiles(kind, target)) remove(statePath(MARKERS.qa, f));
+      log(`QA #${target} will be tested again`);
+    }
   }
 }
 
@@ -160,10 +195,16 @@ export async function reap(): Promise<void> {
  * goes and the card comes back to Code Review to be reviewed like any other — unless a session is already on
  * the issue (trigger 7 sent it back to fix the checks), which moves the card itself. Checks decide the rest:
  * a pending rollup is worth waiting one tick for, a red one belongs to trigger 7.
- * At most `maxActive` reviews start in one tick: the machine is sampled once, before the tick, so the
- * reading `launchApproved` is held by goes stale the moment the first one starts — a Code Review backlog
- * would otherwise become a burst of detached runs no hold could see. The next tick, on a fresh reading,
- * takes the ones that waited; nothing is marked, so they keep their turn.
+ * At most `maxActive` reviews start in one tick: the machine is read once, before the tick, so the reading
+ * `launchApproved` is held by goes stale the moment the first one starts — a Code Review backlog would
+ * otherwise become a burst of detached runs no hold could see. The ones that wait are left unmarked, so
+ * they keep their turn and go on the next tick, on a fresh reading.
+ *
+ * A review that dies before it posts a verdict has its head's marker cleared by `reap`, so this trigger
+ * gives the head the review it never got. That is right once and wrong for ever: a head whose review dies
+ * every time — a model that runs out, a PR too large to read — was reviewed again on every tick, each one
+ * a fresh session on `models.final`. `maxRetries + 1` of them is enough to call it: the marker is written
+ * so the head is left alone, and the card goes to a human like every other run Sloth gives up on.
  */
 export async function reviews(board: BoardItem[]): Promise<void> {
   const col = cfg().statusField.columns;
@@ -186,11 +227,19 @@ export async function reviews(board: BoardItem[]): Promise<void> {
       continue;
     }
     if (checks === 'FAILURE') continue;
+    const tries = triesOn(approvedDir(pr), sha);
+    if (tries > cfg().maxRetries) {
+      if (!isDry()) write(marker, '');
+      log(`review PR #${pr} given up: it ended without a verdict ${tries} times on ${sha.slice(0, 7)}`);
+      await park(issue, `the review of PR #${pr} ended without a verdict ${tries} times on ${sha.slice(0, 7)}.`);
+      continue;
+    }
+    // The give-up above is about this head for good; this one only about this tick.
     if (started >= perTick) {
       log(`review PR #${pr} waits for the next tick (${perTick} reviews started in this one)`);
       continue;
     }
-    if (!launchApproved(pr, issue)) continue;
+    if (!launchApproved(pr, issue, sha)) continue;
     started += 1;
     if (!isDry()) write(marker, '');
   }
@@ -251,6 +300,8 @@ export async function pickup(board: BoardItem[]): Promise<void> {
     if (!isDry()) {
       remove(path.join(issueDir(issue), 'retries'));
       forgetExits(issueDir(issue));
+      // A pickup is a start-over, so the dead run's handoff note goes too — only a retry continues from it.
+      remove(path.join(issueDir(issue), 'handoff.md'));
     }
   }
 }

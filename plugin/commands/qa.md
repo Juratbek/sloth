@@ -46,23 +46,28 @@ in the repo (`docs/` or equivalent) that covers the flow is the reference for wh
 No merged PR wired to the issue, or one merged into a branch that is not `$SLOTH_QA_BRANCH` and not merged
 onward into it: the fix is not on the branch you are testing → **inconclusive** (Step 4), saying so.
 
-## Step 1 — Worktree of the QA branch
+## Step 1 — Reset the worktree slot to the QA branch
+
+`$SLOTH_WORKTREE` is a worktree Sloth leased to this run from its pool — an earlier run's checkout, kept
+so its installed dependencies carry over. Reset it; never create or remove a worktree.
 
 ```bash
 BRANCH=${SLOTH_QA_BRANCH:-$(gh repo view "$SLOTH_REPO" --json defaultBranchRef --jq .defaultBranchRef.name)}
-git -C "$SLOTH_RUNNER_ROOT" fetch origin "$BRANCH"
-WT=${SLOTH_WORKTREE:-$SLOTH_WORKTREES_DIR/qa-$ISSUE}
-git -C "$SLOTH_RUNNER_ROOT" worktree remove "$WT" --force 2>/dev/null; git -C "$SLOTH_RUNNER_ROOT" worktree prune
-git -C "$SLOTH_RUNNER_ROOT" worktree add --detach "$WT" "origin/$BRANCH"
+WT="$SLOTH_WORKTREE"
+git -C "$WT" fetch origin "$BRANCH"
+git -C "$WT" checkout -q --detach "origin/$BRANCH"
+git -C "$WT" clean -fdx -e node_modules -e .turbo -e .venv -e .cache   # the previous run's files go; dependencies and caches stay
 SHA=$(git -C "$WT" rev-parse --short HEAD)
 cd "$WT"
 # set_state working 1 "checked out $BRANCH @ $SHA"   with BRANCH set
 ```
 
 Detached, read-only: no branch of your own, no commit, no push. Work **only inside `$WT`** — never the
-checkout at `$SLOTH_RUNNER_ROOT`, never the issue's own `issue-<n>` worktree, which may belong to a live
-run. Install dependencies the way the repo does (`CLAUDE.md` wins; otherwise the lockfile —
-`pnpm-lock.yaml` → `pnpm install --frozen-lockfile`, and so on).
+checkout at `$SLOTH_RUNNER_ROOT`, never another slot, which may belong to a live run. Install dependencies
+the way the repo does (`CLAUDE.md` wins; otherwise the lockfile — `pnpm-lock.yaml` →
+`pnpm install --frozen-lockfile`, and so on). A reused slot installs in seconds but runs **no `postinstall`**:
+run the project's generate steps yourself (a Prisma client, codegen — whatever `CLAUDE.md` or the
+`postinstall` / `generate` scripts name), or you test against code generated for another branch.
 
 Confirm the fix is in what you checked out: `git -C "$WT" merge-base --is-ancestor <mergeCommit> HEAD`. A
 merge commit that is not an ancestor means the branch does not carry the fix yet → **inconclusive**.
@@ -74,6 +79,12 @@ own database, its own ports, throwaway credentials. Record every pid it starts i
 / `redis.pid` and any database name into `$SESSION_DIR/demo.db` the moment they exist (the server cleans
 these up), `SERVERS=running`, `set_state working 2 "app up"`. Note the URL and how to sign in as the role
 from Step 0.
+
+**A warm stack** (`SLOTH_WARM=1`, `session` skill): the slot's servers, Redis and database from the
+previous run are already up — pids and name already in `$SESSION_DIR`. Skip createdb, redis-server, the
+build and the server starts: sync the schema onto the existing database, reseed, `FLUSHALL` Redis — the
+watch-mode servers pick the checkout up themselves. `SLOTH_WARM_SAME=1` (same card, same head): skip even
+that. A reset step fails → kill the pids in `$SESSION_DIR/dev.pid` / `redis.pid` yourself and boot cold.
 
 No such skill: the repo's own instructions (`README`, `CLAUDE.md`, `package.json` scripts). An app that
 will not come up after two attempts is not a failed fix → **inconclusive**, with the error.
@@ -154,8 +165,10 @@ echo passed >"$SESSION_DIR/verdict"        # or failed / inconclusive — after 
 
 ## Step 5 — Clean up, report
 
-Teardown per the `session` skill: stop this session's processes, drop its database, remove `$WT`
-(`$SLOTH_WORKTREE`), `set_state done 5 "<verdict>"`. No preview: a QA run never leaves its app up.
+Teardown per the `session` skill: with `SLOTH_WARM_SLOTS=1` leave the servers and database running — the
+server keeps them warm for the next run; otherwise stop this session's processes and drop its database.
+`set_state done 5 "<verdict>"`; the slot (`$SLOTH_WORKTREE`) stays for the server to return. No preview:
+a QA run never hands its app to one.
 
 Finish with the report — the transcript's last message, shown in the monitor: the verdict, branch and
 sha, what the tester drove and as whom, what was not covered, how many screenshots the comment carries.

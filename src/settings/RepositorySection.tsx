@@ -10,7 +10,7 @@ const repoName = (repo: string) => repo.split('/')[1] ?? '';
 
 const DIRS: { key: keyof SlothConfig & string; label: string; hint: string }[] = [
   { key: 'runnersDir', label: 'Runners directory', hint: 'Where the wizard clones a repository when no runner root is given.' },
-  { key: 'worktreesDir', label: 'Worktrees directory', hint: 'One worktree per issue is made here — issue-<n> under it.' },
+  { key: 'worktreesDir', label: 'Worktrees directory', hint: 'The pool of worktrees the runs work in — slot-1 … slot-N under it, one per active session, kept so their installed dependencies carry over.' },
   { key: 'sessionsDir', label: 'Sessions directory', hint: "Each run's directory — its pid, state, inbox, log, preview." },
   { key: 'stateDir', label: 'State directory', hint: 'Dedupe markers (seen, reviewed, approved, notified), the pause flag, the remote-access secret.' },
   { key: 'watcherLog', label: 'Watcher log', hint: 'One line per event — the log the home panel tails.' },
@@ -52,7 +52,7 @@ export default function RepositorySection({ draft, patch }: SectionProps) {
         label="Runner root"
         hint={
           <>
-            The checkout the sessions run from; Sloth fetches there and makes worktrees from it. Clone it if the folder does not exist
+            The checkout the sessions run from; Sloth fetches there and makes its worktree slots from it. Clone it if the folder does not exist
             yet.
             {clone.data?.ok && <span className="block text-emerald-400">Ready at {clone.data.path}</span>}
             {clone.data && !clone.data.ok && <span className="block text-red-400">{clone.data.error}</span>}

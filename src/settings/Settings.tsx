@@ -37,7 +37,7 @@ const SECTIONS: { key: Key; label: string; component: ComponentType<SectionProps
   { key: 'team', label: 'Team', component: Team },
   { key: 'notifications', label: 'Notifications', component: NotificationsSection, defaults: () => pick('helpLogins', 'helpWebhook', 'webhookEvents') },
   { key: 'models', label: 'Models', component: Models, defaults: () => ({ models: { ...DEFAULT_MODELS }, ...pick('orchestrator') }) },
-  { key: 'sessions', label: 'Sessions', component: Sessions, defaults: () => pick('maxActive', 'maxAlive', 'minFreeMemory', 'minIdleCpu', 'minIdleDisk', 'budgetMinutes', 'waitHours', 'reviewRounds', 'maxRetries', 'keepDays') },
+  { key: 'sessions', label: 'Sessions', component: Sessions, defaults: () => pick('maxActive', 'maxAlive', 'minFreeMemory', 'minIdleCpu', 'minIdleDisk', 'machineSeconds', 'warmSlots', 'budgetMinutes', 'waitHours', 'reviewRounds', 'maxRetries', 'keepDays') },
   { key: 'remote', label: 'Remote access', component: Remote, defaults: () => pick('tunnel', 'publicUrl') },
   { key: 'machine', label: 'Machine', component: MachineSection, defaults: () => pick('autostart') },
   { key: 'about', label: 'About', component: AboutSection },

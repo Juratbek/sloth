@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setDry } from '../server/runner/log';
 import { handover, park, pickup, reap, retryStranded, reviews, stop } from '../server/runner/triggers';
 import { exitsOf } from '../server/runner/exits';
+import { qaVerdicts } from '../server/runner/qa';
 import { sampleMachine, setReaders } from '../server/runner/machine';
 import { resetSpawn, spawned } from './child-process-mock';
 import { called, onGh, resetGh } from './gh-mock';
@@ -101,11 +102,13 @@ describe('pickup (trigger 1)', () => {
     expect(launches()).toEqual(['/sloth:implement 3']);
   });
   it('resets the retry counter and clears the previous run', async () => {
-    makeSession('issue', 3, { retries: '2', blocked: '1', 'state.json': { state: 'done' }, 'inbox/1.md': 'old' });
+    makeSession('issue', 3, { retries: '2', blocked: '1', 'state.json': { state: 'done' }, 'inbox/1.md': 'old', 'handoff.md': 'next: old note' });
     await pickup([card(3, 'Todo')]);
     expect(exists(sessionDir('issue', 3), 'retries')).toBe(false);
     expect(exists(sessionDir('issue', 3), 'blocked')).toBe(false);
     expect(exists(sessionDir('issue', 3), 'inbox', '1.md')).toBe(false);
+    // A pickup is a start-over: the dead run's handoff note must not steer the fresh session.
+    expect(exists(sessionDir('issue', 3), 'handoff.md')).toBe(false);
   });
   it('only logs in a dry run', async () => {
     setDry(true);
@@ -118,9 +121,12 @@ describe('pickup (trigger 1)', () => {
 
 describe('retryStranded (trigger 2)', () => {
   it('relaunches an In Progress card with no live session and counts the retry', async () => {
+    makeSession('issue', 4, { 'handoff.md': 'next: fix the failing check' });
     await retryStranded([card(4, 'In Progress')]);
     expect(launches()).toEqual(['/sloth:implement 4']);
     expect(read(path.join(sessionDir('issue', 4), 'retries'))).toBe('1');
+    // The relaunch keeps the dead run's handoff note — it is how the new run continues instead of re-deriving.
+    expect(read(path.join(sessionDir('issue', 4), 'handoff.md'))).toBe('next: fix the failing check');
   });
   it('parks the card after maxRetries relaunches in a row', async () => {
     makeSession('issue', 4, { retries: '2' });
@@ -154,6 +160,21 @@ describe('retryStranded (trigger 2)', () => {
     makeSession('issue', 4, { retries: '2', 'exits.json': [{ at: 1, how: 'x', tail: '' }, { at: 2, how: 'x', tail: '' }, { at: 3, how: 'x', tail: '' }] });
     await retryStranded([card(4, 'In Progress')]);
     expect(called(/issue comment 4 .*stopped without finishing 3 times/)).toHaveLength(1);
+  });
+});
+
+describe('qaVerdicts (handoff)', () => {
+  it('a failed verdict clears the issue run leftovers, the handoff note among them', async () => {
+    onGh(/project item-add/, 'ITEM');
+    makeSession('qa', 7, { verdict: 'failed', sha: 'abcdef1' });
+    makeSession('issue', 7, { retries: '1', blocked: '1', 'handoff.md': 'next: stale note' });
+    await qaVerdicts();
+    expect(called(/item-edit .*opt-wip/)).toHaveLength(1);
+    expect(exists(sessionDir('issue', 7), 'retries')).toBe(false);
+    expect(exists(sessionDir('issue', 7), 'blocked')).toBe(false);
+    // The fresh implement run works from the QA findings on the issue, not the dead run's note.
+    expect(exists(sessionDir('issue', 7), 'handoff.md')).toBe(false);
+    expect(exists(sessionDir('qa', 7), 'handled')).toBe(true);
   });
 });
 
@@ -271,6 +292,39 @@ describe('reviews (trigger 4)', () => {
     expect(launches()).toEqual([]);
     expect(called(/item-edit|issue edit/)).toHaveLength(0);
   });
+  it('counts the reviews of one head that died without a verdict, and gives the head up after maxRetries', async () => {
+    configure({ maxRetries: 2 });
+    wired({ 1: [{ pr: 10, sha: 'aaa', head: 'x' }] });
+    const board = [card(1, 'Code Review')];
+    // Each round is a review that died: `reap` clears the head's marker, so the trigger comes straight back.
+    for (const round of [1, 2, 3]) {
+      resetSpawn();
+      await reviews(board);
+      expect(launches()).toEqual(['/sloth:review 10 final']);
+      expect(read(path.join(sessionDir('approved', 10), 'retries'))).toBe(String(round));
+      fs.rmSync(statePath('approved', '10-aaa'), { force: true });
+    }
+    resetSpawn();
+    await reviews(board);
+    expect(launches()).toEqual([]);
+    expect(exists(statePath('approved', '10-aaa'))).toBe(true);
+    expect(readLog().join('\n')).toMatch(/review PR #10 given up: it ended without a verdict 3 times on aaa/);
+    expect(called(/item-edit .*opt-help/)).toHaveLength(1);
+  });
+
+  it('starts the count over when the PR is pushed to — a new head is a new review', async () => {
+    configure({ maxRetries: 2 });
+    wired({ 1: [{ pr: 10, sha: 'aaa', head: 'x' }] });
+    await reviews([card(1, 'Code Review')]);
+    expect(read(path.join(sessionDir('approved', 10), 'retries'))).toBe('1');
+    resetGh();
+    resetSpawn();
+    wired({ 1: [{ pr: 10, sha: 'bbb', head: 'x' }] });
+    await reviews([card(1, 'Code Review')]);
+    expect(launches()).toEqual(['/sloth:review 10 final']);
+    expect(read(path.join(sessionDir('approved', 10), 'retries'))).toBe('1');
+  });
+
   it('still reviews Code Review without an Approved column', async () => {
     configure({ statusField: { id: 'PVTSSF_1', columns: { ...COLUMNS, approved: { id: '', name: '' } } } });
     wired({ 1: [{ pr: 10, sha: 'aaa', head: 'x' }] });
@@ -362,6 +416,31 @@ describe('reap', () => {
     expect(logged).toMatch(/issue-1 ended without finishing — the session ended on its own at step 4 \(running the tester\)/);
     expect(logged).toMatch(/review-5 ended without a verdict — the head will be reviewed again/);
   });
+  it('cleans up the servers, database and worktree of a run that died mid-way, working or on the limit', async () => {
+    fs.mkdirSync(path.join(configure().worktreesDir, 'issue-1'), { recursive: true });
+    makeSession('issue', 1, { pid: '2000000000', 'state.json': { state: 'working', servers: 'running' }, 'run.log': 'died\n', 'dev.pid': '2000000001\n', 'redis.pid': '2000000002\n', 'demo.db': 'sloth_1\n' });
+    makeSession('issue', 2, { pid: '2000000000', 'run.log': 'Claude AI usage limit reached|123\n', 'demo.db': 'sloth_2\n' });
+    makeSession('qa', 3, { pid: '2000000000', 'run.log': 'usage limit reached\n', 'demo.db': 'sloth_qa_3\n' });
+    await reap();
+    for (const n of [1, 2]) {
+      expect(exists(sessionDir('issue', n), 'demo.db')).toBe(false);
+      expect(exists(sessionDir('issue', n), 'dev.pid')).toBe(false);
+      expect(exists(sessionDir('issue', n), 'redis.pid')).toBe(false);
+    }
+    expect(exists(sessionDir('qa', 3), 'demo.db')).toBe(false);
+    expect(called(/dropdb --if-exists sloth_1$/)).toHaveLength(1);
+    expect(called(/dropdb --if-exists sloth_2$/)).toHaveLength(1);
+    expect(called(/dropdb --if-exists sloth_qa_3$/)).toHaveLength(1);
+    expect(called(/worktree remove .*issue-1 --force/)).toHaveLength(1);
+  });
+  it('leaves the app of a dead run that handed a preview over to the preview trigger', async () => {
+    makeSession('issue', 1, { pid: '2000000000', 'state.json': { state: 'working' }, 'run.log': 'died\n', 'demo.db': 'sloth_1\n', 'preview.json': { url: 'http://localhost:3000' } });
+    makeSession('issue', 2, { pid: '2000000000', 'state.json': { state: 'done', servers: 'preview' }, 'run.log': 'done\n', 'demo.db': 'sloth_2\n' });
+    await reap();
+    expect(exists(sessionDir('issue', 1), 'demo.db')).toBe(true);
+    expect(exists(sessionDir('issue', 2), 'demo.db')).toBe(true);
+    expect(called(/dropdb/)).toHaveLength(0);
+  });
   it('drops the review marker when a review died on the limit, so the head is reviewed again', async () => {
     makeSession('review', 5, { pid: '2000000000', 'run.log': 'usage limit reached\n' });
     fs.mkdirSync(statePath('reviewed'), { recursive: true });
@@ -379,6 +458,26 @@ describe('reap', () => {
     expect(exists(statePath('reviewed', '5-abc'))).toBe(false);
     expect(exists(statePath('reviewed', '6-def'))).toBe(true);
     expect(exists(statePath('paused_until'))).toBe(false);
+  });
+  it('drops the QA head marker when a hung QA run is killed, and keeps a hung review’s', async () => {
+    // Kills are stubbed out so the "live" hung sessions can be killed without taking the test down with them.
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    try {
+      makeSession('qa', 9, { pid: '12345', 'state.json': { state: 'working', since: 1 } });
+      makeSession('review', 5, { pid: '12346', 'state.json': { state: 'working', since: 1 } });
+      fs.mkdirSync(statePath('qa'), { recursive: true });
+      fs.writeFileSync(statePath('qa', '9-abc'), '');
+      fs.mkdirSync(statePath('reviewed'), { recursive: true });
+      fs.writeFileSync(statePath('reviewed', '5-abc'), '');
+      await reap();
+      expect(exists(statePath('qa', '9-abc'))).toBe(false);
+      expect(exists(statePath('reviewed', '5-abc'))).toBe(true);
+      const logged = readLog().join('\n');
+      expect(logged).toMatch(/QA #9 stopped: hung past the budget/);
+      expect(logged).toMatch(/QA #9 will be tested again/);
+    } finally {
+      kill.mockRestore();
+    }
   });
 });
 
