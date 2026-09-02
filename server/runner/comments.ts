@@ -151,7 +151,10 @@ export async function comments(): Promise<void> {
         const origin = t.pr ? `PR #${t.pr} comment ${comment.id}` : `issue comment ${comment.id}`;
         const order = `Order from ${comment.login} (${role}, ${origin}): ${comment.body}`;
         if (!(await launch(t.issue, order))) continue;
-      } else statusReply(t.issue, String(comment.id), t.pr);
+      } else if (!statusReply(t.issue, String(comment.id), t.pr)) {
+        // Left unseen when it is held, exactly like an order: the question is answered on a later tick.
+        continue;
+      }
       if (!isDry()) write(seen, '');
     }
   }

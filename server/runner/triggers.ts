@@ -52,10 +52,11 @@ export async function park(issue: number, reason: string, details = ''): Promise
  * Ends one session. A live one loses its whole process group — the `claude` run and everything it
  * started — and its pid is forgotten so nothing reaps it twice; an issue's run is then cleaned up and
  * its card parked with `why` as the comment (left in In Progress, trigger 2 would only start it again),
- * a review keeps its "already reviewed this head" marker so the next push gets a fresh one. A parked
- * issue run whose process is already gone is ended too: cleaned up and marked done, so it leaves the
- * needs-help list; its card stays where it is, and an answer on the issue starts a new run as before.
- * Returns false when there was nothing to end.
+ * a review keeps its "already reviewed this head" marker so the next push gets a fresh one — and, since
+ * nothing will ever review that head again, the issue behind the PR is parked rather than left sitting in
+ * Code Review with no verdict and nobody on it. A parked issue run whose process is already gone is ended
+ * too: cleaned up and marked done, so it leaves the needs-help list; its card stays where it is, and an
+ * answer on the issue starts a new run as before. Returns false when there was nothing to end.
  */
 export async function stop(kind: Kind, target: number, reason: string, why: string): Promise<boolean> {
   const dir = dirOf(kind, target);
@@ -102,6 +103,10 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
   }
   if (kind !== 'issue') {
     log(`review PR #${target} stopped: ${reason}`);
+    // The issue the PR is wired to, written beside the run by `launchApproved`; an older run has none.
+    const issue = readNumber(path.join(dir, 'issue'));
+    if (issue) await park(issue, `the review of PR #${target} was stopped: ${reason}.`);
+    else log(`review PR #${target}: no issue recorded beside the run — its card is left where it is`);
     return true;
   }
   await cleanup(target, true);

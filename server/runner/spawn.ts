@@ -12,7 +12,7 @@ import { isDry, log, readFile, remove, write } from './log';
 import { cleanup } from './cleanup';
 import { stopPreview } from './preview';
 import { APPEND_PROMPT, sessionEnv, type SessionExtras, type Target } from './session-env';
-import { approvedDir, issueDir, qaDir, slotsFull, triesOn } from './session-dirs';
+import { approvedDir, issueDir, qaDir, slotsFull, statusDir, triesOn } from './session-dirs';
 import { machineHold } from './machine';
 import { forgetPause } from './pressure';
 import { leaseSlot } from './slots';
@@ -212,16 +212,26 @@ export async function launchQa(issue: number, sha: string, branch: string): Prom
 /**
  * Trigger 3, no session running and no order: answer the question where it was asked — the issue, or
  * the PR wired to it (`pr`). The reply reads the issue's own session directory, so it can say what the
- * last run did.
+ * last run did, and books its own pid under `state/status/` so it cannot overwrite that run's.
+ *
+ * Held like every other launch. A reply is short and read-only, but it is a `claude` process all the
+ * same: three questions in one tick used to be three more of them however full the slots were and
+ * however little memory was left — the one promise the README makes about a loaded machine is that
+ * "nothing new starts either". False when it is held, so the comment is left unseen and answered on a
+ * later tick instead of dropped.
  */
 export function statusReply(issue: number, commentId: string, pr?: number): boolean {
   const on = pr ? `PR #${pr}` : `#${issue}`;
+  const why = held();
+  if (why) {
+    log(`#${issue} status reply for comment ${commentId} queued (${why})`);
+    return false;
+  }
   if (isDry()) {
     log(`dry-run: would answer status comment ${commentId} on ${on}`);
     return true;
   }
-  const bookDir = path.join(cfg().stateDir, 'status', `${issue}-${commentId}`);
   log(`#${issue} status reply for comment ${commentId} on ${on}`);
-  start(bookDir, issueDir(issue), `/sloth:status ${issue} ${commentId}`, { issue, pr }, path.join(cfg().stateDir, 'status.log'), { model: cfg().models.status });
+  start(statusDir(issue, commentId), issueDir(issue), `/sloth:status ${issue} ${commentId}`, { issue, pr }, path.join(cfg().stateDir, 'status.log'), { model: cfg().models.status });
   return true;
 }

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { cfg } from '../config';
 import { readFile, readNumber } from './log';
@@ -38,8 +39,27 @@ export function pidAlive(pid: number | undefined): boolean {
   }
 }
 
+/**
+ * When this machine last booted, in epoch seconds. A pid number only means anything within one boot:
+ * after a restart the kernel hands the same numbers out again, and a pid file written before the boot
+ * names whatever now holds that number — a browser, an editor, the user's own shell. `process.kill(pid, 0)`
+ * happily says yes to it, so a dead run reads as alive for ever and is eventually killed by its budget,
+ * taking a stranger's whole process group with it. `os.uptime()` answers this on every platform, which
+ * `ps` does not.
+ */
+export const bootedAt = (): number => Math.floor(Date.now() / 1000 - os.uptime());
+
+/** Whether `file` was written before the last boot, so the pids in it are somebody else's now (a missing file is not). */
+export function predatesBoot(file: string): boolean {
+  try {
+    return Math.floor(fs.statSync(file).mtimeMs / 1000) < bootedAt();
+  } catch {
+    return false;
+  }
+}
+
 export const pidOf = (dir: string) => readNumber(path.join(dir, 'pid')) || undefined;
-export const dirAlive = (dir: string) => pidAlive(pidOf(dir));
+export const dirAlive = (dir: string) => pidAlive(pidOf(dir)) && !predatesBoot(path.join(dir, 'pid'));
 export const issueAlive = (issue: number) => dirAlive(issueDir(issue));
 
 /** Every session directory Sloth has ever created, live or not. */
@@ -90,9 +110,34 @@ export const counter = (dir: string, name: string) => readNumber(path.join(dir, 
 export const triesOn = (dir: string, sha: string) => ((readFile(path.join(dir, 'sha')) ?? '').trim() === sha ? counter(dir, 'retries') : 0);
 export const isBlocked = (dir: string) => fs.existsSync(path.join(dir, 'blocked'));
 
-const live = () => runDirs().filter((d) => dirAlive(d.dir));
+/**
+ * Where a status reply (`/sloth:status`, trigger 3) books its pid and session id. It is not a run
+ * directory: the reply reads the issue's own directory and must not overwrite the pid of the run that
+ * wrote it, so it keeps its books under `state/status/` instead — which is why it used to be invisible
+ * to everything below. It still starts a `claude` process, so it still takes a slot.
+ */
+export const statusDir = (issue: number, commentId: string) => path.join(cfg().stateDir, 'status', `${issue}-${commentId}`);
+
+/** The book directories of every status reply, live or not. */
+export function statusDirs(): string[] {
+  const root = path.join(cfg().stateDir, 'status');
+  try {
+    return fs.readdirSync(root).map((name) => path.join(root, name));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Every live run, whatever kind: the sessions and the status replies both. A status reply needs no
+ * reaping of its own — it leases no slot, boots no app and moves no card, so there is nothing to tear
+ * down once it is gone — but while it lives it is a `claude` process like any other and is counted like
+ * one. A reply writes no `state.json` of its own (it borrows the issue's directory read-only), so it
+ * reads as `working` and counts against `maxActive` too.
+ */
+const live = () => [...runDirs().map((d) => d.dir), ...statusDirs()].filter(dirAlive);
 export const countAlive = () => live().length;
-export const countActive = () => live().filter((d) => (stateOf(d.dir).state ?? 'working') === 'working').length;
+export const countActive = () => live().filter((dir) => (stateOf(dir).state ?? 'working') === 'working').length;
 
 /** No slot left: either every session, or every working session, is spoken for. */
 export const slotsFull = () => countAlive() >= cfg().maxAlive || countActive() >= cfg().maxActive;

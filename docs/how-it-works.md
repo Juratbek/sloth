@@ -102,7 +102,8 @@ reply, and their comments never count as answers.
   the session waits for. A tester cannot give orders.
 - Anything else from the team — a comment ending in `?`, or a tester's comment when nothing is waiting
   for an answer — gets a short **status reply**: which column the card is in, what the last session
-  did, where the branch and PR are.
+  did, where the branch and PR are. It is a session of its own, so it takes a slot and waits for one:
+  with the caps full or the machine loaded the comment is left unanswered and picked up on a later tick.
 
 Every comment Sloth writes starts with `**Sloth:**`.
 
@@ -120,9 +121,11 @@ Every comment Sloth writes starts with `**Sloth:**`.
   through the restart, and it leaves a checkout with local changes alone. Off by default.
 - **Sessions have a time budget** (60 minutes). A session that runs 5 minutes over is killed and
   its card goes to *Sloth needs help*. **Stop** in a running session's header does the same right away.
-- **At most 3 sessions work at once** (and 5 alive, counting the ones waiting for an answer).
-  Extra work waits for the next tick — except a review of a card in *Code Review*, which starts anyway
-  and takes a slot the builds then wait for; at most 3 of those start in one tick.
+  A review killed or stopped this way posted no verdict and its head will not be reviewed again, so the
+  issue behind the PR goes to *Sloth needs help* too instead of waiting in *Code Review* for ever.
+- **At most 3 sessions work at once** (and 5 alive, counting the ones waiting for an answer), status
+  replies among them. Extra work waits for the next tick — except a review of a card in *Code Review*,
+  which starts anyway and takes a slot the builds then wait for; at most 3 of those start in one tick.
 - **A crashed session is restarted.** A card in *In Progress* with no session is relaunched, at
   most twice in a row. After that it goes to *Sloth needs help*, and the comment says how each run
   ended — the step it was on and what it reported on its way out (a session out of time says what

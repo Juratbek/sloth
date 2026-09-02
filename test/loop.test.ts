@@ -79,6 +79,33 @@ describe('the machine timer', () => {
     expect(readLog().at(-1)).toMatch(/machine load cleared/);
   });
 
+  it('arms one board timer when the settings are saved mid-tick, not two', async () => {
+    vi.useFakeTimers();
+    configure({ boardSeconds: 60, commentSeconds: 3600, machineSeconds: 3600 });
+    calmMachine();
+    let boards = 0;
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    onGh(/items\(first: 100/, async () => {
+      boards++;
+      await held;
+      return board([]);
+    });
+    startLoop();
+    // The first board tick (5 s in) starts and stops inside the board read.
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(boards).toBe(1);
+    // Saving the settings restarts the loop while that tick is still in flight. Its `.finally` then runs
+    // against a set of timers that is gone: it belongs to the old generation and must not arm one of its own.
+    startLoop();
+    release();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(boards).toBe(2);
+    // One read per boardSeconds from here — the orphaned chain would have added its own at 60 s.
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(boards).toBe(3);
+  });
+
   it('says how often it reads the machine when it starts watching', () => {
     configure({ machineSeconds: 10 });
     calmMachine();
