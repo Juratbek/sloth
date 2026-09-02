@@ -247,7 +247,7 @@ was not enough to see a pipeline in. It shows Sloth's columns in pipeline order 
 needs help, Code Review, Approved, Done — whatever order the GitHub board puts them in, each column
 full-height and scrolling on its own, with a card per issue **Sloth is on**: the ones it has a run on, and the
 unclaimed ones waiting in pickup. A card someone else moved by hand — no run, or claimed in pickup — is not
-listed, only counted in a `not Sloth's · 3` chip. A card is two lines: the number and title, a
+listed, only counted in a `not Sloth's · 3` chip. Beside the counts, **today** and **7 days** say what every run has cost at list price, so spend is in view without going back to the chart. A card is two lines: the number and title, a
 state dot with what Sloth's newest run on that issue is doing, and then only what applies — what the issue
 has cost, its PR, a live preview link, retries, the human who owns it, a `Fable: approved` badge, how long a
 parked card has been waiting. Clicking a card goes back to the monitor with that run open. It is a

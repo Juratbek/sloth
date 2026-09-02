@@ -36,3 +36,9 @@ export function dayLabel(iso: string) {
   const d = new Date(iso);
   return `${d.toLocaleDateString([], { weekday: 'short' })} ${d.getDate()}`;
 }
+
+/** What the buckets cost on one local calendar day — `spentOn(buckets, new Date())` is today's spend. */
+export const spentOn = (buckets: UsageBucket[], day: Date) => {
+  const key = day.toDateString();
+  return buckets.reduce((n, b) => (new Date(b.hour).toDateString() === key ? n + b.cost : n), 0);
+};

@@ -3,6 +3,7 @@ import type { ColumnRole } from '../../../server/config-types';
 import type { BoardView } from '../../../server/types';
 import { clock } from '../../lib/format';
 import Column from './Column';
+import Spend from './Spend';
 
 /** The needs-help column is called "Sloth needs help" on the board; the phone switcher has no room for that. */
 const SHORT: Partial<Record<ColumnRole, string>> = { needsHelp: 'Help' };
@@ -36,6 +37,7 @@ export default function BoardPage({ board, onSelect, onClose }: { board?: BoardV
           Board {board && <span className="ml-1 text-zinc-500">as of {clock(board.asOf)}</span>}
         </span>
         <span className="flex-1" />
+        <Spend />
         {board && <Left label="not Sloth's" count={board.others} title="Cards on Sloth's columns that Sloth has no run on and that are not waiting in pickup — a person's work." />}
         {board && <Left label="elsewhere" count={board.elsewhere} title="Cards on Status options Sloth has no column for." />}
         <button onClick={onClose} className="text-xs text-zinc-400 hover:text-zinc-200">
