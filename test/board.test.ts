@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchBoard, freeIn, moveCard, pickupOrder, wiredPrs } from '../server/runner/board';
+import { fetchBoard, freeIn, moveCard, pickupOrder, reviewVerdict, wiredPrs } from '../server/runner/board';
 import { setDry } from '../server/runner/log';
 import { called, onGh, resetGh } from './gh-mock';
 import { configure, readLog } from './harness';
@@ -92,23 +92,42 @@ describe('moveCard', () => {
 
 describe('wiredPrs', () => {
   const rollup = (state: string) => ({ commits: { nodes: [{ commit: { statusCheckRollup: { state } } } ] } });
+  /** Sloth reviews as they sit on the PR: `(sha, verdict)` pairs, oldest first. */
+  const reviewed = (...pairs: string[]) => ({
+    reviews: { nodes: Array.from({ length: pairs.length / 2 }, (_, i) => ({ body: `**Sloth:**\nReview: **${pairs[2 * i + 1]}** — 8/10.`, commit: { oid: pairs[2 * i] } })) },
+  });
   it('keeps open PRs by default — draft or ready, approved on GitHub or not — with their checks and mergeability', async () => {
     onGh(/api graphql/, {
       data: {
         repository: {
-          i1: { closedByPullRequestsReferences: { nodes: [{ number: 10, state: 'OPEN', isDraft: false, headRefOid: 'aaa', headRefName: 'sloth/issue-1-x', mergeable: 'MERGEABLE', ...rollup('FAILURE') }] } },
+          i1: { closedByPullRequestsReferences: { nodes: [{ number: 10, state: 'OPEN', isDraft: false, headRefOid: 'aaa', headRefName: 'sloth/issue-1-x', mergeable: 'MERGEABLE', ...rollup('FAILURE'), ...reviewed('aaa', 'failed', 'aaa', 'passed') }] } },
           i2: { closedByPullRequestsReferences: { nodes: [{ number: 11, state: 'OPEN', isDraft: true, headRefOid: 'bbb', headRefName: 'feat' }, { number: 12, state: 'MERGED', isDraft: false, headRefOid: 'ccc', headRefName: 'old' }] } },
-          i3: { closedByPullRequestsReferences: { nodes: [{ number: 13, state: 'OPEN', isDraft: false, headRefOid: 'ddd', headRefName: 'ok', reviewDecision: 'APPROVED', mergeable: 'CONFLICTING', ...rollup('PENDING') }] } },
+          i3: { closedByPullRequestsReferences: { nodes: [{ number: 13, state: 'OPEN', isDraft: false, headRefOid: 'ddd', headRefName: 'ok', reviewDecision: 'APPROVED', mergeable: 'CONFLICTING', ...rollup('PENDING'), ...reviewed('old', 'passed') }] } },
         },
       },
     });
     expect(await wiredPrs([1, 2, 3])).toEqual([
-      { issue: 1, pr: 10, sha: 'aaa', head: 'sloth/issue-1-x', state: 'OPEN', draft: false, checks: 'FAILURE', mergeable: 'MERGEABLE' },
+      // The latest Sloth verdict on the current head counts; one on an older head is none.
+      { issue: 1, pr: 10, sha: 'aaa', head: 'sloth/issue-1-x', state: 'OPEN', draft: false, checks: 'FAILURE', mergeable: 'MERGEABLE', verdict: 'passed' },
       { issue: 2, pr: 11, sha: 'bbb', head: 'feat', state: 'OPEN', draft: true, checks: 'NONE', mergeable: 'UNKNOWN' },
       { issue: 3, pr: 13, sha: 'ddd', head: 'ok', state: 'OPEN', draft: false, checks: 'PENDING', mergeable: 'CONFLICTING' },
     ]);
     // A repository that runs no checks reports no rollup at all — that is not a pending one.
     expect((await wiredPrs([2], { states: ['MERGED'] })).map((p) => [p.pr, p.state, p.checks])).toEqual([[12, 'MERGED', 'NONE']]);
+  });
+  it('reads one PR’s verdict for its head, ignoring a human’s review and a verdict on another head', async () => {
+    onGh(/pullRequest\(number: 10\)/, { data: { repository: { pullRequest: { reviews: { nodes: [
+      { body: 'LGTM', commit: { oid: 'aaa' } },
+      { body: '**Sloth:**\nReview: **failed** — 5/10.', commit: { oid: 'aaa' } },
+      { body: '**Sloth:**\nReview: **passed** — 9/10.', commit: { oid: 'bbb' } },
+    ] } } } } });
+    expect(await reviewVerdict(10, 'aaa')).toBe('failed');
+    expect(await reviewVerdict(10, 'bbb')).toBe('passed');
+    expect(await reviewVerdict(10, 'ccc')).toBeUndefined();
+    resetGh();
+    onGh(/api graphql/, { ok: false, out: '', err: 'boom' });
+    expect(await reviewVerdict(10, 'aaa')).toBeUndefined();
+    expect(readLog().at(-1)).toMatch(/PR #10 review lookup failed: boom/);
   });
   it('asks nothing for no issues and survives a failed lookup', async () => {
     expect(await wiredPrs([])).toEqual([]);

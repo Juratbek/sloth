@@ -135,6 +135,8 @@ export interface WiredPr {
   checks: Checks;
   /** GitHub's word on whether the head merges cleanly into its base; `UNKNOWN` while it is still computing. */
   mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN';
+  /** What Sloth's last review said about *this* head (`reviewVerdict`); undefined when none was posted on it. */
+  verdict?: Verdict;
 }
 export interface WiredOptions {
   /** Which PR states to return. */
@@ -144,7 +146,44 @@ export interface WiredOptions {
 const checksOf = (state: string | undefined): Checks =>
   state === 'SUCCESS' ? 'SUCCESS' : state === 'FAILURE' || state === 'ERROR' ? 'FAILURE' : state ? 'PENDING' : 'NONE';
 
-const PR_FIELDS = 'number state isDraft headRefOid headRefName mergeable commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }';
+export type Verdict = 'passed' | 'failed';
+interface ReviewNode {
+  body?: string;
+  commit?: { oid?: string };
+}
+const REVIEW_FIELDS = 'reviews(last: 30) { nodes { body commit { oid } } }';
+const PR_FIELDS = `number state isDraft headRefOid headRefName mergeable commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } ${REVIEW_FIELDS}`;
+
+/**
+ * The verdict `/sloth:review … final` posted on a PR for the head `sha`, read off the PR itself: the
+ * review's body opens with the bot prefix and says `Review: **passed**` or `Review: **failed**`
+ * (`plugin/commands/review.md`, Step 4). The latest one on that head counts. A verdict lives on GitHub,
+ * where nothing on this machine can lose it — the marker under `state/approved/` only says a review was
+ * started, and a card moved after the verdict landed would otherwise be a card nobody remembers the
+ * verdict of. A human's review, or one on an older head, is not a verdict.
+ */
+export function verdictOf(reviews: ReviewNode[] | undefined, sha: string): Verdict | undefined {
+  const prefix = cfg().botPrefix;
+  let verdict: Verdict | undefined;
+  for (const r of reviews ?? []) {
+    if (r.commit?.oid !== sha || !r.body?.startsWith(prefix)) continue;
+    const m = /Review: \*\*(passed|failed)\*\*/.exec(r.body);
+    if (m) verdict = m[1] as Verdict;
+  }
+  return verdict;
+}
+
+/** `verdictOf` for one PR, for a caller that has no board read in hand — `reap`, judging a review that just ended. */
+export async function reviewVerdict(pr: number, sha: string): Promise<Verdict | undefined> {
+  const [owner, name] = cfg().repo.split('/');
+  try {
+    const data = await graphql(`{ repository(owner: "${owner}", name: "${name}") { pullRequest(number: ${pr}) { ${REVIEW_FIELDS} } } }`);
+    return verdictOf(data.repository?.pullRequest?.reviews?.nodes, sha);
+  } catch (e) {
+    log(`PR #${pr} review lookup failed: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
+    return undefined;
+  }
+}
 
 /**
  * The PRs wired to these issues — one aliased query for all of them; open ones by default, drafts included.
@@ -169,6 +208,7 @@ export async function wiredPrs(issues: number[], { states = ['OPEN'] }: WiredOpt
           draft: !!p.isDraft,
           checks: checksOf(p.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state),
           mergeable: p.mergeable === 'MERGEABLE' || p.mergeable === 'CONFLICTING' ? p.mergeable : 'UNKNOWN',
+          verdict: verdictOf(p.reviews?.nodes, p.headRefOid),
         })),
     );
   } catch (e) {

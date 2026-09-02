@@ -157,7 +157,17 @@ retry gh issue edit <issue> --repo "$SLOTH_REPO" --remove-label "Fable: approved
 Only ever label the issue wired to **this** PR; no wired issue → nothing to label. Outside final mode
 never touch the label.
 
-## 6. Report
+## 6. Record the end, report
+
+Final mode: mark the run finished before the block (`set_state` is in the **`session`** skill):
+
+```bash
+set_state done 6 "Review: <passed|failed> — <rating>/10"
+```
+
+The server reads it, and reads the verdict off the PR as well — a run that ends `working` with no review
+on the head is one that died, and its head is reviewed again. Never skip the review submission in Step 4:
+the PR is the record.
 
 Respond with exactly this block and nothing else — no text before or after, no justification paragraph:
 

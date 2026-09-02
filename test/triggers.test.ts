@@ -14,7 +14,7 @@ import { COLUMNS, alivePid, calmMachine, card, configure, exists, makeSession, r
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
 
-const wired = (prs: Record<number, { pr: number; sha: string; head: string; draft?: boolean; approved?: boolean; checks?: string }[]>) =>
+const wired = (prs: Record<number, { pr: number; sha: string; head: string; draft?: boolean; approved?: boolean; checks?: string; verdict?: 'passed' | 'failed' }[]>) =>
   onGh(/api graphql .*closedByPullRequestsReferences/, {
     data: {
       repository: Object.fromEntries(
@@ -30,6 +30,8 @@ const wired = (prs: Record<number, { pr: number; sha: string; head: string; draf
                 headRefName: p.head,
                 reviewDecision: p.approved ? 'APPROVED' : null,
                 ...(p.checks ? { commits: { nodes: [{ commit: { statusCheckRollup: { state: p.checks } } }] } } : {}),
+                // What `/sloth:review … final` posted on this head, as the server reads it off the PR.
+                ...(p.verdict ? { reviews: { nodes: [{ body: `**Sloth:**\nReview: **${p.verdict}** — 8/10.`, commit: { oid: p.sha } }] } } : {}),
               })),
             },
           },
@@ -338,6 +340,61 @@ describe('reviews (trigger 4)', () => {
     expect(read(path.join(sessionDir('approved', 10), 'retries'))).toBe('1');
   });
 
+  it('waits for the session that wrote the PR to end before reviewing its Code Review card', async () => {
+    // The card was handed over a moment ago and the session is in its last steps: a review started now
+    // could reject the PR and move the card while the session, never having seen the verdict, writes
+    // Code Review back over it — one owner per card, so the review goes next tick.
+    makeSession('issue', 1, { pid: alivePid() });
+    wired({ 1: [{ pr: 10, sha: 'aaa', head: 'sloth/issue-1-x' }] });
+    const board = [card(1, 'Code Review')];
+    await reviews(board);
+    expect(launches()).toEqual([]);
+    expect(exists(statePath('approved', '10-aaa'))).toBe(false);
+    expect(readLog().at(-1)).toMatch(/review PR #10 waits: the session on #1 is still running/);
+    fs.rmSync(path.join(sessionDir('issue', 1), 'pid'));
+    await reviews(board);
+    expect(launches()).toEqual(['/sloth:review 10 final']);
+  });
+  it('puts a Code Review card whose head already has a verdict where the verdict says, when nobody is on it', async () => {
+    fs.mkdirSync(statePath('approved'), { recursive: true });
+    for (const m of ['10-aaa', '11-bbb', '12-ccc', '13-ddd', '14-eee']) fs.writeFileSync(statePath('approved', m), '');
+    makeSession('issue', 3, { pid: alivePid() });
+    onGh(/project item-add/, 'ITEM');
+    wired({
+      1: [{ pr: 10, sha: 'aaa', head: 'x', verdict: 'failed' }],
+      2: [{ pr: 11, sha: 'bbb', head: 'y', verdict: 'passed' }],
+      3: [{ pr: 12, sha: 'ccc', head: 'sloth/issue-3-z', verdict: 'failed' }],
+      4: [{ pr: 13, sha: 'ddd', head: 'w' }],
+      5: [{ pr: 14, sha: 'eee', head: 'v', verdict: 'failed' }],
+    });
+    // 1: rejected, overwritten back to Code Review — the race — goes to In Progress; 2: passed but never
+    // moved — goes on to Approved with the label; 3: a session is on it, which moves the card itself; 4: no
+    // verdict on the head, nothing to say; 5: an Approved card is the verdict's own doing, left alone.
+    const board = [card(1, 'Code Review'), card(2, 'Code Review'), card(3, 'Code Review'), card(4, 'Code Review'), card(5, 'Approved', { labels: ['Fable: approved'] })];
+    await reviews(board);
+    expect(launches()).toEqual([]);
+    expect(called(/item-edit/).map((c) => c.line.match(/--single-select-option-id (\S+)/)![1])).toEqual(['opt-wip', 'opt-approved']);
+    expect(called(/issue edit 2 .*--add-label Fable: approved/)).toHaveLength(1);
+    expect(called(/issue edit 1 /)).toHaveLength(0);
+    expect(readLog().join('\n')).toMatch(/#1 to In Progress: the review of PR #10 head aaa failed, and the card was left in Code Review/);
+    expect(readLog().join('\n')).toMatch(/#2 to Approved: the review of PR #11 head bbb passed, and the card was left in Code Review/);
+  });
+  it('heals nothing in a dry run beyond the log, and leaves a passed card in Code Review without an Approved column', async () => {
+    fs.mkdirSync(statePath('approved'), { recursive: true });
+    fs.writeFileSync(statePath('approved', '10-aaa'), '');
+    wired({ 1: [{ pr: 10, sha: 'aaa', head: 'x', verdict: 'passed' }] });
+    configure({ statusField: { id: 'PVTSSF_1', columns: { ...COLUMNS, approved: { id: '', name: '' } } } });
+    await reviews([card(1, 'Code Review')]);
+    expect(called(/item-edit|issue edit/)).toHaveLength(0);
+    configure({});
+    resetGh();
+    wired({ 1: [{ pr: 10, sha: 'aaa', head: 'x', verdict: 'passed' }] });
+    setDry(true);
+    await reviews([card(1, 'Code Review')]);
+    expect(called(/item-edit|issue edit/)).toHaveLength(0);
+    expect(readLog().at(-1)).toMatch(/dry-run: would move #1 to opt-approved/);
+  });
+
   it('still reviews Code Review without an Approved column', async () => {
     configure({ statusField: { id: 'PVTSSF_1', columns: { ...COLUMNS, approved: { id: '', name: '' } } } });
     wired({ 1: [{ pr: 10, sha: 'aaa', head: 'x' }] });
@@ -490,6 +547,23 @@ describe('reap', () => {
     expect(exists(statePath('reviewed', '5-abc'))).toBe(false);
     expect(exists(statePath('reviewed', '6-def'))).toBe(true);
     expect(exists(statePath('paused_until'))).toBe(false);
+  });
+  it('keeps the marker of a review that ended still working when its verdict is on the PR, and drops it when none is', async () => {
+    // The review command has no teardown to speak of: a run that skipped `set_state done` used to read as
+    // one that died, its marker went, and the same head was reviewed again — six passes on one PR.
+    makeSession('approved', 30, { pid: '2000000000', sha: 'abc', issue: '12', 'run.log': 'verdict posted\n' });
+    makeSession('approved', 31, { pid: '2000000000', sha: 'def', issue: '13', 'run.log': 'died mid-run\n' });
+    fs.mkdirSync(statePath('approved'), { recursive: true });
+    fs.writeFileSync(statePath('approved', '30-abc'), '');
+    fs.writeFileSync(statePath('approved', '31-def'), '');
+    onGh(/pullRequest\(number: 30\)/, { data: { repository: { pullRequest: { reviews: { nodes: [{ body: '**Sloth:**\nReview: **passed** — 9/10', commit: { oid: 'abc' } }] } } } } });
+    // A verdict on an older head, and a human's review on this one, are not this run's verdict.
+    onGh(/pullRequest\(number: 31\)/, { data: { repository: { pullRequest: { reviews: { nodes: [{ body: '**Sloth:**\nReview: **passed** — 9/10', commit: { oid: 'old' } }, { body: 'LGTM', commit: { oid: 'def' } }] } } } } });
+    await reap();
+    expect(exists(statePath('approved', '30-abc'))).toBe(true);
+    expect(exists(statePath('approved', '31-def'))).toBe(false);
+    expect(readLog().join('\n')).toMatch(/review PR #30 ended without marking itself done, but its verdict \(passed\) is on the PR — head abc stays reviewed/);
+    expect(readLog().join('\n')).toMatch(/approved-31 ended without a verdict — the head will be reviewed again/);
   });
   it('parks the issue behind a review that hung past its budget, so its card does not sit in Code Review', async () => {
     const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
