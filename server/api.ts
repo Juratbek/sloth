@@ -105,6 +105,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     } else if (p === '/api/overview') body = await overview();
     // Clamped at both ends: an unclamped minimum let `?days=-5` ask for a window whose start is after
     // its end, and a large negative one threw `RangeError` out of `new Date(...).toISOString()` as a 500.
+    // The fallback sits inside the clamp: outside it, an absent `days` read as 0, was clamped to 1 and
+    // never reached the 7.
     else if (p === '/api/usage') body = usageSeries(Math.min(31, Math.max(1, Math.floor(Number(url.searchParams.get('days'))) || 7)));
     else if (session) body = sessionDetail(session[1]);
     else if (agent) body = agentDetail(agent[1], agent[2]);

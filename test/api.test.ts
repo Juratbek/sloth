@@ -94,9 +94,9 @@ describe('the API middleware', () => {
   it('reads a body whose characters are split across chunks without mangling them', async () => {
     // The two halves of an `é` arrive in separate chunks. Each chunk used to be decoded on its own, so
     // whichever character straddled the boundary came out as U+FFFD — an accented project title, say.
-    const base_ = baseConfig();
+    const seed = baseConfig();
     const title = 'Cœur & Café';
-    const body = Buffer.from(JSON.stringify({ ...base_, project: { ...(base_.project as Record<string, unknown>), title } }));
+    const body = Buffer.from(JSON.stringify({ ...seed, project: { ...(seed.project as Record<string, unknown>), title } }));
     const at = body.indexOf(Buffer.from('é')) + 1;
     try {
       const saved = (await postInTwoWrites('/api/setup/config', body.subarray(0, at), body.subarray(at))) as {
@@ -109,13 +109,19 @@ describe('the API middleware', () => {
     }
   });
 
-  it('clamps the usage window at both ends, so a negative one is a window and not a 500', async () => {
-    for (const days of ['-5', '-999999999999', 'nonsense', '0']) {
-      const res = await fetch(`${base}/api/usage?days=${days}`);
+  it('clamps the usage window at both ends, so a negative one is a window and not a 500, and defaults to a week', async () => {
+    // Hours in the window: a day is 24 buckets. Absent, empty, unreadable or zero → the week the UI
+    // opens on; below one day → one; above the month → the month.
+    const hours = async (query: string) => {
+      const res = await fetch(`${base}/api/usage${query}`);
       expect(res.status).toBe(200);
       const series = (await res.json()) as { from: string; to: string };
-      expect(Date.parse(series.from)).toBeLessThan(Date.parse(series.to));
-    }
+      return (Date.parse(series.to) - Date.parse(series.from)) / 3_600_000;
+    };
+    for (const query of ['', '?days=', '?days=nonsense', '?days=0', '?days=0.5']) expect(await hours(query)).toBe(7 * 24);
+    for (const query of ['?days=-5', '?days=-999999999999']) expect(await hours(query)).toBe(24);
+    expect(await hours('?days=99')).toBe(31 * 24);
+    expect(await hours('?days=3')).toBe(3 * 24);
   });
 
   it('passes a request the API does not own to the next middleware', async () => {
