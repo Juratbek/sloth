@@ -11,6 +11,9 @@ describe('normalizeConfig', () => {
     expect(c.models).toEqual(DEFAULT_MODELS);
     expect(c.orchestrator).toBe(true);
     expect(c.chrome).toBe(true);
+    // Auto-update is on unless the file says no: a Sloth left running must not fall behind its repository.
+    expect(c.autoUpdate).toBe(true);
+    expect(normalizeConfig(baseConfig({ autoUpdate: false })).autoUpdate).toBe(false);
     expect(c.tunnel).toEqual(CONFIG_DEFAULTS.tunnel);
     expect(c.helpLogins).toEqual([]);
   });

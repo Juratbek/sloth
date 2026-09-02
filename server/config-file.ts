@@ -196,7 +196,7 @@ export function normalizeConfig(input: unknown): SlothConfig {
     orchestrator: b.orchestrator !== false,
     chrome: b.chrome !== false,
     autostart: b.autostart === true,
-    autoUpdate: b.autoUpdate === true,
+    autoUpdate: b.autoUpdate !== false,
     updateSeconds: int(b.updateSeconds, d.updateSeconds, 300),
     previewHours: int(b.previewHours, d.previewHours, 0),
     warmSlots: b.warmSlots !== false,

@@ -196,7 +196,7 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `qa` | `{branch: "", at: "20:00", budgetMinutes: 60}` | The daily QA sweep (trigger 9, Settings → *QA sweep*): `at` is the local time of day it starts (`HH:MM`; empty turns it off), `branch` the branch the merged fixes are deployed from and tested on (empty: the default branch), `budgetMinutes` one QA session's own budget. The column it sweeps is the *QA* role in `statusField.columns` — opt-in, chosen in Settings → *Board*; nothing runs without it |
 | `orchestrator` | `true` | Run implement sessions as an orchestrator on `models.orchestrator` that never edits code itself: it reads the issue, briefs one implementor subagent on `models.implement`, verifies, runs the tester and the reviewer, opens the PR. Off, one session on `models.implement` does all of it. Either way the tester and the reviewer are subagents (Settings → *Models*) |
 | `autostart` | `false` | Start Sloth at login through a macOS launch agent (Settings → *Machine*; see *Run at login*). Saved but ignored on other platforms |
-| `autoUpdate` / `updateSeconds` | `false` / `3600` | Install Sloth's own updates without being asked (Settings → *About*; see *Updating itself*). Every `updateSeconds` the watcher looks at `origin/<branch>` and, when this checkout is behind, runs the same pull-install-build-restart the Update button runs. A checkout with local changes is left alone |
+| `autoUpdate` / `updateSeconds` | `true` / `3600` | Install Sloth's own updates without being asked (Settings → *About*; see *Updating itself*). Off only when set to `false`. Every `updateSeconds` the watcher looks at `origin/<branch>` and, when this checkout is behind, runs the same pull-install-build-restart the Update button runs. A checkout with local changes is left alone |
 | `chrome` | `true` | Give implement sessions a headless Chrome (Playwright MCP), so a tester subagent clicks through the change and its screenshots go on the PR; needs Google Chrome installed |
 | `previewHours` | `24` | How long a finished implement session's app stays up behind a public link posted on its PR (see *Previews* above); `0` turns previews off |
 | `warmSlots` | `true` | Keep a finished run's stack — dev servers, Redis, demo database — running in its worktree slot for the next session to inherit (see *Warm slots* above). Off tears everything down after every run, as before |
@@ -322,8 +322,9 @@ agent. It takes effect at the next login; to start it now without logging out:
 ### Updating itself
 
 **Settings → About → Update** pulls, installs, builds and restarts this checkout on demand. **Update
-automatically** (`autoUpdate`) does the same on a timer — every `updateSeconds`, an hour by default —
-so a Sloth left running for weeks does not fall behind the repository it was cloned from.
+automatically** (`autoUpdate`, on by default) does the same on a timer — every `updateSeconds`, an hour by
+default — so a Sloth left running for weeks does not fall behind the repository it was cloned from. Turn
+it off in the same section, or with `"autoUpdate": false` in the config file, to update by hand only.
 
 What it will not do: update a checkout with local changes (`git pull --ff-only` would refuse, and the
 reason is logged once rather than once an hour), or restart in the middle of a tick. The update is
