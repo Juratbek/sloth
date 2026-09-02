@@ -5,10 +5,14 @@ import type { BoardItem } from '../server/runner/board';
 import { writeConfigFile, normalizeConfig } from '../server/config-file';
 import type { SlothConfig } from '../server/config-types';
 import { setReaders } from '../server/runner/machine';
+import { setProcessReaders } from '../server/runner/session-load';
 
 /** A machine with room to spare, so no test's launch depends on the load of the one running it. */
 export const calmMachine = () =>
   setReaders({ memoryFree: () => 50, cpuTimes: () => ({ idle: 0, total: 0 }), diskTimes: () => ({ busy: {}, total: 0 }), windowMs: 0 });
+
+/** An empty process table, so listing sessions in a test never shells out to `ps` or walks `/proc`. */
+export const noProcesses = () => setProcessReaders({ processes: () => [] });
 
 /** The throwaway home `test/setup.ts` made for this process. */
 export const root = (): string => process.env.SLOTH_TEST_ROOT!;
@@ -61,6 +65,7 @@ export function configure(overrides: Record<string, unknown> = {}): ResolvedConf
   const c = reloadConfig();
   for (const dir of [c.runnerRoot, c.worktreesDir, c.sessionsDir, c.stateDir]) fs.mkdirSync(dir, { recursive: true });
   calmMachine();
+  noProcesses();
   return c;
 }
 

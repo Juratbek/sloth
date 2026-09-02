@@ -59,6 +59,21 @@ export interface PreviewState {
   startedAt: number;
   expiresAt: number;
 }
+/** What one session's process tree is taking of the machine right now (`runner/session-load.ts`). */
+export interface SessionLoad {
+  /** Percent of one core, as `top` counts it: 250 is two and a half cores busy. */
+  cpu: number;
+  /** Resident memory of the whole tree, bytes. */
+  memory: number;
+  /** Bytes a second read from the disk over the window since the previous reading; absent on macOS, which has no per-process counter without root. */
+  readBytes?: number;
+  /** Bytes a second written to the disk over the same window. */
+  writeBytes?: number;
+  /** Processes in the tree — the `claude` run itself, the app it booted, its browser, its `git` calls. */
+  processes: number;
+  at: number;
+}
+
 export interface WatcherSession {
   name: string;
   /** `issue` implements, `approved` reviews a PR (`review` is that kind's older name), `qa` tests a card on the QA branch. */
@@ -78,6 +93,8 @@ export interface WatcherSession {
   runLogTail: string;
   inbox: string[];
   updatedAt?: string;
+  /** CPU, memory and disk of this run's process tree; absent unless it is alive and has been read twice. */
+  load?: SessionLoad;
 }
 
 /** A configured slash command name (see SLOTH_COMMANDS), or 'other' when the prompt matches none. */

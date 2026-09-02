@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { SessionStatus, SessionSummary } from '../../server/types';
 import { STATUS_COLOR, dayLabel, elapsed, k, label, modelName, stepLabel } from '../lib/format';
 import { inputStyle } from '../setup/ui';
+import { LoadBrief } from './SessionLoad';
 
 const GROUPS: { title: string; statuses: SessionStatus[]; byDay?: boolean }[] = [
   { title: 'Live', statuses: ['running', 'waiting'] },
@@ -55,6 +56,7 @@ function Row({ s, active, onSelect }: { s: SessionSummary; active: boolean; onSe
         <span>ctx {k(s.contextTokens)}</span>
         <span>↑{k(s.usage.output)}</span>
         {s.agents.length > 0 && <span>{s.agents.length} agents</span>}
+        <LoadBrief load={s.watcher?.load} />
       </div>
     </button>
   );

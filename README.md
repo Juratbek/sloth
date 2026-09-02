@@ -85,7 +85,11 @@ needs-help notifications carry on) and survives a restart.
   `budgetMinutes + 5` is killed, cleaned up, and its card parked; **stop** in a live session's header
   does the same on demand (a stopped review is not repeated for that PR head), and **end** on a parked
   session whose process is gone cleans it up and takes it off the needs-help list — the card stays put. A Claude usage
-  limit pauses the watcher for 30 minutes without costing the card its place.
+  limit pauses the watcher for 30 minutes without costing the card its place. A live session's row and
+  header show what it is taking of the machine right now — CPU, memory and, except on macOS, the disk it
+  is reading and writing — summed over its whole process tree, so the app it booted, its database and its
+  browser count with it. **Subagents get no figure of their own**: they run inside the session's own
+  process, so the OS has nothing to tell them apart by; the session's number already contains them.
 - **Warm slots** (`warmSlots`, default on): when a run ends, the stack it booted — the dev servers, Redis
   and the seeded demo database — stays running in its worktree slot instead of being torn down. The next
   session that leases the slot inherits it: a retry of the same issue on the same head reuses everything
@@ -221,7 +225,7 @@ UI shows follows the provider's own list prices, cached prompts included. The wh
 ## UI and API
 
 The UI lists sessions (live / needs help / finished) with their transcript, subagents, token spend, what
-the run cost at list price and watcher state, plus a home panel with hourly spend, **cost by issue** — every
+the run cost at list price, the machine load of a live run (see *Sessions*) and watcher state, plus a home panel with hourly spend, **cost by issue** — every
 issue Sloth touched, its runs rolled up into one line, dearest first — the queue and the log. It refreshes on a 15s poll
 and an SSE stream. Transcripts are read from `~/.claude/projects/<runner root, non-alphanumerics as '-'>`.
 
