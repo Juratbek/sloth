@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
-import { freeIn, moveCard, pickupOrder, wiredPrs } from './board';
-import type { BoardItem } from './board';
-import { comment } from './gh';
+import { freeIn, moveCard, pickupOrder, reviewVerdict, wiredPrs } from './board';
+import type { BoardItem, Verdict } from './board';
+import { comment, gh } from './gh';
 import { limitExit } from './limits';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
 import { APPROVED_LABEL, MARKERS, markerFiles, skipped, statePath, unapprove } from './markers';
@@ -138,6 +138,24 @@ async function sweepDead(kind: Kind, target: number): Promise<void> {
 }
 
 /**
+ * Whether a review run that ended still `working` did in fact finish: its verdict is on the PR, for the
+ * head it was started on (`launchApproved` writes that beside the run). The review command has no
+ * teardown of its own to speak of, and a run that skipped `set_state done` used to read as "died without
+ * a verdict": `reap` dropped the head's marker, trigger 4 saw an Approved card with an unreviewed head,
+ * took the label and the card back and reviewed the same commit again — six passes in half an hour on one
+ * PR, then a park for "no verdict". The PR is the record that cannot be skipped, so it is asked first.
+ */
+async function verdictPosted(kind: Kind, target: number, dir: string): Promise<boolean> {
+  if (kind !== 'approved') return false;
+  const sha = (readFile(path.join(dir, 'sha')) ?? '').trim();
+  if (!sha) return false;
+  const verdict = await reviewVerdict(target, sha);
+  if (!verdict) return false;
+  log(`review PR #${target} ended without marking itself done, but its verdict (${verdict}) is on the PR — head ${sha.slice(0, 7)} stays reviewed`);
+  return true;
+}
+
+/**
  * Forgets dead sessions, notices usage-limit exits, kills and cleans up hung ones. An issue run that died
  * while still `working` finished nothing: how it ended is recorded before trigger 2 relaunches it and
  * `launch` wipes its state, so the comment that finally parks the card can say what each run got to. One
@@ -157,7 +175,7 @@ export async function reap(): Promise<void> {
       remove(pidFile);
       forgetPause(dir);
       if (!limitExit(readFile(path.join(dir, 'run.log')))) {
-        if ((stateOf(dir).state ?? 'working') === 'working') {
+        if ((stateOf(dir).state ?? 'working') === 'working' && !(await verdictPosted(kind, target, dir))) {
           if (kind === 'issue') {
             log(`${name} ended without finishing — ${exitLine(recordExit(dir, 'the session ended on its own'))}`);
           } else {
@@ -224,6 +242,15 @@ export async function reap(): Promise<void> {
  * every time — a model that runs out, a PR too large to read — was reviewed again on every tick, each one
  * a fresh session on `models.final`. `maxRetries + 1` of them is enough to call it: the marker is written
  * so the head is left alone, and the card goes to a human like every other run Sloth gives up on.
+ *
+ * One actor owns a card at a time. A Code Review card whose implement session is still running was
+ * handed over a moment ago — the session is in its last steps — and the review waits for it to end: a
+ * review that started meanwhile once rejected the PR and moved the card to In Progress while the session
+ * was closing, and the session, which had never seen the verdict, wrote Code Review back over it — a
+ * rejected head marked as reviewed, in a column that never launches anything, for good. The wait costs a
+ * tick. And the verdict decides where a card lives, not the marker: a Code Review card whose current head
+ * already has a verdict on the PR and nobody working on it is put where that verdict says (`heal`), which
+ * unsticks a card left behind by any such race, including ones from before this one was closed.
  */
 export async function reviews(board: BoardItem[]): Promise<void> {
   const col = cfg().statusField.columns;
@@ -231,12 +258,19 @@ export async function reviews(board: BoardItem[]): Promise<void> {
   const cards = board.filter((i) => i.status === col.codeReview.name || inApproved(i));
   const perTick = Math.max(1, cfg().maxActive);
   let started = 0;
-  for (const { issue, pr, sha, checks } of await wiredPrs(cards.map((i) => i.number))) {
+  for (const { issue, pr, sha, checks, verdict } of await wiredPrs(cards.map((i) => i.number))) {
     const marker = statePath(MARKERS.approved, `${pr}-${sha}`);
-    if (fs.existsSync(marker) || dirAlive(approvedDir(pr))) continue;
     const card = cards.find((i) => i.number === issue);
+    if (dirAlive(approvedDir(pr))) continue;
+    if (fs.existsSync(marker)) {
+      if (card && !inApproved(card) && verdict && !issueAlive(issue)) await heal(card, pr, sha, verdict);
+      continue;
+    }
+    if (issueAlive(issue)) {
+      if (card && !inApproved(card)) log(`review PR #${pr} waits: the session on #${issue} is still running`);
+      continue;
+    }
     if (card && inApproved(card)) {
-      if (issueAlive(issue)) continue;
       if (card.labels.includes(APPROVED_LABEL)) await unapprove(issue, `PR #${pr} was pushed to after its review passed`);
       log(`#${issue} back to ${col.codeReview.name}: PR #${pr} head ${sha.slice(0, 7)} has not been reviewed`);
       if (!(await moveCard(issue, col.codeReview.id))) continue;
@@ -262,6 +296,26 @@ export async function reviews(board: BoardItem[]): Promise<void> {
     started += 1;
     if (!isDry()) write(marker, '');
   }
+}
+
+/**
+ * A Code Review card whose head has its verdict on the PR and no one on it: the card sits where the
+ * verdict did not put it. A fail goes back to In Progress, where trigger 2 relaunches the session on the
+ * findings; a pass goes on to Approved with the label, as the review would have — the only way a card
+ * gets there is a passing review, and this is that review, delivered late. Without an Approved column a
+ * passed card stays where it is, as it does after the review itself.
+ */
+async function heal(card: BoardItem, pr: number, sha: string, verdict: Verdict): Promise<void> {
+  const c = cfg();
+  const col = c.statusField.columns;
+  const issue = card.number;
+  const to = verdict === 'failed' ? col.inProgress : col.approved;
+  if (!to.id) return;
+  log(`#${issue} to ${to.name}: the review of PR #${pr} head ${sha.slice(0, 7)} ${verdict}, and the card was left in ${card.status}`);
+  if (!(await moveCard(issue, to.id))) return;
+  if (isDry() || verdict !== 'passed' || card.labels.includes(APPROVED_LABEL)) return;
+  const r = await gh(['issue', 'edit', String(issue), '--repo', c.repo, '--add-label', APPROVED_LABEL]);
+  if (!r.ok) log(`#${issue} label "${APPROVED_LABEL}" not added: ${r.err.split('\n')[0]}`);
 }
 
 /**

@@ -290,16 +290,38 @@ Check the clock before each round (`session` skill). Without time for a round pl
 
 ## Step 6 — Ready for review → Code Review
 
+The move is conditional: somebody may have decided about this head or this card since you last looked.
+Read both before writing anything — the server's review leaves its verdict on the PR, on the very commit
+it read, and a person moves cards by hand:
+
 ```bash
 retry gh pr ready "$PR_URL"
+HEAD=$(git rev-parse HEAD)
+REJECTED=$(gh api "repos/$SLOTH_REPO/pulls/$PR/reviews" --paginate | jq -rs --arg bot "$SLOTH_BOT_PREFIX" --arg sha "$HEAD" \
+  '[.[][] | select(.commit_id == $sha and (.body | startswith($bot)))] | last | (.body // "") | test("Review: \\*\\*failed\\*\\*")')
+COLUMN=$(gh api graphql -f query="{ repository(owner: \"${SLOTH_REPO%/*}\", name: \"${SLOTH_REPO#*/}\") { issue(number: $SLOTH_ISSUE) {
+  projectItems(first: 10) { nodes { project { number } fieldValueByName(name: \"Status\") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }" \
+  --jq ".data.repository.issue.projectItems.nodes[] | select(.project.number == $SLOTH_PROJECT_NUMBER) | .fieldValueByName.name")
+```
+
+- `REJECTED` is `true` → the server's review already failed this head. **Do not move the card**: its findings
+  are on the PR as review comments — take them as a review round (Step 5.5, item 3: fix, verify, push) and come
+  back to this step with the new head. Writing Code Review over that verdict once left a rejected head marked
+  as reviewed, in a column that never launches anything.
+- `COLUMN` is neither empty nor `$SLOTH_COL_IN_PROGRESS_NAME` → a person moved the card meanwhile. Leave it
+  where it is and say so in the report; the newer decision wins.
+- Otherwise:
+
+```bash
 retry gh project item-edit --id "$ITEM_ID" --project-id "$SLOTH_PROJECT_ID" \
   --field-id "$SLOTH_STATUS_FIELD_ID" --single-select-option-id "$SLOTH_COL_CODE_REVIEW_ID"
 ```
 
-The server reviews the PR there (`/sloth:review … final`, another agent on its own model) and moves the card
-on: to `$SLOTH_COL_APPROVED_NAME` for a human to test, or back to `$SLOTH_COL_IN_PROGRESS_NAME` with the
-findings as review comments — a new run of this command then addresses them (Step 1, *Existing PR*). Never
-move the card to `$SLOTH_COL_APPROVED_NAME` yourself.
+The server reviews the PR there (`/sloth:review … final`, another agent on its own model) — it waits for this
+session to end first, so the card has one owner at a time — and moves the card on: to `$SLOTH_COL_APPROVED_NAME`
+for a human to test, or back to `$SLOTH_COL_IN_PROGRESS_NAME` with the findings as review comments — a new
+run of this command then addresses them (Step 1, *Existing PR*). Never move the card to
+`$SLOTH_COL_APPROVED_NAME` yourself.
 
 With `SLOTH_PREVIEW_HOURS` above `0`, hand the running app over too: write `preview.json` as the **`session`**
 skill's *Teardown* says — the app's one local URL and how to sign in, both from the project's run skill — and

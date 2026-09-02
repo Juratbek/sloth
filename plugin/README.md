@@ -137,7 +137,9 @@ The **last message of the transcript is the report** — the monitor shows it.
   writes `preview.json`; the server does the teardown, hours later. Every other ending tears down in the session.
 - A card in Code Review is reviewed by the server (`/sloth:review … final`), Sloth's PR or a human's: a pass moves it to
   Approved, where a human tests it from the preview link; a fail moves it back to In Progress with the findings, and a
-  new `/sloth:implement` run on the issue addresses them on the same branch.
+  new `/sloth:implement` run on the issue addresses them on the same branch. The review waits until the implement
+  session that handed the card over has ended — one owner per card — and the verdict it posts on the PR is the record:
+  a card left in Code Review with a verdict on its head and nobody on it is put where the verdict says.
 - A `/sloth:qa` run is the daily QA sweep's test of one card: its slot reset to `$SLOTH_QA_BRANCH` at its current
   head (never the issue's own implement slot), the app booted the way the project's run skill says, and the tester
   subagent driving the merged fix as the user the issue is about. It comments the result on the issue —
