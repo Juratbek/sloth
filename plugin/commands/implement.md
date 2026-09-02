@@ -290,7 +290,7 @@ Closes #ISSUE
 
 ## Why
 <1–3 lines: the root cause, or what was missing>
-Root cause left: <what it is, what still breaks>          # only when the fix removes the symptom (Step 3)
+Root cause left: <what it is, what still breaks>          # only when the fix removes the symptom and leaves the cause (Step 3)
 
 ## What changed
 - <one line per change a reviewer has to know about — at most 6>
