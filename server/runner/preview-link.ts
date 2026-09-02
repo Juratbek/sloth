@@ -50,15 +50,21 @@ export function body(s: PreviewState, p: PreviewFile): string {
   return lines.join('\n');
 }
 
-/** Writes the preview comment on the PR (the issue when the run opened none), or edits the one already there. */
-export async function post(issue: number, s: PreviewState, text: string): Promise<void> {
+/**
+ * Writes the preview comment on the PR (the issue when the run opened none), or edits the one already
+ * there. False when GitHub refused it: the link is the whole point of a preview, so a caller that has
+ * one to hand out must not record the preview as announced on the strength of a comment that never
+ * landed — `s.commentId` would be lost with it, and the "preview is gone" note at the end too.
+ */
+export async function post(issue: number, s: PreviewState, text: string): Promise<boolean> {
   const repo = cfg().repo;
   const r = s.commentId
     ? await gh(['api', '-X', 'PATCH', `repos/${repo}/issues/comments/${s.commentId}`, '-f', `body=${text}`, '--jq', '.id'])
     : await gh(['api', `repos/${repo}/issues/${s.pr ?? issue}/comments`, '-f', `body=${text}`, '--jq', '.id']);
   if (!r.ok) {
     log(`preview #${issue}: comment failed: ${r.err.split('\n')[0]}`);
-    return;
+    return false;
   }
   s.commentId = Number(r.out) || s.commentId;
+  return true;
 }

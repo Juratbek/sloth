@@ -162,6 +162,14 @@ let delay = FIRST_RETRY_MS;
 let port = 0;
 let status: RemoteStatus = {};
 
+/**
+ * One launch that came to nothing, and the next attempt. Every failure schedules one — the backoff
+ * doubles to a minute and is reset by a printed URL — so a tool that drops repeatedly is retried
+ * repeatedly. It used to be gated on `status.error` being unset, and nothing but a URL or `stopTunnel`
+ * ever cleared that: cloudflared dropping twice in a row meant exactly two launches, ever, and remote
+ * access stayed dead until Sloth was restarted. The guard against double-counting one process lives
+ * with the process instead (`launch`), which is what it was really for.
+ */
 function fail(argv: string[], error: string) {
   if (status.error !== error) log(`remote: ${error}`);
   status = { error };
@@ -181,6 +189,13 @@ function launch(argv: string[]) {
   }
   const proc = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   child = proc;
+  // A child that errors then exits is one failure, not two: whichever arrives first schedules the retry.
+  let done = false;
+  const died = (why: string) => {
+    if (done) return;
+    done = true;
+    fail(argv, why);
+  };
   const seen = (chunk: Buffer) => {
     const m = TUNNEL_URL_RE.exec(chunk.toString());
     if (!m || status.url) return;
@@ -191,10 +206,10 @@ function launch(argv: string[]) {
   };
   proc.stdout?.on('data', seen);
   proc.stderr?.on('data', seen);
-  proc.on('error', (e) => fail(argv, e.message));
+  proc.on('error', (e) => died(e.message));
   proc.on('exit', (code) => {
     if (child === proc) child = undefined;
-    if (wanted && !status.error) fail(argv, `${cmd} exited with ${code}, retrying`);
+    if (wanted) died(`${cmd} exited with ${code}, retrying`);
   });
 }
 

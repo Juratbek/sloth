@@ -38,10 +38,14 @@ export async function park(issue: number, reason: string, details = ''): Promise
   }
   await comment(c.repo, issue, body);
   const option = c.statusField.columns.needsHelp.id;
-  if (option) await moveCard(issue, option);
-  else {
+  // A move GitHub refused leaves the card in In Progress with its count cleared, where trigger 2 picks
+  // it straight back up and parks it again `maxRetries` later — the same comment over and over, and
+  // nothing ever escalating. It is parked where it stands instead, exactly as a board with no needs-help
+  // column is: trigger 2 leaves a blocked card alone, trigger 6 still relaunches it on an answer, and
+  // the marker goes with the next `launch`.
+  if (!option || !(await moveCard(issue, option))) {
     write(path.join(issueDir(issue), 'blocked'), '1');
-    log(`#${issue} parked in place (no needs-help column configured)`);
+    log(`#${issue} parked in place (${option ? 'the card could not be moved' : 'no needs-help column configured'})`);
   }
   remove(path.join(issueDir(issue), 'retries'));
   forgetExits(issueDir(issue));

@@ -7,7 +7,7 @@ import { exitsOf } from '../server/runner/exits';
 import { qaVerdicts } from '../server/runner/qa';
 import { sampleMachine, setReaders } from '../server/runner/machine';
 import { resetSpawn, spawned } from './child-process-mock';
-import { called, onGh, resetGh } from './gh-mock';
+import { called, fail, onGh, resetGh } from './gh-mock';
 import { bootedAt } from '../server/runner/session-dirs';
 import { COLUMNS, alivePid, calmMachine, card, configure, exists, makeSession, read, readLog, sessionDir, statePath, wipe } from './harness';
 
@@ -185,6 +185,18 @@ describe('park', () => {
     await park(9, 'it broke.');
     expect(called(/item-edit/)).toHaveLength(0);
     expect(exists(sessionDir('issue', 9), 'blocked')).toBe(true);
+  });
+  it('parks in place when the card cannot be moved, keeping the count so nothing relaunches it', async () => {
+    makeSession('issue', 9, { retries: '2' });
+    onGh(/project item-add/, 'ITEM');
+    onGh(/project item-edit/, fail('HTTP 502'));
+    await park(9, 'it broke.');
+    // Left in In Progress with the count cleared, trigger 2 picks it straight back up and parks it again
+    // `maxRetries` later — the same comment over and over, and nothing escalating.
+    expect(exists(sessionDir('issue', 9), 'blocked')).toBe(true);
+    expect(readLog().join('\n')).toMatch(/#9 parked in place \(the card could not be moved\)/);
+    await retryStranded([card(9, 'In Progress')]);
+    expect(launches()).toEqual([]);
   });
   it('mentions the help logins', async () => {
     configure({ helpLogins: ['dana'] });
