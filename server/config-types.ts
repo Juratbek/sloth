@@ -167,7 +167,8 @@ export interface SlothConfig {
    * Install Sloth's own updates without being asked: every `updateSeconds` the watcher looks at
    * `origin/<branch>` and, when this checkout is behind it, runs the same pull-install-build-restart the
    * About page's button runs (`server/update.ts`). A checkout with local changes is left alone — the pull
-   * is `--ff-only` and would refuse — and an update never starts inside a tick.
+   * is `--ff-only` and would refuse — and an update never starts inside a tick. On by default: a Sloth
+   * left running for weeks should not fall behind the repository it was cloned from.
    */
   autoUpdate: boolean;
   /** How often `autoUpdate` looks at the remote, in seconds. Ignored while auto-update is off. At least 300. */
@@ -258,7 +259,7 @@ export const CONFIG_DEFAULTS = {
   orchestrator: true,
   chrome: true,
   autostart: false,
-  autoUpdate: false,
+  autoUpdate: true,
   updateSeconds: 3600,
   previewHours: 24,
   warmSlots: true,
