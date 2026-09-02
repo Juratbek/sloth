@@ -30,7 +30,9 @@ board. When it finds work, it starts a Claude Code session to do it. That is all
    unless Settings → Models says otherwise): `/sloth:review <pr> final`, once per version of the PR. This is
    Sloth's first priority: the review starts before anything else in a tick and is never held back by the
    session caps, only by a loaded machine, so finished work never waits on work that is still being built.
-   It reads the issue and its thread,
+   One tick starts at most as many reviews as there are session slots (3) — the machine is read once a
+   tick, so a backlog in *Code Review* is spread over ticks rather than started all at once; the rest keep
+   their turn and go on the next tick. It reads the issue and its thread,
    the whole diff, the checks and the screenshots, and always leaves its verdict as a comment on the PR.
    Problems: it comments inline on each one and moves the card back to *In Progress*, and the session that
    wrote the PR is started again on the same branch to address them — a round-trip, the PR keeps its number.
@@ -116,7 +118,7 @@ Every comment Sloth writes starts with `**Sloth:**`.
   its card goes to *Sloth needs help*. **Stop** in a running session's header does the same right away.
 - **At most 3 sessions work at once** (and 5 alive, counting the ones waiting for an answer).
   Extra work waits for the next tick — except a review of a card in *Code Review*, which starts anyway
-  and takes a slot the builds then wait for.
+  and takes a slot the builds then wait for; at most 3 of those start in one tick.
 - **A crashed session is restarted.** A card in *In Progress* with no session is relaunched, at
   most twice in a row. After that it goes to *Sloth needs help*, and the comment says how each run
   ended — the step it was on and what it reported on its way out (a session out of time says what

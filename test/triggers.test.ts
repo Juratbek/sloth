@@ -180,6 +180,8 @@ describe('reviews (trigger 4)', () => {
       4: [{ pr: 13, sha: 'ddd', head: 'wip', draft: true }],
     });
     const board = [card(1, 'Code Review'), card(2, 'Code Review'), card(3, 'Code Review', { labels: ['Sloth: skip'] }), card(4, 'Code Review')];
+    // Four reviews in the one tick: the per-tick cap is `maxActive`, and this test is about the heads.
+    configure({ maxActive: 4 });
     // A leftover final state from the previous head's run must not follow the new run into `reap`.
     makeSession('approved', 10, { 'state.json': { state: 'done' } });
     await reviews(board);
@@ -193,6 +195,20 @@ describe('reviews (trigger 4)', () => {
     resetSpawn();
     await reviews(board);
     expect(launches()).toEqual([]);
+  });
+  it('starts at most maxActive reviews in a tick, marks none of the rest, and takes them next tick', async () => {
+    configure({ maxActive: 2 });
+    wired({ 1: [{ pr: 10, sha: 'aaa', head: 'a' }], 2: [{ pr: 11, sha: 'bbb', head: 'b' }], 3: [{ pr: 12, sha: 'ccc', head: 'c' }] });
+    const board = [card(1, 'Code Review'), card(2, 'Code Review'), card(3, 'Code Review')];
+    await reviews(board);
+    expect(launches()).toEqual(['/sloth:review 10 final', '/sloth:review 11 final']);
+    // The one that waited kept its turn: no marker, so the next tick — on a fresh machine reading — takes it.
+    expect(exists(statePath('approved', '12-ccc'))).toBe(false);
+    expect(readLog().at(-1)).toMatch(/review PR #12 waits for the next tick \(2 reviews started in this one\)/);
+    resetSpawn();
+    await reviews(board);
+    expect(launches()).toEqual(['/sloth:review 12 final']);
+    expect(exists(statePath('approved', '12-ccc'))).toBe(true);
   });
   it('starts with every slot taken — the caps hold the builds, not the review — but not on a loaded machine', async () => {
     for (const n of [1, 2, 3]) makeSession('issue', n, { pid: alivePid() });

@@ -53,6 +53,22 @@ const json = (res: ServerResponse, body: unknown) => {
   return true;
 };
 
+/**
+ * Answers a handler that threw. Nothing can be said once the response has begun — an SSE stream, a body
+ * half written — so the socket is dropped instead. Either way the process survives: an unhandled rejection
+ * out of the middleware ends Node, and with it the watcher, the tunnels and the board loop.
+ */
+function fail(res: ServerResponse, e: unknown): boolean {
+  if (res.writableEnded) return true;
+  if (res.headersSent) {
+    res.destroy();
+    return true;
+  }
+  res.statusCode = 500;
+  res.end(String(e));
+  return true;
+}
+
 /** /api/setup/* — the get-started wizard. A rejected payload answers 400, a missing config 404. */
 async function setup(p: string, req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   const method = req.method ?? 'GET';
@@ -96,26 +112,28 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     return true;
   }
   if (p.startsWith('/api/setup/')) return setup(p, req, res);
-  // Whether this machine starts Sloth at login; the toggle itself is a config key, saved with the rest.
-  if (p === '/api/service') return json(res, serviceStatus());
-  if (p.startsWith('/api/remote')) {
-    if (p === '/api/remote/rotate' && req.method === 'POST') rotateToken();
-    // Once the tool is there the tunnel starts on its own and the QR follows.
-    else if (p === '/api/remote/install' && req.method === 'POST') install(cfg().tunnel[0], () => startTunnel());
-    return json(res, remoteLink());
-  }
-  if (p.startsWith('/api/stack')) {
-    // The project's stack on this machine; `?root=` asks about a checkout other than the configured one (the wizard, before saving).
-    const body = req.method === 'POST' ? await readBody(req) : undefined;
-    return json(res, await handleStack(p, req.method ?? 'GET', url.searchParams.get('root') || undefined, body));
-  }
-  if (p.startsWith('/api/update')) {
-    // Sloth's own version and update: fetch to see what is new, pull-install-build-restart to get it.
-    if (p === '/api/update/check' && req.method === 'POST') await check();
-    else if (p === '/api/update/run' && req.method === 'POST') update();
-    return json(res, await versionInfo());
-  }
+  // Every route below is inside the one `try`: `readBody` alone rejects on an oversized body and on a
+  // client that hangs up mid-POST, and a rejection nothing catches would take the whole process with it.
   try {
+    // Whether this machine starts Sloth at login; the toggle itself is a config key, saved with the rest.
+    if (p === '/api/service') return json(res, serviceStatus());
+    if (p.startsWith('/api/remote')) {
+      if (p === '/api/remote/rotate' && req.method === 'POST') rotateToken();
+      // Once the tool is there the tunnel starts on its own and the QR follows.
+      else if (p === '/api/remote/install' && req.method === 'POST') install(cfg().tunnel[0], () => startTunnel());
+      return json(res, remoteLink());
+    }
+    if (p.startsWith('/api/stack')) {
+      // The project's stack on this machine; `?root=` asks about a checkout other than the configured one (the wizard, before saving).
+      const stackBody = req.method === 'POST' ? await readBody(req) : undefined;
+      return json(res, await handleStack(p, req.method ?? 'GET', url.searchParams.get('root') || undefined, stackBody));
+    }
+    if (p.startsWith('/api/update')) {
+      // Sloth's own version and update: fetch to see what is new, pull-install-build-restart to get it.
+      if (p === '/api/update/check' && req.method === 'POST') await check();
+      else if (p === '/api/update/run' && req.method === 'POST') update();
+      return json(res, await versionInfo());
+    }
     const session = /^\/api\/sessions\/([\w-]+)$/.exec(p);
     const agent = /^\/api\/sessions\/([\w-]+)\/agents\/(\w+)$/.exec(p);
     const preview = /^\/api\/previews\/(\d+)\/stop$/.exec(p);
@@ -155,13 +173,22 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       return true;
     }
   } catch (e) {
-    res.statusCode = 500;
-    res.end(String(e));
-    return true;
+    return fail(res, e);
   }
   res.setHeader('content-type', 'application/json');
   res.end(JSON.stringify(body));
   return true;
+}
+
+/**
+ * The monitor API as one connect middleware. A request the API does not own falls through to `next`;
+ * one whose handler throws or rejects answers 500 here rather than going unhandled, which would end
+ * the process and take the watcher, the tunnels and the board loop with it.
+ */
+export function apiMiddleware(req: IncomingMessage, res: ServerResponse, next: () => void): void {
+  void handle(req, res)
+    .then((handled) => handled || next())
+    .catch((e) => fail(res, e));
 }
 
 /** Vite plugin: serves the read-only monitor API from the same process as the UI (dev and preview). */
@@ -190,9 +217,7 @@ export function monitorApi(): Plugin {
     http?.on('close', stop);
     process.once('exit', stop);
     server.middlewares.use(guard);
-    server.middlewares.use((req, res, next) => {
-      void handle(req, res).then((handled) => handled || next());
-    });
+    server.middlewares.use(apiMiddleware);
   };
   return {
     name: 'sloth-api',

@@ -24,6 +24,8 @@ interface Thread {
   /** The issue the thread belongs to — the PR's own number when it closes none. */
   issue: number;
   pr?: number;
+  /** The PR→issue lookup failed: what this PR is wired to is unknown, so nothing may be decided from it. */
+  unknown?: boolean;
 }
 
 /** Issues and PRs whose comments changed in the window and mention Sloth — one search call per tick. */
@@ -46,7 +48,9 @@ async function mentioned(since: string): Promise<{ number: number; isPr: boolean
 
 /**
  * The issue a PR belongs to: the first one it closes (`Closes #n`), else the number in a
- * `sloth/issue-<n>-…` head branch. A PR wired to neither is its own thread.
+ * `sloth/issue-<n>-…` head branch. A PR wired to neither is its own thread — but only when GitHub
+ * answered: a lookup that failed says nothing about the wiring, and reading it as "wired to nothing"
+ * would answer a real order with "this PR is not linked to an issue" and mark it seen for good.
  */
 async function threadOfPr(pr: number): Promise<Thread> {
   const [owner, name] = cfg().repo.split('/');
@@ -60,7 +64,9 @@ async function threadOfPr(pr: number): Promise<Thread> {
     const issue = closes || branch;
     if (issue) return { number: pr, issue, pr };
   } catch (e) {
-    log(`PR #${pr}: issue lookup failed: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
+    const why = e instanceof Error ? e.message.split('\n')[0] : String(e);
+    log(`PR #${pr}: issue lookup failed (${why}) — its comments wait for the next tick`);
+    return { number: pr, issue: pr, pr, unknown: true };
   }
   return { number: pr, issue: pr, pr };
 }
@@ -124,6 +130,9 @@ export async function comments(): Promise<void> {
 
   for (const { number, isPr } of await mentioned(since)) {
     const t: Thread = isPr ? await threadOfPr(number) : { number, issue: number };
+    // Nothing is answered and nothing is marked seen while the wiring is unknown, so the next tick
+    // — with GitHub back — reads this thread again and the order still lands.
+    if (t.unknown) continue;
     const unwired = isPr && t.issue === t.pr;
     for (const comment of await commentsOf(number, since)) {
       if (!mention.test(comment.body) || comment.body.startsWith(c.botPrefix)) continue;

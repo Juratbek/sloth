@@ -160,11 +160,17 @@ export async function reap(): Promise<void> {
  * goes and the card comes back to Code Review to be reviewed like any other — unless a session is already on
  * the issue (trigger 7 sent it back to fix the checks), which moves the card itself. Checks decide the rest:
  * a pending rollup is worth waiting one tick for, a red one belongs to trigger 7.
+ * At most `maxActive` reviews start in one tick: the machine is sampled once, before the tick, so the
+ * reading `launchApproved` is held by goes stale the moment the first one starts — a Code Review backlog
+ * would otherwise become a burst of detached runs no hold could see. The next tick, on a fresh reading,
+ * takes the ones that waited; nothing is marked, so they keep their turn.
  */
 export async function reviews(board: BoardItem[]): Promise<void> {
   const col = cfg().statusField.columns;
   const inApproved = (i: BoardItem) => !!col.approved.id && i.status === col.approved.name;
   const cards = board.filter((i) => i.status === col.codeReview.name || inApproved(i));
+  const perTick = Math.max(1, cfg().maxActive);
+  let started = 0;
   for (const { issue, pr, sha, checks } of await wiredPrs(cards.map((i) => i.number))) {
     const marker = statePath(MARKERS.approved, `${pr}-${sha}`);
     if (fs.existsSync(marker) || dirAlive(approvedDir(pr))) continue;
@@ -180,7 +186,13 @@ export async function reviews(board: BoardItem[]): Promise<void> {
       continue;
     }
     if (checks === 'FAILURE') continue;
-    if (launchApproved(pr, issue) && !isDry()) write(marker, '');
+    if (started >= perTick) {
+      log(`review PR #${pr} waits for the next tick (${perTick} reviews started in this one)`);
+      continue;
+    }
+    if (!launchApproved(pr, issue)) continue;
+    started += 1;
+    if (!isDry()) write(marker, '');
   }
 }
 

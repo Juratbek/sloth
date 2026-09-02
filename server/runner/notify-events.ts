@@ -68,9 +68,14 @@ const STATES: State[] = [
   },
 ];
 
-/** The other half of `finalPassed`: a card that carried the label and does not any more. */
+/**
+ * The other half of `finalPassed`: a card that carried the label and does not any more. Leaving the
+ * Approved column is not enough — trigger 6 files a merged card to Done with its label still on, and
+ * that is a card whose review passed, not one whose review has to happen again. A card that left the
+ * board entirely says nothing either.
+ */
 async function unapproved(item: BoardItem | undefined): Promise<void> {
-  if (!item) return;
+  if (!item || item.labels.includes(APPROVED_LABEL)) return;
   await notify('finalFailed', {
     issue: item.number,
     title: item.title,
@@ -90,13 +95,17 @@ export async function boardEvents(board: BoardItem[]): Promise<void> {
     for (const f of before) {
       if (still.has(f)) continue;
       remove(markerOf(event, f));
-      // The label going is the failing verdict; a card that left the board entirely says nothing.
+      // The label going is the failing verdict.
       if (event === 'finalPassed') await unapproved(byNumber.get(Number(f)));
     }
-    if (!notifies(event)) continue;
     for (const item of cards) {
       if (before.includes(String(item.number)) || skip?.(item)) continue;
-      const sent = await notify(event, { issue: item.number, title: item.title, column: item.status, text: line(item) });
+      // The marker records the state, not the announcement: `finalFailed` is only ever raised by a
+      // `finalPassed` marker going, so someone subscribed to the one and not the other still needs both
+      // written. Only a webhook that was tried and failed leaves none, so the next tick tries again.
+      const sent = notifies(event)
+        ? await notify(event, { issue: item.number, title: item.title, column: item.status, text: line(item) })
+        : true;
       if (sent && !isDry()) write(markerOf(event, item.number), '');
     }
   }

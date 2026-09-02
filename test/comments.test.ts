@@ -4,7 +4,7 @@ import { comments } from '../server/runner/comments';
 import { setDry } from '../server/runner/log';
 import { setPaused } from '../server/runner/pause';
 import { resetSpawn, spawned } from './child-process-mock';
-import { called, onGh, resetGh } from './gh-mock';
+import { called, fail, onGh, resetGh } from './gh-mock';
 import { alivePid, configure, exists, makeSession, read, readLog, sessionDir, statePath, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
@@ -65,6 +65,23 @@ describe('comments (trigger 3)', () => {
     thread(20, true, [{ id: 107, login: 'bob', body: '@sloth fix the typo' }]);
     await comments();
     expect(read(path.join(sessionDir('issue', 4), 'inbox', '107.md'))).toMatch(/^author: bob\nrole: developer\ncomment: 107\npr: 20\n/);
+  });
+  it('leaves a PR alone while its issue lookup is failing, and acts on the next tick', async () => {
+    onGh(/api graphql .*pullRequest\(number: 22\)/, fail('HTTP 502'));
+    thread(22, true, [{ id: 109, login: 'bob', body: '@sloth fix the flaky test' }]);
+    await comments();
+    // Neither answered as unwired nor marked seen: nothing is known about what the PR closes.
+    expect(called(/issues\/22\/comments -f body=/)).toHaveLength(0);
+    expect(spawned).toHaveLength(0);
+    expect(exists(statePath('seen', '109'))).toBe(false);
+    expect(readLog().join('\n')).toMatch(/PR #22: issue lookup failed \(HTTP 502\) — its comments wait for the next tick/);
+    // GitHub answers on the next tick, and the order that was never lost starts its session.
+    resetGh();
+    onGh(/api graphql .*pullRequest\(number: 22\)/, { data: { repository: { pullRequest: { headRefName: 'sloth/issue-8-x', closingIssuesReferences: { nodes: [] } } } } });
+    thread(22, true, [{ id: 109, login: 'bob', body: '@sloth fix the flaky test' }]);
+    await comments();
+    expect(spawned).toHaveLength(1);
+    expect(exists(statePath('seen', '109'))).toBe(true);
   });
   it('tells the author when a PR is wired to no issue', async () => {
     onGh(/api graphql .*pullRequest\(number: 21\)/, { data: { repository: { pullRequest: { headRefName: 'feat', closingIssuesReferences: { nodes: [] } } } } });
