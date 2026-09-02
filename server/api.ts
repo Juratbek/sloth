@@ -15,6 +15,22 @@ import { ensureSkipLabel } from './runner/markers';
 import { ensureStack } from './stack';
 import { usageSeries } from './usage';
 
+/**
+ * Answers a handler that threw. Nothing can be said once the response has begun — an SSE stream, a body
+ * half written — so the socket is dropped instead. Either way the process survives: an unhandled rejection
+ * out of the middleware ends Node, and with it the watcher, the tunnels and the board loop.
+ */
+function fail(res: ServerResponse, e: unknown): boolean {
+  if (res.writableEnded) return true;
+  if (res.headersSent) {
+    res.destroy();
+    return true;
+  }
+  res.statusCode = 500;
+  res.end(String(e));
+  return true;
+}
+
 /** Escapes text bound for HTML — the page title comes from config and must not be able to inject markup. */
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
@@ -45,8 +61,10 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     res.end('only from the machine Sloth runs on');
     return true;
   }
-  if (sensitive) return handleSettings(p, url, req, res);
+  // Awaited inside the `try`, not returned from outside it: `readBody` rejects on an oversized body and
+  // on a client that hangs up mid-POST, and a rejection nothing catches would take the whole process with it.
   try {
+    if (sensitive) return await handleSettings(p, url, req, res);
     const session = /^\/api\/sessions\/([\w-]+)$/.exec(p);
     const agent = /^\/api\/sessions\/([\w-]+)\/agents\/(\w+)$/.exec(p);
     const preview = /^\/api\/previews\/(\d+)\/stop$/.exec(p);
@@ -94,13 +112,22 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       return true;
     }
   } catch (e) {
-    res.statusCode = 500;
-    res.end(String(e));
-    return true;
+    return fail(res, e);
   }
   res.setHeader('content-type', 'application/json');
   res.end(JSON.stringify(body));
   return true;
+}
+
+/**
+ * The monitor API as one connect middleware. A request the API does not own falls through to `next`;
+ * one whose handler throws or rejects answers 500 here rather than going unhandled, which would end
+ * the process and take the watcher, the tunnels and the board loop with it.
+ */
+export function apiMiddleware(req: IncomingMessage, res: ServerResponse, next: () => void): void {
+  void handle(req, res)
+    .then((handled) => handled || next())
+    .catch((e) => fail(res, e));
 }
 
 /** Vite plugin: serves the read-only monitor API from the same process as the UI (dev and preview). */
@@ -129,9 +156,7 @@ export function monitorApi(): Plugin {
     http?.on('close', stop);
     process.once('exit', stop);
     server.middlewares.use(guard);
-    server.middlewares.use((req, res, next) => {
-      void handle(req, res).then((handled) => handled || next());
-    });
+    server.middlewares.use(apiMiddleware);
   };
   return {
     name: 'sloth-api',

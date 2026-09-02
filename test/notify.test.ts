@@ -93,6 +93,28 @@ describe("boardEvents: the rest of a card's life", () => {
     expect(posted).toHaveLength(1);
   });
 
+  it('says nothing when a passed card is filed to Done with its label still on', async () => {
+    const passed = [card(2, COLUMNS.approved.name, { labels: ['Fable: approved'] })];
+    await boardEvents(passed);
+    posted.length = 0;
+    // Trigger 6 files the merged card away; the label is still there, so its review did not fail.
+    fs.mkdirSync(statePath('finished'), { recursive: true });
+    fs.writeFileSync(statePath('finished', '2'), '');
+    await boardEvents([card(2, COLUMNS.done.name, { closed: true, labels: ['Fable: approved'] })]);
+    expect(events()).toEqual(['merged #2']);
+    expect(exists(statePath('notified', 'finalPassed', '2'))).toBe(false);
+  });
+
+  it('raises finalFailed for someone who subscribed to it but not to finalPassed', async () => {
+    configure({ helpWebhook: 'https://hooks.example.com/x', webhookEvents: ['finalFailed'] });
+    // The pass is not announced, but it is still recorded — otherwise its going could never be noticed.
+    await boardEvents([card(2, COLUMNS.approved.name, { labels: ['Fable: approved'] })]);
+    expect(posted).toHaveLength(0);
+    expect(exists(statePath('notified', 'finalPassed', '2'))).toBe(true);
+    await boardEvents([card(2, COLUMNS.inProgress.name)]);
+    expect(events()).toEqual(['finalFailed #2']);
+  });
+
   it('keeps the needs-help markers apart from the per-event directories', async () => {
     await boardEvents([card(1, COLUMNS.needsHelp.name), card(5, COLUMNS.codeReview.name)]);
     expect(fs.readdirSync(statePath('notified')).sort()).toEqual(['1', 'codeReview']);
