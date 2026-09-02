@@ -89,7 +89,8 @@ needs-help notifications carry on) and survives a restart.
   memory in seconds. Priority is the card's column — QA highest, Code Review next, In Progress and the
   rest under them — then, within a column, the card's `priorityField` value, and among equals the newest run
   goes first. Its budget clock stands still meanwhile. Not on Windows, which has no SIGSTOP. A session past
-  `budgetMinutes + 5` is killed, cleaned up, and its card parked; **stop** in a live session's header
+  `budgetMinutes + 5` — counted from the moment Sloth started it, not from the step it says it is on,
+  which a session rewrites every few minutes — is killed, cleaned up, and its card parked; **stop** in a live session's header
   does the same on demand. A review that is stopped or killed this way is not repeated for that PR head —
   nothing would ever review it again, so the issue behind the PR is parked rather than left in Code Review
   with no verdict and nobody on it. **End** on a parked

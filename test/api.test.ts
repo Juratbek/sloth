@@ -2,7 +2,8 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiMiddleware } from '../server/api';
-import { configure, wipe } from './harness';
+import { stopLoop } from '../server/runner/loop';
+import { baseConfig, configure, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
@@ -39,6 +40,23 @@ beforeEach(() => {
 /** Waits a macrotask past the response, so a rejection nobody caught has been reported by then. */
 const settle = () => new Promise((r) => setImmediate(r));
 
+/** One POST whose body is written in two pieces, so the server sees two chunks and not one. */
+function postInTwoWrites(target: string, first: Buffer, second: Buffer): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      { host: '127.0.0.1', port: (server.address() as AddressInfo).port, path: target, method: 'POST', headers: { 'content-type': 'application/json' } },
+      (res) => {
+        let out = '';
+        res.on('data', (c) => (out += c));
+        res.on('end', () => resolve(JSON.parse(out)));
+      },
+    );
+    req.on('error', reject);
+    req.write(first);
+    setTimeout(() => req.end(second), 10);
+  });
+}
+
 describe('the API middleware', () => {
   it('answers 500 for a body over the 1 MiB cap instead of letting the rejection end the process', async () => {
     const res = await fetch(`${base}/api/stack/install`, {
@@ -71,6 +89,33 @@ describe('the API middleware', () => {
     expect(rejections).toEqual([]);
     // Still serving: the next request is answered as usual.
     expect((await fetch(`${base}/api/service`)).status).toBe(200);
+  });
+
+  it('reads a body whose characters are split across chunks without mangling them', async () => {
+    // The two halves of an `é` arrive in separate chunks. Each chunk used to be decoded on its own, so
+    // whichever character straddled the boundary came out as U+FFFD — an accented project title, say.
+    const base_ = baseConfig();
+    const title = 'Cœur & Café';
+    const body = Buffer.from(JSON.stringify({ ...base_, project: { ...(base_.project as Record<string, unknown>), title } }));
+    const at = body.indexOf(Buffer.from('é')) + 1;
+    try {
+      const saved = (await postInTwoWrites('/api/setup/config', body.subarray(0, at), body.subarray(at))) as {
+        config?: { project?: { title?: string } };
+      };
+      expect(saved.config?.project?.title).toBe(title);
+    } finally {
+      // Saving the wizard arms the watcher's timers; this test wanted the parsing, not the watching.
+      stopLoop();
+    }
+  });
+
+  it('clamps the usage window at both ends, so a negative one is a window and not a 500', async () => {
+    for (const days of ['-5', '-999999999999', 'nonsense', '0']) {
+      const res = await fetch(`${base}/api/usage?days=${days}`);
+      expect(res.status).toBe(200);
+      const series = (await res.json()) as { from: string; to: string };
+      expect(Date.parse(series.from)).toBeLessThan(Date.parse(series.to));
+    }
   });
 
   it('passes a request the API does not own to the next middleware', async () => {

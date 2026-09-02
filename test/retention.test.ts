@@ -80,6 +80,18 @@ describe('prune', () => {
     expect(called(/worktree remove/)).toHaveLength(0);
   });
 
+  it('keeps a run parked in needs-help, however long it has waited for its answer', async () => {
+    // The answer comes when the human gets to it — a week later is a normal week. Trigger 6 replies out
+    // of this directory, so pruning it takes the state, inbox and exits the reply is written from.
+    age(makeSession('issue', 4, { blocked: '1', 'state.json': { state: 'waiting' }, 'run.log': 'parked' }), 40);
+    age(makeSession('issue', 5, { 'state.json': { state: 'waiting' }, 'run.log': 'not parked' }), 40);
+
+    await prune();
+
+    expect(exists(sessionDir('issue', 4))).toBe(true);
+    expect(exists(sessionDir('issue', 5))).toBe(false);
+  });
+
   it('deletes the transcript of a pruned run and of a pruned status reply, and keeps the others', async () => {
     const t = cfg().transcriptsDir;
     fs.mkdirSync(path.join(t, 'aaa', 'subagents'), { recursive: true });

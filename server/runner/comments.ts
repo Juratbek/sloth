@@ -33,7 +33,9 @@ interface Thread {
 async function mentioned(since: string): Promise<{ number: number; isPr: boolean }[]> {
   const c = cfg();
   const q = `repo:${c.repo} "${c.mention}" in:comments updated:>=${since}`;
-  const r = await gh(['api', '-X', 'GET', 'search/issues', '-f', `q=${q}`, '--jq', '.items[] | "\\(.number) \\(.pull_request != null)"']);
+  // A page is 30 by default and the search stops there: a busy hour would leave the rest of the
+  // mentions unread and unmarked, so they would never be answered at all. 100 a page, every page.
+  const r = await gh(['api', '-X', 'GET', 'search/issues', '-f', `q=${q}`, '-F', 'per_page=100', '--paginate', '--jq', '.items[] | "\\(.number) \\(.pull_request != null)"']);
   if (!r.ok) {
     log(`comment search failed: ${r.err.split('\n')[0]}`);
     return [];

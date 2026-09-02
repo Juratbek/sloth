@@ -53,6 +53,19 @@ async function readMachine(): Promise<void> {
   pressure();
 }
 
+/**
+ * Runs `fn` between ticks: it waits for the tick in flight and the next tick waits for it. The wizard
+ * saves through here. A tick reads `cfg()` lazily at every step, so a config swapped out underneath one
+ * makes it straddle two: the old board's item ids written with the new board's field ids, and the
+ * snapshot `reloadConfig` just cleared repopulated with cards from a board Sloth no longer watches.
+ */
+export function betweenTicks<T>(fn: () => T | Promise<T>): Promise<T> {
+  const queued = chain.then(fn);
+  // The chain must survive a failing `fn`, or every tick after it is rejected too.
+  chain = queued.catch(() => undefined);
+  return queued;
+}
+
 /** One pass. Ticks never overlap: every caller is queued behind the one in flight. */
 export function tick(options: TickOptions = { board: true, comments: true }): Promise<void> {
   const queued = chain.then(() => runTick(options)).catch((e) => log(`tick failed: ${e}`));

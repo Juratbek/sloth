@@ -105,8 +105,15 @@ function webhookEvents(v: unknown, fallback: WebhookEvent[]): WebhookEvent[] {
   return [...new Set(v.map(String).filter((e): e is WebhookEvent => known.includes(e)))];
 }
 
-const argv = (v: unknown, fallback: string[]): string[] =>
-  Array.isArray(v) && v.length ? v.map(String).filter((a) => a.trim()) : fallback;
+/**
+ * A command line from the config file. Blank entries are dropped — and a list that is nothing but blanks
+ * is no command line at all, so it falls back like an absent one: every consumer reads `[cmd, ...args]`
+ * and an empty list gives them `cmd === undefined`, which crashed the tunnel at boot.
+ */
+const argv = (v: unknown, fallback: string[]): string[] => {
+  const list = Array.isArray(v) ? v.map(String).filter((a) => a.trim()) : [];
+  return list.length ? list : fallback;
+};
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const BRANCH_RE = /^[\w.\/-]+$/;

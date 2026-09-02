@@ -12,7 +12,7 @@ import { cleanup, cleanupRun, keepWarm } from './cleanup';
 import { exitLine, exitReport, exitsOf, forgetExits, recordExit } from './exits';
 import { previewLink } from './preview';
 import { forgetPause, pausedSeconds, resumeRun } from './pressure';
-import { approvedDir, counter, dirAlive, dirOf, isBlocked, issueAlive, issueDir, pidAlive, pidOf, runDirs, startedAt, stateOf, triesOn } from './session-dirs';
+import { approvedDir, counter, dirAlive, dirOf, isBlocked, issueAlive, issueDir, launchedAt, pidAlive, pidOf, runDirs, stateOf, triesOn } from './session-dirs';
 import type { Kind } from './session-dirs';
 import { launch, launchApproved } from './spawn';
 
@@ -190,7 +190,7 @@ export async function reap(): Promise<void> {
     }
     const budget = (kind === 'qa' ? cfg().qa.budgetMinutes : cfg().budgetMinutes) * 60;
     // The time a run spent paused for the machine is not its own: the budget clock stands still meanwhile.
-    if ((stateOf(dir).state ?? 'working') !== 'working' || nowSec() - startedAt(dir) - pausedSeconds(dir) <= budget + KILL_GRACE) continue;
+    if ((stateOf(dir).state ?? 'working') !== 'working' || nowSec() - launchedAt(dir) - pausedSeconds(dir) <= budget + KILL_GRACE) continue;
     const stopped = await stop(kind, target, 'hung past the budget', 'the run for this issue hung past its time budget and was stopped by Sloth.');
     // A hang is not a verdict: the head's marker goes so the sweep tests the card again, `retries` allowing.
     if (stopped && kind === 'qa' && !isDry()) {

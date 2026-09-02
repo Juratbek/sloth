@@ -66,11 +66,12 @@ export async function cleanupRun(kind: Kind, target: number, tainted = false): P
       }
       remove(file);
     }
-    const db = readFile(path.join(dir, 'demo.db'))?.trim();
-    if (db) {
-      await run('dropdb', ['--if-exists', db], 60_000);
-      remove(path.join(dir, 'demo.db'));
-    }
+    // One name per line, like the pid files beside it: a project skill that seeds two databases writes
+    // two. The whole file used to be handed to `dropdb` as a single name, so a run with two dropped
+    // neither and leaked both.
+    const dbs = (readFile(path.join(dir, 'demo.db')) ?? '').split('\n').map((line) => line.trim()).filter(Boolean);
+    for (const db of dbs) await run('dropdb', ['--if-exists', db], 60_000);
+    if (dbs.length) remove(path.join(dir, 'demo.db'));
   }
   // A cleaned-up run has nothing left to show.
   remove(path.join(dir, 'preview.json'));

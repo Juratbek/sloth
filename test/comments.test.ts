@@ -36,6 +36,15 @@ describe('comments (trigger 3)', () => {
     expect(read(file)).toBe('author: carol\nrole: tester\ncomment: 100\n\nHey @sloth, is it done?\n');
     expect(exists(statePath('seen', '100'))).toBe(true);
   });
+  it('asks for every page of the mention search, not the first thirty results', async () => {
+    // A page is 30 by default and the search stopped there: on a busy hour the rest of the mentions were
+    // never read and never marked seen, so they were never answered either.
+    thread(4, false, [{ id: 100, login: 'carol', body: '@sloth hello' }]);
+    await comments();
+    const search = called(/api -X GET search\/issues/)[0].line;
+    expect(search).toContain('--paginate');
+    expect(search).toMatch(/per_page=100/);
+  });
   it("starts a session on a developer's order when none is running", async () => {
     thread(4, false, [{ id: 101, login: 'bob', body: '@sloth address the review comments' }]);
     await comments();

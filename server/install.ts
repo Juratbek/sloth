@@ -22,7 +22,11 @@ export function which(cmd: string): string | undefined {
   if (cmd.includes('/')) return fs.existsSync(cmd) ? cmd : undefined;
   // Windows executables carry an extension (PATHEXT); `cmd` arrives without one.
   const exts = process.platform === 'win32' ? ['', ...(process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD').split(';')] : [''];
-  for (const dir of [...(process.env.PATH ?? '').split(path.delimiter), ...EXTRA_DIRS]) {
+  // An empty PATH entry — a trailing colon, which is common — means the cwd to a shell. Here it would
+  // make `path.join('', cmd)` a bare name that resolves against Sloth's own checkout, so a file called
+  // `git`, `install` or `sudo` committed to the project would be run as that tool, `sudo.ts` included.
+  const dirs = (process.env.PATH ?? '').split(path.delimiter).filter(Boolean);
+  for (const dir of [...dirs, ...EXTRA_DIRS]) {
     for (const ext of exts) {
       const file = path.join(dir, cmd + ext);
       try {

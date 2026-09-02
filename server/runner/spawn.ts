@@ -81,6 +81,9 @@ export function start(bookDir: string, sessionDir: string, prompt: string, targe
   );
   fs.closeSync(fd);
   if (child.pid) write(path.join(bookDir, 'pid'), String(child.pid));
+  // When this run began, in Sloth's hand. The session writes its own `state.json` and rewrites `since`
+  // at every step; this it never touches, so the time budget has something it cannot move (`launchedAt`).
+  write(path.join(bookDir, 'started'), String(Math.floor(Date.now() / 1000)));
   child.unref();
 }
 

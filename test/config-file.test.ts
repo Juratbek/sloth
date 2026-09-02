@@ -54,6 +54,13 @@ describe('normalizeConfig', () => {
     expect(() => normalizeConfig(baseConfig({ helpWebhook: 'hooks.slack.com/x' }))).toThrow(/helpWebhook/);
     expect(normalizeConfig(baseConfig({ publicUrl: 'https://sloth.example.com/' })).publicUrl).toBe('https://sloth.example.com');
   });
+  it('falls back to the default tunnel when the configured one is nothing but blanks', () => {
+    // The blanks are dropped, and a list with nothing left in it is no command line: every consumer
+    // reads `[cmd, ...args]`, and `which(undefined)` threw out of the server's `listening` handler.
+    expect(normalizeConfig(baseConfig({ tunnel: ['  ', ''] })).tunnel[0]).toBe('cloudflared');
+    expect(normalizeConfig(baseConfig({ tunnel: [] })).tunnel[0]).toBe('cloudflared');
+    expect(normalizeConfig(baseConfig({ tunnel: ['ngrok', ' ', 'http'] })).tunnel).toEqual(['ngrok', 'http']);
+  });
   it('clamps numbers to their minimums', () => {
     const c = normalizeConfig(baseConfig({ boardSeconds: 5, maxRetries: 0, previewHours: -1 }));
     expect(c.boardSeconds).toBe(300);

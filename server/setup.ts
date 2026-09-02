@@ -6,7 +6,7 @@ import { expandPath, normalizeConfig, readConfigFile, writeConfigFile } from './
 import { watchAll } from './events';
 import { ensureColumns } from './runner/columns';
 import { startTunnel } from './remote';
-import { startLoop } from './runner/loop';
+import { betweenTicks, startLoop } from './runner/loop';
 import { applyAutostart } from './service';
 import type { ColumnRef, ColumnRole, FieldOption, SetupCheck, SetupEnv, SetupFields, SetupProject } from './config-types';
 
@@ -138,11 +138,15 @@ export async function handleSetup(pathname: string, method: string, body: unknow
   if (pathname === '/api/setup/config' && method === 'POST') {
     const was = readConfigFile(CONFIG_PATH)?.autostart ?? false;
     const config = normalizeConfig(await withColumns(body));
-    writeConfigFile(CONFIG_PATH, config);
-    reloadConfig();
-    watchAll();
-    startLoop();
-    startTunnel();
+    // The new config lands between two ticks, never inside one — see `betweenTicks`. The board tick the
+    // save waits for is the old board's last, and the timers this arms are the new board's first.
+    await betweenTicks(() => {
+      writeConfigFile(CONFIG_PATH, config);
+      reloadConfig();
+      watchAll();
+      startLoop();
+      startTunnel();
+    });
     // The launch agent is named after the repo and points at this checkout, so it is written from here.
     const serviceError = config.autostart === was ? undefined : await applyAutostart(config.autostart);
     return { ok: true, path: CONFIG_PATH, config, serviceError };

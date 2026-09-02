@@ -85,7 +85,9 @@ function resolve(): ResolvedConfig {
     // Claude Code stores transcripts under ~/.claude/projects/<cwd with every non-alphanumeric char replaced by '-'>
     transcriptsDir: path.join(home, '.claude/projects', runnerRoot.replace(/[^a-zA-Z0-9]/g, '-')),
     commands: COMMANDS,
-    port: Number(envValue('SLOTH_PORT') ?? 4400),
+    // `??` lets `SLOTH_PORT=` through as an empty string, which `Number` reads as 0 and Vite binds a
+    // random port for — the QR code, the launch agent and the docs then all name a port nobody is on.
+    port: Number(envValue('SLOTH_PORT')?.trim() || 4400),
     pickupColumn: c.statusField.columns.pickup.name,
   };
 }

@@ -6,7 +6,7 @@ import { run } from './gh';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
 import { previewing, pruneCaches, trimRunLogs } from './caps';
 import { statePath } from './markers';
-import { dirAlive, dirOf, runDirs, type Kind } from './session-dirs';
+import { dirAlive, dirOf, isBlocked, runDirs, type Kind } from './session-dirs';
 import { slotInUse } from './slots';
 import { killWarm } from './warm';
 
@@ -48,8 +48,10 @@ function removeTranscript(dir: string): void {
 
 function pruneSessions(cutoff: number): void {
   for (const { name, kind, target, dir } of runDirs()) {
-    // A live run, or one whose app is still up behind a preview link, is not finished.
-    if (dirAlive(dir) || (kind === 'issue' && previewing(target))) continue;
+    // A live run, one whose app is still up behind a preview link, or one parked in needs-help waiting
+    // for a human's answer, is not finished — the answer arrives whenever it arrives, and the reply
+    // (trigger 6) reads the state, inbox and exits this directory holds.
+    if (dirAlive(dir) || isBlocked(dir) || (kind === 'issue' && previewing(target))) continue;
     if (newest(dir, path.join(dir, 'state.json'), path.join(dir, 'run.log')) > cutoff) continue;
     if (isDry()) {
       log(`dry-run: would delete the session directory of ${name}`);

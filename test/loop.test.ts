@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { startLoop, stopLoop, tick } from '../server/runner/loop';
+import { loopStatus, startLoop, stopLoop, tick } from '../server/runner/loop';
+import { handleSetup } from '../server/setup';
+import { cfg } from '../server/config';
 import { snapshot } from '../server/runner/board-snapshot';
 import { machineLoad, setReaders } from '../server/runner/machine';
 import { setDry } from '../server/runner/log';
 import { onGh, resetGh } from './gh-mock';
 import { resetSpawn } from './child-process-mock';
-import { calmMachine, configure, readLog, wipe } from './harness';
+import { baseConfig, calmMachine, configure, readLog, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
@@ -33,6 +35,31 @@ beforeEach(() => {
 });
 
 describe('a board tick', () => {
+  it('holds a config save until the tick in flight is over, so no tick straddles two configs', async () => {
+    // A tick reads `cfg()` lazily at every step. Saving the wizard underneath one used to write the old
+    // board's item ids with the new board's field ids, and repopulate — with cards from a board Sloth no
+    // longer watches — the snapshot `reloadConfig` had just cleared. Here the tick finishes on the old
+    // config, and the save that follows leaves the snapshot empty for the new board's first tick to fill.
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    onGh(/items\(first: 100/, async () => {
+      await held;
+      return board([5]);
+    });
+    const ticking = tick({ board: true });
+    await new Promise((r) => setImmediate(r));
+    expect(loopStatus().ticking).toBe(true);
+    const saving = handleSetup('/api/setup/config', 'POST', baseConfig({ repo: 'acme/other' }));
+    release();
+    await Promise.all([ticking, saving]);
+    try {
+      expect(cfg().repo).toBe('acme/other');
+      expect(snapshot()).toBeUndefined();
+    } finally {
+      stopLoop();
+    }
+  });
+
   it('keeps the board it read, so the home panel needs no fetch of its own', async () => {
     onGh(/items\(first: 100/, board([5, 6]));
     await tick({ board: true });
