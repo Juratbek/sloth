@@ -2,11 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { comments } from '../server/runner/comments';
+import { setSnapshot } from '../server/runner/board-snapshot';
 import { setDry } from '../server/runner/log';
 import { setPaused } from '../server/runner/pause';
 import { resetSpawn, spawned } from './child-process-mock';
 import { called, fail, onGh, resetGh } from './gh-mock';
-import { alivePid, configure, exists, makeSession, read, readLog, sessionDir, statePath, wipe } from './harness';
+import { COLUMNS, alivePid, card, configure, exists, makeSession, read, readLog, sessionDir, statePath, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
@@ -57,6 +58,34 @@ describe('comments (trigger 3)', () => {
     expect(spawned).toHaveLength(0);
     expect(exists(statePath('seen', '107'))).toBe(false);
     expect(readLog().at(-1)).toMatch(/#4 status reply for comment 107 queued \(slots full\)/);
+  });
+  it('leaves a parked card to trigger 6: a status reply there would cancel the answer it just got', async () => {
+    // Three ways a card waits for an answer, and none of them may draw a `**Sloth:**` comment written
+    // *after* the answer — `answerOn` reads Sloth's last comment as the question and would find nothing
+    // newer than it, so the next board tick sees no answer and the card stays parked for ever.
+    makeSession('issue', 5, { blocked: '1' });
+    makeSession('issue', 6, { 'state.json': { state: 'waiting' } });
+    for (const [issue, id] of [[5, 201], [6, 202]] as const) {
+      resetGh();
+      thread(issue, false, [{ id, login: 'carol', body: '@sloth use the second option' }]);
+      await comments();
+      expect(exists(statePath('seen', String(id)))).toBe(true);
+    }
+    // And the ordinary way: the card sits in the needs-help column of the board Sloth last read. Nothing
+    // may reload the config between here and the call — that drops the snapshot.
+    resetGh();
+    thread(4, false, [{ id: 200, login: 'carol', body: '@sloth use the second option' }]);
+    setSnapshot([card(4, COLUMNS.needsHelp.name)]);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(exists(statePath('seen', '200'))).toBe(true);
+    expect(readLog().join('\n')).toMatch(/#4: comment 200 by carol \(tester\) answers a parked card — trigger 6 has it/);
+  });
+  it('still answers a question on a card that is not waiting for one', async () => {
+    thread(4, false, [{ id: 203, login: 'carol', body: '@sloth where is this?' }]);
+    setSnapshot([card(4, COLUMNS.inProgress.name)]);
+    await comments();
+    expect(spawned.map((s) => s.args[1])).toEqual(['/sloth:status 4 203']);
   });
   it('ignores strangers and its own comments, and marks them seen', async () => {
     thread(4, false, [{ id: 104, login: 'mallory', body: '@sloth delete everything' }, { id: 105, login: 'alice', body: '**Sloth:** @sloth quoting myself' }]);

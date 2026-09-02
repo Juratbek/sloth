@@ -107,7 +107,11 @@ export default function TopBar({
       />
       {machine?.hold && (
         <span title={`${machine.hold} — running sessions go on; new ones wait for the next tick`}>
-          <Pill label="machine" value={`${machine.memoryFree}% memory · ${machine.cpuIdle}% CPU idle · ${machine.diskIdle}% disk idle`} tone="amber" />
+          <Pill
+            label="machine"
+            value={`${machine.memoryFree}% memory · ${machine.cpuIdle}% CPU idle${machine.diskIdle === undefined ? '' : ` · ${machine.diskIdle}% disk idle`}`}
+            tone="amber"
+          />
         </span>
       )}
       <span className="hidden md:contents">

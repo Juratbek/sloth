@@ -58,6 +58,19 @@ describe('the machine limit', () => {
     await sampleMachine();
     expect(machineLoad()).toMatchObject({ diskIdle: 100 });
   });
+  it('holds nothing on a platform whose disk cannot be measured, and reports no figure for it', async () => {
+    // macOS: `ioreg` only offers the summed latency of every I/O, which outruns the clock as soon as
+    // requests overlap — a write burst read as 630% busy, so 0% idle, and held every launch.
+    setReaders({
+      memoryFree: () => 40,
+      cpuTimes: () => ({ idle: 0, total: 0 }),
+      diskTimes: () => ({ busy: {}, total: performance.now(), unavailable: true }),
+      windowMs: 0,
+    });
+    await sampleMachine();
+    expect(machineHold()).toBeUndefined();
+    expect(machineLoad()?.diskIdle).toBeUndefined();
+  });
   it('a 0 turns a check off', async () => {
     configure({ minFreeMemory: 0, minIdleCpu: 0, minIdleDisk: 0 });
     machine(1, 0, 0);

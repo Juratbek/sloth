@@ -45,7 +45,9 @@ needs-help notifications carry on) and survives a restart.
   any column — no pickup, no relaunch, no fixing its checks; take it off and the card is Sloth's again.
   Sloth creates the label in the repo when it starts. Every row above but 4 reads "an issue without
   `Sloth: skip`". The one exception is the review in Code Review (trigger 4): a skipped card is reviewed
-  too, and a rejection sends it back to In Progress still labelled, so the owner keeps it. Assignees mean
+  too, and a rejection sends it back to In Progress still labelled, so the owner keeps it. Its *pass* goes
+  no further — a skipped card is not handed over (trigger 5) and its PR is never auto-merged (trigger 8),
+  whatever the verdict said. Assignees mean
   nothing to Sloth — an assigned card is worked like any other — and Sloth never assigns anyone or requests
   a reviewer.
 - **Priority**: the watched column is worked in the order of the board's `Priority` field — its options top
@@ -76,7 +78,10 @@ needs-help notifications carry on) and survives a restart.
   it counts, and it waits its turn when there is no slot — the `@sloth` comment is simply answered on a
   later tick. The machine sets a cap of its
   own: with less than `minFreeMemory` percent of the memory available, `minIdleCpu` percent of the
-  CPU idle or `minIdleDisk` percent of the busiest disk idle, nothing new starts either — and when the machine
+  CPU idle or `minIdleDisk` percent of the busiest disk idle, nothing new starts either. The disk part is
+  Linux and Windows only: macOS publishes the summed *latency* of every I/O and no busy time, a figure that
+  outruns the clock as soon as requests overlap, so the disk hold does not apply there rather than holding
+  every launch for as long as anything is writing. When the machine
   *stays* there with sessions running (a minute of readings, two at least), the lowest-priority run is **paused**
   (SIGSTOP to its processes and the servers it started), and resumed once the readings have shown room for a
   minute again, one run per reading either way. The machine is read every `machineSeconds` and not only on a tick: a board
@@ -179,7 +184,7 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `roles` | `{admin, developers, testers}` | The team: the one login that orders anything, the logins that order within an issue, the logins that answer and ask. A config from before roles keeps its `orderLogin` as the admin |
 | `mention` / `botPrefix` | `@sloth` / `**Sloth:**` | The keyword that wakes Sloth; the first line of every comment it writes |
 | `maxActive` / `maxAlive` | `2` / `3` | Session caps — `maxActive` is also the size of the worktree pool |
-| `minFreeMemory` / `minIdleCpu` / `minIdleDisk` | `10` / `5` / `10` | No new session while less of the machine's memory is available / of its CPU is idle / of its busiest disk is idle (percent, the last one being 100 minus Task Manager's *Disk*), and the lowest-priority running session is paused while it stays that way; `0` turns a check off |
+| `minFreeMemory` / `minIdleCpu` / `minIdleDisk` | `10` / `5` / `10` | No new session while less of the machine's memory is available / of its CPU is idle / of its busiest disk is idle (percent, the last one being 100 minus Task Manager's *Disk*), and the lowest-priority running session is paused while it stays that way; `0` turns a check off. `minIdleDisk` does nothing on macOS, which exposes no busy-time counter to read it from — see *Machine limits* |
 | `budgetMinutes` / `waitHours` | `60` / `2` | A session's time budget; how long a parked session waits for an answer |
 | `reviewRounds` / `maxRetries` | `4` / `2` | Reviewer-agent rounds before asking for help; trigger-2 relaunches before parking. `maxRetries` also caps the runs of one head that end without a verdict — a QA test (trigger 9) and a review (trigger 4) alike; past it the card goes to a human instead of being tried again |
 | `boardSeconds` / `commentSeconds` | `300` / `120` | Poll intervals |

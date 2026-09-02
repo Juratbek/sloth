@@ -374,6 +374,13 @@ describe('handover (trigger 5)', () => {
     expect(called(/issue comment/)).toHaveLength(0);
     expect(fs.existsSync(statePath('handed'))).toBe(false);
   });
+  it('leaves a Sloth: skip card alone — a human owns it and does not need telling', async () => {
+    passed(10, 'aaa');
+    wired({ 1: [{ pr: 10, sha: 'aaa', head: 'x' }] });
+    await handover([card(1, 'Approved', { labels: ['Fable: approved', 'Sloth: skip'] })]);
+    expect(called(/issue comment/)).toHaveLength(0);
+    expect(exists(statePath('handed', '10-aaa'))).toBe(false);
+  });
   it('only logs in a dry run, and does nothing without an Approved column', async () => {
     passed(10, 'aaa');
     wired({ 1: [{ pr: 10, sha: 'aaa', head: 'x' }] });
@@ -402,6 +409,18 @@ describe('reap', () => {
     expect(Number(read(statePath('paused_until')))).toBeGreaterThan(Date.now() / 1000 + 1700);
     // The review finished before it died, so its head stays reviewed.
     expect(exists(statePath('reviewed', '5-abc'))).toBe(true);
+  });
+  it('clears the retry count of a run that reached done, and keeps a working or waiting one’s', async () => {
+    // `retries` counts relaunches that finished nothing. A card that comes back from a failing review is
+    // relaunched and counted too, so three honest round-trips used to park it saying the run "stopped
+    // without finishing 2 times in a row" — with no record of any run to show for it.
+    makeSession('issue', 1, { pid: '2000000000', retries: '2', 'state.json': { state: 'done' }, 'run.log': 'PR pushed\n' });
+    makeSession('issue', 2, { pid: '2000000000', retries: '2', 'state.json': { state: 'waiting' }, 'run.log': 'asked\n' });
+    makeSession('issue', 3, { pid: '2000000000', retries: '2', 'state.json': { state: 'working' }, 'run.log': 'died\n' });
+    await reap();
+    expect(exists(sessionDir('issue', 1), 'retries')).toBe(false);
+    expect(read(path.join(sessionDir('issue', 2), 'retries'))).toBe('2');
+    expect(read(path.join(sessionDir('issue', 3), 'retries'))).toBe('2');
   });
   it('records how a working issue run ended, from its state and its last output', async () => {
     const log = '=== sloth run 2026-08-29T10:00:00.000Z · opus ===\nfirst run: usage limit reached\n=== sloth run 2026-08-29T11:00:00.000Z · opus ===\nOut of time. Left: the UI.\n';

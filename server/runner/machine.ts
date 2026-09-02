@@ -24,6 +24,8 @@ export interface Readers {
 export interface DiskTimes {
   busy: Record<string, number>;
   total: number;
+  /** This platform has no busy-time counter to read, so the disk idle is not a number anyone can compute. */
+  unavailable?: boolean;
 }
 
 /**
@@ -64,12 +66,19 @@ const ms = (n: number) => (Number.isFinite(n) ? n : 0);
 
 /**
  * How long each whole disk has been busy, as the OS counts it: `io_ticks` in `/proc/diskstats` on Linux,
- * the block-storage drivers' read and write time on macOS (`ioreg`), the perf counters' busy time on
- * Windows — the same figure Task Manager's *Disk* column comes from. Nothing anywhere else, which reads
- * as an idle disk.
+ * the perf counters' busy time on Windows — the same figure Task Manager's *Disk* column comes from.
+ * Nothing anywhere else, which reads as an idle disk.
+ *
+ * macOS is the exception, and answers `unavailable`. The only figure it offers is `ioreg`'s
+ * `Total Time (Read/Write)`, which is the summed *latency* of every I/O the driver has served, not the
+ * time it spent busy: with requests in flight together it grows faster than the clock does. Measured on
+ * a Mac writing 1.5 GB, the delta was 5726 ms over a 908 ms window — 630% "busy", clamped to 0% idle,
+ * and every launch held for as long as anything was writing. There is no busy-time counter behind it to
+ * use instead, so the disk hold does not apply on macOS rather than applying wrongly.
  */
 export function diskTimes(): DiskTimes {
   const busy: Record<string, number> = {};
+  if (process.platform === 'darwin') return { busy, total: performance.now(), unavailable: true };
   try {
     if (process.platform === 'linux') {
       // major minor name reads … writes … ios_in_progress io_ticks …; whole disks only, not partitions or loops.
@@ -78,13 +87,6 @@ export function diskTimes(): DiskTimes {
         const name = f[2];
         if (!name || f.length < 13 || !/^(sd[a-z]+|hd[a-z]+|vd[a-z]+|xvd[a-z]+|nvme\d+n\d+|mmcblk\d+)$/.test(name)) continue;
         busy[name] = ms(Number(f[12]));
-      }
-    } else if (process.platform === 'darwin') {
-      const out = execFileSync('ioreg', ['-r', '-c', 'IOBlockStorageDriver', '-w0'], { encoding: 'utf8', timeout: 2000 });
-      let n = 0;
-      for (const [, stats] of out.matchAll(/"Statistics" = \{([^}]*)\}/g)) {
-        const ns = (key: string) => Number(new RegExp(`"Total Time \\(${key}\\)"=(\\d+)`).exec(stats)?.[1] ?? 0);
-        busy[`disk${n++}`] = ms((ns('Read') + ns('Write')) / 1e6);
       }
     } else if (process.platform === 'win32') {
       // Raw counters: PercentIdleTime and the timestamp are both in 100ns ticks, so busy = timestamp - idle.
@@ -121,8 +123,12 @@ export function setReaders(r?: Readers): void {
 let previous: { cpu: { idle: number; total: number }; disk: DiskTimes } | undefined;
 let last: MachineLoad | undefined;
 
-/** The idle percent of the busiest disk over the window between two readings; 100 with no disk at all. */
-function diskIdlePercent(before: DiskTimes, now: DiskTimes): number {
+/**
+ * The idle percent of the busiest disk over the window between two readings; 100 with no disk at all,
+ * and undefined where the platform has no busy-time counter to read (macOS).
+ */
+function diskIdlePercent(before: DiskTimes, now: DiskTimes): number | undefined {
+  if (before.unavailable || now.unavailable) return undefined;
   const elapsed = now.total - before.total;
   if (elapsed <= 0) return 100;
   let busiest = 0;
@@ -157,7 +163,8 @@ export async function sampleMachine(): Promise<MachineLoad> {
   const holds: string[] = [];
   if (minFreeMemory > 0 && memoryFree < minFreeMemory) holds.push(`${memoryFree}% memory free, under ${minFreeMemory}%`);
   if (minIdleCpu > 0 && cpuIdle < minIdleCpu) holds.push(`${cpuIdle}% CPU idle, under ${minIdleCpu}%`);
-  if (minIdleDisk > 0 && diskIdle < minIdleDisk) holds.push(`${diskIdle}% disk idle, under ${minIdleDisk}%`);
+  // Nothing is held on a disk figure that does not exist: `minIdleDisk` simply does not apply there.
+  if (minIdleDisk > 0 && diskIdle !== undefined && diskIdle < minIdleDisk) holds.push(`${diskIdle}% disk idle, under ${minIdleDisk}%`);
   last = { memoryFree, cpuIdle, diskIdle, at: Date.now(), hold: holds.length ? `machine busy: ${holds.join(', ')}` : undefined };
   return last;
 }

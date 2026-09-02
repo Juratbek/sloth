@@ -182,6 +182,17 @@ describe('autoMerge (trigger 8)', () => {
     expect(called(/pr merge/)).toHaveLength(1);
   });
 
+  it('never merges the PR of a Sloth: skip card, however well its review went', async () => {
+    // Trigger 4 reviews a skipped card on purpose — the column is the signal there — and a pass labels it
+    // and moves it here. Merging it would be the one place Sloth acts on a card a human took over.
+    configure({ autoMerge: 'squash' });
+    marker('approved', '28-hhh');
+    wired({ 1: [{ pr: 28, sha: 'hhh', head: 'sloth/issue-1-x', checks: 'SUCCESS' }] });
+    await autoMerge([card(1, COLUMNS.approved.name, { labels: ['Fable: approved', 'Sloth: skip'] })]);
+    expect(called(/pr merge/)).toHaveLength(0);
+    expect(exists(statePath('merged', '28-hhh'))).toBe(false);
+  });
+
   it('does nothing without a method, without the label, or without a marker for this head', async () => {
     wired({ 1: [{ pr: 21, sha: 'aaa', head: 'sloth/issue-1-x', checks: 'NONE' }] });
     await autoMerge([approvedCard(1)]);

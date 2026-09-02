@@ -1,12 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
-import { canOrder, roleOf } from '../roles';
+import { canAnswer, canOrder, roleOf } from '../roles';
 import type { Role } from '../roles';
 import { gh, graphql } from './gh';
 import { isDry, log, write } from './log';
 import { isPaused } from './pause';
-import { issueAlive, issueDir } from './session-dirs';
+import { snapshot } from './board-snapshot';
+import { isBlocked, issueAlive, issueDir, stateOf } from './session-dirs';
 import { launch, statusReply } from './spawn';
 
 const LOOKBACK = 60 * 60; // search window; the seen/ markers do the real de-duplication
@@ -115,6 +116,25 @@ async function unwiredReply(t: Thread, c: Comment): Promise<void> {
 const isOrder = (c: Comment, role: Role) => canOrder(role) && !c.body.trimEnd().endsWith('?');
 
 /**
+ * Whether this card is waiting for a human's answer: parked in the needs-help column, blocked in place
+ * where there is none, or left by a run that stopped to ask. Any of the three makes a team member's
+ * comment the answer trigger 6 relaunches on, which is what the docs promise — "on a card in *Sloth
+ * needs help*, a comment from anyone on the team is the answer the session waits for".
+ *
+ * It matters here because of what a status reply would do instead. The reply is a `**Sloth:**` comment,
+ * and `answerOn` reads Sloth's last comment as the question being asked: a reply written *after* the
+ * tester's answer cancels it, the next board tick finds nothing newer than Sloth, and the card stays
+ * parked for ever. The board is the previous tick's read, which is enough — the two markers cover a
+ * card parked since it was taken.
+ */
+function awaitingAnswer(issue: number): boolean {
+  const dir = issueDir(issue);
+  if (isBlocked(dir) || stateOf(dir).state === 'waiting') return true;
+  const column = cfg().statusField.columns.needsHelp.name;
+  return !!column && (snapshot()?.items ?? []).some((i) => i.number === issue && i.status === column);
+}
+
+/**
  * Trigger 3 — `@sloth` comments from the team, on an issue or on a PR (which counts as its issue's
  * thread; replies go where the comment was written). A live session gets the comment in its inbox;
  * otherwise an order (admin or developer) starts a session and anything else gets a status reply.
@@ -151,6 +171,10 @@ export async function comments(): Promise<void> {
         const origin = t.pr ? `PR #${t.pr} comment ${comment.id}` : `issue comment ${comment.id}`;
         const order = `Order from ${comment.login} (${role}, ${origin}): ${comment.body}`;
         if (!(await launch(t.issue, order))) continue;
+      } else if (canAnswer(role) && awaitingAnswer(t.issue)) {
+        // The comment is the answer the card is parked for; trigger 6 relaunches on it, and a status
+        // reply here would be a newer Sloth comment that cancels it.
+        log(`${where(t)}: comment ${comment.id} by ${comment.login} (${role}) answers a parked card — trigger 6 has it`);
       } else if (!statusReply(t.issue, String(comment.id), t.pr)) {
         // Left unseen when it is held, exactly like an order: the question is answered on a later tick.
         continue;
