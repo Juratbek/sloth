@@ -6,6 +6,7 @@ import { loopStatus } from './runner/loop';
 import { isPaused } from './runner/pause';
 import { previewState } from './runner/preview';
 import { pausedRun } from './runner/pressure';
+import { sampleSessions } from './runner/session-load';
 import type { Overview, RateBucket, WatcherSession, WatcherState } from './types';
 
 const read = (f: string) => {
@@ -57,7 +58,7 @@ export function listSessionDirs(): WatcherSession[] {
   } catch {
     return [];
   }
-  return names.flatMap((name): WatcherSession[] => {
+  const sessions = names.flatMap((name): WatcherSession[] => {
     const m = /^(issue|review|approved|qa)-(\d+)$/.exec(name);
     if (!m) return [];
     const d = path.join(cfg().sessionsDir, name);
@@ -97,6 +98,10 @@ export function listSessionDirs(): WatcherSession[] {
       },
     ];
   });
+  // One reading of the process table for all the live runs at once, then each takes its own tree's share.
+  const loads = sampleSessions(sessions.filter((s) => s.alive).map((s) => s.pid!));
+  for (const s of sessions) s.load = s.alive ? loads.get(s.pid!) : undefined;
+  return sessions;
 }
 
 export function watcherInfo(): Overview['watcher'] {

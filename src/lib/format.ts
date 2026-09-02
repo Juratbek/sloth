@@ -3,6 +3,17 @@ import type { MonitorConfig, SessionKind, SessionStatus, SessionSummary, Usage, 
 export const k = (n: number) =>
   n < 1000 ? String(n) : n < 1e6 ? `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k` : `${(n / 1e6).toFixed(2)}M`;
 
+/** Bytes as a monitor prints them — `640 kB`, `2.1 GB`. Binary steps, one decimal under ten. */
+export function bytes(n: number) {
+  const units = ['B', 'kB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i++;
+  }
+  return `${i > 0 && n < 10 ? n.toFixed(1) : Math.round(n)} ${units[i]}`;
+}
+
 /** `$5,627.90` — always cents, so small hourly amounts still read as money. */
 export const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
