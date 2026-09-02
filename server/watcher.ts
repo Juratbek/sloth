@@ -122,17 +122,38 @@ export async function rateLimit() {
   return rate.value;
 }
 
+/**
+ * The titles already fetched. Bounded, because Sloth is one process that runs for weeks: the map used to
+ * keep every number it was ever asked about — every card of every board poll, every PR — and nothing ever
+ * left it. The board shows a screenful, so a few hundred is far more than the UI can ask for at once, and
+ * a number evicted here costs one `gh` call the next time it is shown.
+ */
+const MAX_TITLES = 500;
 const titles = new Map<number, string>();
 const pending = new Set<number>();
+/** The numbers whose titles are held right now — for tests. */
+export const cachedTitles = () => [...titles.keys()];
+
 /** Issue / PR title, filled in asynchronously (REST, one call per number, ever). */
 export function titleFor(n: number, coreRemaining: number | undefined): string | undefined {
   const t = titles.get(n);
+  // Asked-for last, evicted last: a number the UI keeps showing stays, a one-off scrolls out.
+  if (t !== undefined) {
+    titles.delete(n);
+    titles.set(n, t);
+  }
   const repo = cfg().repo;
   if (!repo || t !== undefined || pending.has(n) || (coreRemaining ?? 0) < 200) return t;
   pending.add(n);
   void gh(['api', `repos/${repo}/issues/${n}`, '--jq', '.title'])
     .then((out) => {
-      if (out) titles.set(n, out.trim());
+      if (!out) return;
+      titles.set(n, out.trim());
+      // Oldest first out, by the Map's own insertion order.
+      for (const key of titles.keys()) {
+        if (titles.size <= MAX_TITLES) break;
+        titles.delete(key);
+      }
     })
     // Fire and forget, but never unhandled: a rejection nobody catches ends the process, and with it the
     // watcher. The number simply stays untitled and the next poll asks again.

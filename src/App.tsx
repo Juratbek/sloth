@@ -39,7 +39,7 @@ export default function App() {
     navigate(pathFor('monitor', id ?? undefined));
   };
 
-  if (local && config.isPending) return <div className="p-6 text-zinc-400">Loading…</div>;
+  if (local && config.isPending) return <div className="p-6 text-fg-muted">Loading…</div>;
   // A read that failed is not "no config yet". Both left `data` undefined, so a transient failure of
   // GET /api/setup/config showed the get-started wizard to a configured user — and Save there writes a
   // config assembled from wizard defaults over the real ~/.sloth/config.json. `useConfig` answers null,
@@ -47,8 +47,8 @@ export default function App() {
   if (local && config.isError)
     return (
       <div className="space-y-3 p-6">
-        <p className="text-red-400">Could not read the configuration: {String(config.error)}</p>
-        <p className="text-sm text-zinc-400">Sloth is not showing the get-started wizard, because that would overwrite the configuration it cannot read.</p>
+        <p className="text-danger">Could not read the configuration: {String(config.error)}</p>
+        <p className="text-sm text-fg-muted">Sloth is not showing the get-started wizard, because that would overwrite the configuration it cannot read.</p>
         <Button onClick={() => void config.refetch()}>Try again</Button>
       </div>
     );
@@ -66,8 +66,8 @@ export default function App() {
       />
     );
 
-  if (error) return <div className="p-6 text-red-400">Monitor API unreachable: {String(error)}</div>;
-  if (!data) return <div className="p-6 text-zinc-400">Loading…</div>;
+  if (error) return <div className="p-6 text-danger">Monitor API unreachable: {String(error)}</div>;
+  if (!data) return <div className="p-6 text-fg-muted">Loading…</div>;
   if (page === 'board') return <BoardPage board={data.board} onSelect={show} onClose={() => go('monitor')} />;
 
   return (

@@ -19,6 +19,11 @@ function Out({ href, className, children }: { href: string; className: string; c
  * keeps Sloth off it, the review pass, how long a parked card has been waiting. Clicking selects the
  * run; the links open GitHub or the preview. The badges only read state: unblocking is the home
  * panel's, because this view writes nothing.
+ *
+ * Under them, when there is one, the hold: the one sentence saying why nothing is happening on this
+ * card (`BoardCard.hold`). One muted line, truncated so a card stays two or three lines tall, with the
+ * whole sentence in the `title` — the answer to "why is nothing happening?" is worth a hover, not a
+ * card that grows to three times the height of its neighbours.
  */
 export default function Card({ card, role, onSelect }: { card: BoardCard; role: ColumnRole; onSelect: (id: string) => void }) {
   const step = card.kind && stepLabel(card.kind, card.step);
@@ -56,6 +61,11 @@ export default function Card({ card, role, onSelect }: { card: BoardCard; role: 
           </span>
         )}
       </div>
+      {card.hold && (
+        <div className="mt-0.5 truncate text-[10px] text-fg-faint" title={card.hold}>
+          {card.hold}
+        </div>
+      )}
       {second && (
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[10px] text-zinc-400">
           {cost && <span className="tabular-nums text-zinc-400">{cost}</span>}

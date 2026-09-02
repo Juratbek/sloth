@@ -129,6 +129,23 @@ describe('pausedUntil', () => {
     await reap();
     expect(pausedUntil()).toBe(Number(read(statePath('paused_until'))));
     expect(pausedUntil()).toBeGreaterThan(nowSec() + 29 * 60);
+    // Which signal said so is in the line: this run had only its log's prose to go on.
+    expect(readLog().join('\n')).toMatch(/issue-1 stopped on a usage limit \(matched log text\)/);
+  });
+
+  it('says when it was the transcript, not the prose, that named the limit', async () => {
+    // The structured signal: the API's own error entry at the end of the run's transcript, where the
+    // limit is a `type` and not a sentence — the phrasings the CLI prints are Anthropic's to change.
+    const id = 'sess-limit';
+    makeSession('issue', 2, { pid: '2000000000', session_id: id, 'run.log': 'the tests pass\n' });
+    fs.mkdirSync(cfg().transcriptsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(cfg().transcriptsDir, `${id}.jsonl`),
+      JSON.stringify({ type: 'assistant', isApiErrorMessage: true, message: { content: [{ type: 'text', text: 'API Error: {"type":"error","error":{"type":"rate_limit_error"}}' }] } }) + '\n',
+    );
+    await reap();
+    expect(pausedUntil()).toBeGreaterThan(nowSec() + 29 * 60);
+    expect(readLog().join('\n')).toMatch(/issue-2 stopped on a usage limit \(structured\)/);
   });
 
   it('reads zero back from an unreadable file rather than a NaN nothing compares against', () => {

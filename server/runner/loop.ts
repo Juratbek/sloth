@@ -7,7 +7,7 @@ import { setSnapshot } from './board-snapshot';
 import { refreshColumns } from './columns';
 import { comments } from './comments';
 import { autoMerge, failedChecks, finished } from './lifecycle';
-import { isDry, log, nowSec, setDry } from './log';
+import { isDry, log, nowSec, withDry } from './log';
 import { boardEvents } from './notify-events';
 import { sampleMachine } from './machine';
 import { isPaused } from './pause';
@@ -18,6 +18,7 @@ import { prune } from './retention';
 import { answered } from './answers';
 import { pausedUntil, reap } from './run-control';
 import { handover, pickup, retryStranded, reviews } from './triggers';
+import { healthTick } from '../health';
 import { autoUpdate } from '../update';
 import type { LoopStatus } from '../types';
 
@@ -64,6 +65,23 @@ export function betweenTicks<T>(fn: () => T | Promise<T>): Promise<T> {
   return queued;
 }
 
+/**
+ * Puts one mutation on the tick chain: it starts after the tick in flight has finished, and the next tick
+ * waits for it. The monitor's stop-session, stop-preview, unblock and sweep-now buttons come through here.
+ * They used to run the moment the request arrived — a stop racing the `reap` of a tick already in flight
+ * over the same pid file and session state, two `previews` passes over one tunnel. Unlike `betweenTicks`
+ * (the wizard's save, which wants the error back) a failure is logged and answered with `undefined`: a
+ * button is not a place to unwind a tick from. `fn` must not itself call `tick`, which would wait for this.
+ */
+export function serial<T>(name: string, fn: () => T | Promise<T>): Promise<T | undefined> {
+  const queued = chain.then(fn).catch((e) => {
+    log(`${name} failed: ${(e instanceof Error ? e.message : String(e)).split('\n')[0]}`);
+    return undefined;
+  });
+  chain = queued;
+  return queued;
+}
+
 /** One pass. Ticks never overlap: every caller is queued behind the one in flight. */
 export function tick(options: TickOptions = { board: true, comments: true }): Promise<void> {
   const queued = chain.then(() => runTick(options)).catch((e) => log(`tick failed: ${e}`));
@@ -87,9 +105,10 @@ async function step(name: string, fn: () => Promise<unknown>): Promise<void> {
   }
 }
 
-async function runTick({ board = false, comments: wantComments = false, dryRun = false }: TickOptions): Promise<void> {
-  const was = isDry();
-  if (dryRun) setDry(true);
+/** A dry tick is dry for itself alone: the flag rides this call's async context, not the process (`log.ts`). */
+const runTick = (options: TickOptions): Promise<void> => (options.dryRun ? withDry(() => tickSteps(options)) : tickSteps(options));
+
+async function tickSteps({ board = false, comments: wantComments = false }: TickOptions): Promise<void> {
   state.ticking = true;
   try {
     await step('reap', reap);
@@ -114,6 +133,9 @@ async function runTick({ board = false, comments: wantComments = false, dryRun =
     state.lastBoard = Date.now();
     // Housekeeping on work that is long over — it costs nothing and skips itself for an hour.
     await step('prune', prune);
+    // Whether gh, git, the browser and sudo are still in order. Gated to ten minutes inside the step:
+    // the board is read far more often than that, and "Tick now" more often again.
+    await step('health', healthTick);
     let items: BoardItem[] | undefined;
     await step('board', async () => (items = await fetchBoard()));
     if (!items) return;
@@ -141,7 +163,6 @@ async function runTick({ board = false, comments: wantComments = false, dryRun =
     await step('pickup', () => pickup(items!));
   } finally {
     state.ticking = false;
-    setDry(was);
     broadcast();
   }
 }

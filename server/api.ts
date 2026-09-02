@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Plugin, PreviewServer, ViteDevServer } from 'vite';
 import { cfg } from './config';
 import { broadcast, sse, watchAll } from './events';
-import { startLoop, stopLoop, tick } from './runner/loop';
+import { serial, startLoop, stopLoop, tick } from './runner/loop';
 import { isPaused, setPaused } from './runner/pause';
 import { closeTunnels, stopPreview } from './runner/preview';
 import { unblock } from './runner/blocked';
@@ -12,6 +12,7 @@ import { openSweep } from './runner/qa';
 import { stop as stopRun } from './runner/run-control';
 import { handleSettings, isSettings } from './api-settings';
 import { previewIndex, withTitle } from './preview-index';
+import { healthStatus, refreshHealth, startHealth } from './health';
 import { guard, isLocal, sameOrigin, startTunnel, stopTunnel } from './remote';
 import { agentDetail, overview, sessionDetail, watcherOf } from './sessions';
 import { ensureSkipLabel } from './runner/markers';
@@ -74,15 +75,17 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       await tick({ board: true, comments: true, dryRun });
       body = { ok: true, dryRun };
     } else if (p === '/api/qa/run' && req.method === 'POST') {
-      // The QA sweep now, whatever the clock says; the board tick that follows starts its sessions.
-      const sweep = await openSweep(true);
+      // The QA sweep now, whatever the clock says; the board tick that follows starts its sessions. The
+      // opening goes on the tick chain (it writes the sweep's state, which a tick's `qaSweep` reads), the
+      // tick after it — `serial` may not contain a `tick`, which would wait for the mutation to end.
+      const sweep = await serial('sweep now', () => openSweep(true));
       if (sweep) await tick({ board: true });
       body = { ok: !!sweep, sweep };
     } else if (unblockIssue && req.method === 'POST') {
       // Lifts a give-up. The card is only handed back to the sweep — the next one tests it, and "sweep
       // now" beside it makes that next one immediate.
       const issue = Number(unblockIssue[1]);
-      const unblocked = unblock(issue, 'from the monitor');
+      const unblocked = await serial('unblock', () => unblock(issue, 'from the monitor'));
       broadcast();
       body = { ok: unblocked, issue };
     } else if ((p === '/api/pause' || p === '/api/resume') && req.method === 'POST') {
@@ -91,16 +94,27 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       broadcast();
       body = { ok: true, paused: isPaused() };
     } else if (preview && req.method === 'POST') {
-      await stopPreview(Number(preview[1]), 'stopped from the monitor');
+      await serial('stop preview', () => stopPreview(Number(preview[1]), 'stopped from the monitor'));
       body = { ok: true };
     } else if (stopSession && req.method === 'POST') {
-      // Ends the run behind a transcript; an issue's card is parked so it is not relaunched.
+      // Ends the run behind a transcript; an issue's card is parked so it is not relaunched. Behind the
+      // tick chain: a stop that lands mid-tick used to race that tick's `reap` over the same pid file —
+      // both killing, both cleaning up, and the parking comment written twice.
       const w = watcherOf(stopSession[1]);
       if (w) {
-        const stopped = await stopRun(w.kind, w.target, 'stopped from the monitor', 'the run for this issue was stopped from the monitor.');
+        const stopped = await serial('stop session', () =>
+          stopRun(w.kind, w.target, 'stopped from the monitor', 'the run for this issue was stopped from the monitor.'),
+        );
         broadcast();
         body = { ok: true, stopped };
       }
+    } else if (p === '/api/health/check' && req.method === 'POST') {
+      // Whatever the ten-minute interval says: someone has just fixed something and wants to see it.
+      body = await refreshHealth();
+    } else if (p === '/api/health') {
+      // The cache alone — asking is the POST's job. Nothing checked yet reads as an empty list, which is
+      // what the header shows nothing for; a `undefined` here would be a 404 on every fresh start.
+      body = healthStatus() ?? { at: 0, checks: [] };
     } else if (p === '/api/overview') body = await overview();
     // Clamped at both ends: an unclamped minimum let `?days=-5` ask for a window whose start is after
     // its end, and a large negative one threw `RangeError` out of `new Date(...).toISOString()` as a 500.
@@ -159,6 +173,8 @@ export function monitorApi(): Plugin {
     void ensureStack();
     // The skip label people hold cards back with has to exist in the repo before anyone can apply it.
     void ensureSkipLabel();
+    // Can this machine do the work at all? Asked once here and every ten minutes from the board tick.
+    startHealth();
     const http = server.httpServer;
     // The tunnel needs the port actually bound — Vite moves to the next one when the configured port is taken.
     const tunnel = () => {

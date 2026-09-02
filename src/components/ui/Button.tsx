@@ -13,13 +13,15 @@ export type ButtonVariant = 'primary' | 'ghost' | 'icon' | 'accent' | 'danger' |
  */
 export type ButtonSize = 'inline' | 'bar' | 'dialog' | 'wide' | 'form';
 
+// `primary` is the inverted one: the text colour becomes the fill and the surface becomes the ink,
+// which is why it reads `bg-fg-strong text-surface-raised` rather than naming a seventh token.
 const VARIANTS: Record<ButtonVariant, string> = {
-  primary: 'bg-zinc-100 text-zinc-900 hover:bg-white disabled:bg-zinc-800 disabled:text-zinc-500',
-  ghost: 'border border-zinc-800 text-zinc-300 hover:bg-zinc-900 disabled:text-zinc-600 disabled:hover:bg-transparent',
-  icon: 'border border-zinc-800 text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 disabled:text-zinc-600 disabled:hover:bg-transparent',
-  accent: 'border border-sky-800 bg-sky-950/60 text-sky-200 hover:bg-sky-900/60 disabled:text-zinc-600',
-  danger: 'border border-red-900 text-red-300 hover:bg-red-950/60 disabled:opacity-50 disabled:hover:bg-transparent',
-  warn: 'border border-amber-800 bg-amber-950/50 text-amber-300 hover:bg-amber-900/50 disabled:text-zinc-600',
+  primary: 'bg-fg-strong text-surface-raised hover:bg-white disabled:bg-surface-inset disabled:text-fg-faint',
+  ghost: 'border border-edge text-fg-soft hover:bg-surface-raised disabled:text-fg-disabled disabled:hover:bg-transparent',
+  icon: 'border border-edge text-fg-muted hover:bg-surface-raised hover:text-fg disabled:text-fg-disabled disabled:hover:bg-transparent',
+  accent: 'border border-info-edge-strong bg-info-tint/60 text-info-fg-strong hover:bg-info-tint-strong/60 disabled:text-fg-disabled',
+  danger: 'border border-danger-edge text-danger-fg hover:bg-danger-tint/60 disabled:opacity-50 disabled:hover:bg-transparent',
+  warn: 'border border-warn-edge-strong bg-warn-tint/50 text-warn-fg hover:bg-warn-tint-strong/50 disabled:text-fg-disabled',
 };
 
 const SIZES: Record<ButtonSize, string> = {

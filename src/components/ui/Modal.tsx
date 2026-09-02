@@ -80,14 +80,14 @@ export default function Modal({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="w-full max-w-sm space-y-3 rounded-lg border border-zinc-800 bg-zinc-950 p-4 outline-none"
+        className="w-full max-w-sm space-y-3 rounded-lg border border-edge bg-surface p-4 outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center">
-          <h2 id={titleId} className="text-sm font-semibold text-zinc-100">
+          <h2 id={titleId} className="text-sm font-semibold text-fg-strong">
             {title}
           </h2>
-          <button type="button" onClick={onClose} aria-label="Close" className="ml-auto text-zinc-400 hover:text-zinc-200">
+          <button type="button" onClick={onClose} aria-label="Close" className="ml-auto text-fg-muted hover:text-fg">
             ✕
           </button>
         </div>

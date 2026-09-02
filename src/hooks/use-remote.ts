@@ -12,10 +12,18 @@ export interface Remote extends RemoteLink {
   qr?: string;
 }
 
+/**
+ * The QR's dark squares are the page colour, read from the `--color-surface` token rather than repeated
+ * as a hex here — the two used to be the same literal in two files, which is exactly how a repaint leaves
+ * a QR code the old colour. The fallback is only reached with no stylesheet loaded (jsdom), where nothing
+ * draws a QR anyway; the encoder wants a literal, so the token is resolved before it is handed over.
+ */
+const surface = () => getComputedStyle(document.documentElement).getPropertyValue('--color-surface').trim() || '#000';
+
 async function load(): Promise<Remote> {
   const r = await fetchJson<RemoteLink>('/api/remote');
   if (!r.link) return r;
-  const qr = await QRCode.toDataURL(r.link, { margin: 1, width: 320, color: { dark: '#09090b', light: '#ffffff' } });
+  const qr = await QRCode.toDataURL(r.link, { margin: 1, width: 320, color: { dark: surface(), light: '#ffffff' } });
   return { ...r, qr };
 }
 

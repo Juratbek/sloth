@@ -36,7 +36,7 @@ const absent = async (ids: StackId[]): Promise<StackId[]> =>
   (await Promise.all(ids.map((id) => check(id, [])))).filter((t) => !t.installed).map((t) => t.id);
 
 /** `password` on the `none` case: nothing is missing but the user's sudo password (`sudo.ts` `unlockSudo`). */
-type Installer = { kind: 'brew' } | { kind: 'apt'; sudo: boolean } | { kind: 'none'; error: string; password?: boolean };
+export type Installer = { kind: 'brew' } | { kind: 'apt'; sudo: boolean } | { kind: 'none'; error: string; password?: boolean };
 
 const isRoot = () => typeof process.getuid === 'function' && process.getuid() === 0;
 

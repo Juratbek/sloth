@@ -12,7 +12,7 @@ import { errorText } from '../../lib/errors';
 export default function ErrorNote({ error, className = '' }: { error: unknown; className?: string }) {
   if (!error) return null;
   return (
-    <span role="alert" className={`text-[11px] break-words text-red-400 ${className}`}>
+    <span role="alert" className={`text-[11px] break-words text-danger ${className}`}>
       {errorText(error)}
     </span>
   );

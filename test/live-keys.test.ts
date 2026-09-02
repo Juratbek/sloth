@@ -15,6 +15,7 @@ const KEYS = {
   service: ['service'],
   remote: ['remote'],
   stack: ['stack', ''],
+  health: ['health'],
 } as const;
 
 /** A client holding one fresh cached entry per key, none of which would refetch on its own. */
@@ -40,7 +41,7 @@ describe('invalidateLive', () => {
   it('leaves the queries that shell out to gh and claude alone, however often events arrive', () => {
     const client = seeded();
     for (let i = 0; i < 50; i++) invalidateLive(client);
-    for (const name of ['config', 'env', 'projects', 'fields', 'service', 'remote', 'stack'] as const) {
+    for (const name of ['config', 'env', 'projects', 'fields', 'service', 'remote', 'stack', 'health'] as const) {
       expect(client.getQueryState(KEYS[name])?.isInvalidated).toBeFalsy();
     }
   });

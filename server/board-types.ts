@@ -60,6 +60,13 @@ export interface BoardCard {
   cost: number | null;
   /** Why Sloth gave up on this card (`BlockedCard.reason`); absent while it is not blocked. */
   blocked?: string;
+  /**
+   * Why nothing is happening on this card, in one sentence — the pause, the machine, the full slots, the
+   * skip label, a give-up, the retries it has used up. Absent when Sloth is free to work on it, which
+   * includes every card a session is live on. Computed in `board-view.ts`; until now these reasons only
+   * ever reached `watcher.log`.
+   */
+  hold?: string;
 }
 
 /**

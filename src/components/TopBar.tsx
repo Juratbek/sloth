@@ -1,4 +1,5 @@
-import type { Overview } from '../../server/types';
+import type { Health, HealthId, Overview } from '../../server/types';
+import { useCheckHealth, useHealth } from '../hooks/use-health';
 import usePause from '../hooks/use-pause';
 import useCooldown from '../hooks/use-cooldown';
 import useTick from '../hooks/use-tick';
@@ -54,6 +55,48 @@ function TickButton({ busy }: { busy: boolean }) {
   );
 }
 
+/** What each check is called where a person reads it, rather than the id the server uses. */
+const CHECK_NAMES: Record<HealthId, string> = { gh: 'gh', git: 'git', chrome: 'browser', sudo: 'sudo' };
+
+/** Every check on one line each, for the chip's tooltip — the failing ones are named on the chip itself. */
+const healthTitle = (health: Health): string =>
+  [
+    ...health.checks.map((c) => `${CHECK_NAMES[c.id]}: ${c.skipped ? 'not needed' : c.ok ? 'ok' : 'FAILING'} — ${c.detail}`),
+    '',
+    'Click to run the checks again.',
+  ].join('\n');
+
+/**
+ * Can this machine do the work? Green while `gh`, `origin`, the browser and sudo are all in order, red
+ * naming the ones that are not; the tooltip has every check's own answer and a click re-runs them all.
+ * Nothing at all until the first result is in — the server takes it when it mounts, and a chip that
+ * flashed "healthy" before anything had been asked would be a worse answer than no chip.
+ */
+function HealthChip() {
+  const health = useHealth();
+  const check = useCheckHealth();
+  const data = health.data;
+  if (!data?.checks.length) return null;
+  const failed = data.checks.filter((c) => !c.ok && !c.skipped);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => check.mutate()}
+        disabled={check.isPending}
+        title={healthTitle(data)}
+        aria-label="Runner health — click to check again"
+        className="disabled:cursor-not-allowed"
+      >
+        <Chip label="runner" tone={failed.length ? 'red' : 'emerald'}>
+          {check.isPending ? 'checking…' : failed.length ? `${failed.map((c) => CHECK_NAMES[c.id]).join(', ')} failing` : 'healthy'}
+        </Chip>
+      </button>
+      <ErrorNote error={check.error} />
+    </>
+  );
+}
+
 export default function TopBar({
   overview,
   menu,
@@ -84,8 +127,8 @@ export default function TopBar({
   const low = Object.entries(rateLimit ?? {}).find(([, b]) => b.remaining < b.limit * 0.1);
 
   return (
-    <header className="flex flex-wrap items-center gap-2 border-b border-zinc-800 px-3 py-2 md:px-4">
-      <button onClick={onHome} className="mr-2 text-sm font-semibold text-zinc-100 hover:text-white">
+    <header className="flex flex-wrap items-center gap-2 border-b border-edge px-3 py-2 md:px-4">
+      <button onClick={onHome} className="mr-2 text-sm font-semibold text-fg-strong hover:text-white">
         {config.title}
       </button>
       <Chip label="sessions" tone={full ? 'amber' : 'emerald'}>
@@ -96,6 +139,7 @@ export default function TopBar({
           {`${machine.memoryFree}% memory · ${machine.cpuIdle}% CPU idle${machine.diskIdle === undefined ? '' : ` · ${machine.diskIdle}% disk idle`}`}
         </Chip>
       )}
+      <HealthChip />
       <span className="hidden md:contents">
         <Chip label="pickup">{config.pickupColumn}</Chip>
         <Chip label="board">{nextAt(watcher.loop.nextBoard)}</Chip>
@@ -120,7 +164,7 @@ export default function TopBar({
           onClick={onRemote}
           title={remote.error ?? 'Open on your phone'}
           aria-label="Open on your phone"
-          className={remote.error ? 'border-amber-900 text-amber-300' : ''}
+          className={remote.error ? 'border-warn-edge text-warn-fg' : ''}
         >
           ▦
         </Button>

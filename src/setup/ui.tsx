@@ -29,15 +29,15 @@ export function Choice({
     <button
       onClick={onSelect}
       className={`flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left ${
-        selected ? 'border-emerald-700 bg-emerald-950/30' : 'border-zinc-800 hover:bg-zinc-900'
+        selected ? 'border-ok-edge-strong bg-ok-tint/30' : 'border-edge hover:bg-surface-raised'
       }`}
     >
-      <span className={`h-2.5 w-2.5 shrink-0 rounded-full border ${selected ? 'border-emerald-400 bg-emerald-400' : 'border-zinc-600'}`} />
+      <span className={`h-2.5 w-2.5 shrink-0 rounded-full border ${selected ? 'border-ok bg-ok' : 'border-edge-focus'}`} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm text-zinc-100">{title}</span>
-        {subtitle && <span className="block truncate text-xs text-zinc-400">{subtitle}</span>}
+        <span className="block truncate text-sm text-fg-strong">{title}</span>
+        {subtitle && <span className="block truncate text-xs text-fg-muted">{subtitle}</span>}
       </span>
-      {right && <span className="shrink-0 text-xs text-zinc-400">{right}</span>}
+      {right && <span className="shrink-0 text-xs text-fg-muted">{right}</span>}
     </button>
   );
 }
@@ -45,15 +45,15 @@ export function Choice({
 export function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
   return (
     <label className="block space-y-1">
-      <span className="block text-xs font-medium text-zinc-400">{label}</span>
+      <span className="block text-xs font-medium text-fg-muted">{label}</span>
       {children}
-      {hint && <span className="block text-[11px] text-zinc-500">{hint}</span>}
+      {hint && <span className="block text-[11px] text-fg-faint">{hint}</span>}
     </label>
   );
 }
 
 export const inputStyle =
-  'w-full rounded-md border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 text-sm text-zinc-100 outline-none focus:border-zinc-600';
+  'w-full rounded-md border border-edge bg-surface-raised/60 px-2 py-1.5 text-sm text-fg-strong outline-none focus:border-edge-focus';
 
 export function TextInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   return <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className={inputStyle} spellCheck={false} />;
@@ -108,5 +108,5 @@ export function Select({
   );
 }
 
-export const Error = ({ children }: { children: ReactNode }) => <p className="text-sm text-red-400">{children}</p>;
-export const Loading = ({ what }: { what: string }) => <p className="text-sm text-zinc-400">Loading {what}…</p>;
+export const Error = ({ children }: { children: ReactNode }) => <p className="text-sm text-danger">{children}</p>;
+export const Loading = ({ what }: { what: string }) => <p className="text-sm text-fg-muted">Loading {what}…</p>;

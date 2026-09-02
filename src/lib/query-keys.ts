@@ -21,6 +21,11 @@ export const queryKeys = {
   usage: (days: number) => ['usage', days] as const,
   /** The models this machine can reach — a `claude --version` and the provider keys behind it. */
   models: ['models'] as const,
+  /**
+   * Whether this machine can do the work — `gh`, `origin`, the browser, sudo. Deliberately not a live
+   * key: the server caches the answer for ten minutes and re-taking it shells out to `gh` and `git`.
+   */
+  health: ['health'] as const,
   /** The phone tunnel: the tool, its install and the link. */
   remote: ['remote'] as const,
   /** Prefix over the stack as judged against any checkout. */

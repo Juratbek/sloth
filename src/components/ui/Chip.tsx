@@ -6,14 +6,14 @@ export type ChipTone = 'zinc' | 'outline' | 'solid' | 'solidDim' | 'red' | 'ambe
 export type ChipSize = '2xs' | 'xs' | 'sm' | 'md';
 
 const TONES: Record<ChipTone, string> = {
-  zinc: 'border border-zinc-800 text-zinc-400',
-  outline: 'border border-zinc-700 text-zinc-300',
-  solid: 'bg-zinc-800 text-zinc-300',
-  solidDim: 'bg-zinc-800 text-zinc-400',
-  red: 'border border-red-900 bg-red-950/50 text-red-300',
-  amber: 'border border-amber-900 bg-amber-950/50 text-amber-300',
-  emerald: 'border border-emerald-900 bg-emerald-950/40 text-emerald-300',
-  sky: 'border border-sky-900 bg-sky-950/40 text-sky-300',
+  zinc: 'border border-edge text-fg-muted',
+  outline: 'border border-edge-strong text-fg-soft',
+  solid: 'bg-surface-inset text-fg-soft',
+  solidDim: 'bg-surface-inset text-fg-muted',
+  red: 'border border-danger-edge bg-danger-tint/50 text-danger-fg',
+  amber: 'border border-warn-edge bg-warn-tint/50 text-warn-fg',
+  emerald: 'border border-ok-edge bg-ok-tint/40 text-ok-fg',
+  sky: 'border border-info-edge bg-info-tint/40 text-info-fg',
 };
 
 const SIZES: Record<ChipSize, string> = {
@@ -47,7 +47,7 @@ export default function Chip({
 }) {
   return (
     <span title={title} className={`${SIZES[size]} ${TONES[tone]} ${className}`}>
-      {label && <span className="text-zinc-400">{label} </span>}
+      {label && <span className="text-fg-muted">{label} </span>}
       {children}
     </span>
   );

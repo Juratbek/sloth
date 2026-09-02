@@ -14,8 +14,8 @@ export function Row({ label, hint, children, wide }: { label: string; hint?: Rea
   return (
     <div className="flex items-start gap-6 py-4">
       <div className="min-w-0 flex-1">
-        <p className="text-sm text-zinc-100">{label}</p>
-        {hint && <p className="mt-0.5 text-xs leading-relaxed text-zinc-400">{hint}</p>}
+        <p className="text-sm text-fg-strong">{label}</p>
+        {hint && <p className="mt-0.5 text-xs leading-relaxed text-fg-muted">{hint}</p>}
       </div>
       <div className={`flex shrink-0 justify-end ${wide ? 'w-80' : 'w-56'}`}>{children}</div>
     </div>
@@ -30,7 +30,7 @@ export function Toggle({ checked, onChange, label }: { checked: boolean; onChang
       aria-checked={checked}
       aria-label={label}
       onClick={() => onChange(!checked)}
-      className={`relative mt-0.5 inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${checked ? 'bg-indigo-500' : 'bg-zinc-700'}`}
+      className={`relative mt-0.5 inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${checked ? 'bg-accent' : 'bg-edge-strong'}`}
     >
       <span className={`h-4 w-4 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-[18px]' : 'translate-x-[2px]'}`} />
     </button>
