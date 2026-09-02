@@ -1,12 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import type { ServiceStatus } from '../../server/types';
 import { fetchJson } from '../lib/api';
+import { queryKeys } from '../lib/query-keys';
 import { Row, Toggle } from './ui';
 import type { SectionProps } from './ui';
 
 /** What this Mac does with Sloth on its own — for now, whether it starts it at login. */
 export default function MachineSection({ draft, patch }: SectionProps) {
-  const service = useQuery({ queryKey: ['service'], queryFn: () => fetchJson<ServiceStatus>('/api/service'), retry: false });
+  const service = useQuery({ queryKey: queryKeys.service, queryFn: () => fetchJson<ServiceStatus>('/api/service'), retry: false });
   const s = service.data;
   const state = !s
     ? 'Checking…'

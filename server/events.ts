@@ -7,10 +7,29 @@ const clients = new Set<ServerResponse>();
 let timer: NodeJS.Timeout | undefined;
 let watchers: fs.FSWatcher[] = [];
 
+/**
+ * One line to one listener. Writing to a socket the browser has already dropped throws — and this is
+ * reached from a timer and from the debounce below, where nobody is holding a `try`: the throw would
+ * escape as an uncaught exception and take the process, the watcher and every tunnel with it. A client
+ * that will not take a write is simply not a client any more.
+ */
+function push(client: ServerResponse, chunk: string): boolean {
+  if (!clients.has(client)) return false;
+  try {
+    if (client.writableEnded || client.destroyed) throw new Error('closed');
+    client.write(chunk);
+    return true;
+  } catch {
+    clients.delete(client);
+    return false;
+  }
+}
+
 export function broadcast() {
   clearTimeout(timer);
   timer = setTimeout(() => {
-    for (const c of clients) c.write('data: change\n\n');
+    // A copy: `push` drops the dead ones as it goes.
+    for (const c of [...clients]) push(c, 'data: change\n\n');
   }, 800);
 }
 
@@ -36,11 +55,18 @@ export function watchAll() {
 
 export function sse(req: IncomingMessage, res: ServerResponse) {
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
-  res.write('data: hello\n\n');
   clients.add(res);
-  const beat = setInterval(() => res.write(': ping\n\n'), 25_000);
-  req.on('close', () => {
+  function drop(): void {
     clearInterval(beat);
     clients.delete(res);
-  });
+  }
+  // The heartbeat is what usually *finds* a gone client — a phone that went to sleep, a laptop lid. It
+  // drops it here rather than leaving a timer writing to a dead socket every 25 seconds for ever.
+  const beat = setInterval(() => push(res, ': ping\n\n') || drop(), 25_000);
+  // `close` on either half: a response destroyed by the server itself (an update restart, a failed
+  // handler) never reaches the request's.
+  req.on('close', drop);
+  res.on('close', drop);
+  res.on('error', drop);
+  push(res, 'data: hello\n\n');
 }

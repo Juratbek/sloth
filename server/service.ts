@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { writeAtomic } from './atomic';
 import { CONFIG_PATH, SLOTH_ROOT, cfg, envValue } from './config';
 import { which } from './install';
 import { run } from './runner/gh';
@@ -21,7 +22,8 @@ export const supported = () => process.platform === 'darwin';
 
 /** cron / launchd-style bare PATHs miss homebrew, and the agent needs `pnpm`, `git`, `gh` and `claude`. */
 const PATH_EXTRA = ['/opt/homebrew/bin', '/usr/local/bin', path.join(os.homedir(), '.local/bin')];
-export const servicePath = () => [...new Set([...(process.env.PATH ?? '').split(':'), ...PATH_EXTRA])].filter(Boolean).join(':');
+export const servicePath = () =>
+  [...new Set([...(process.env.PATH ?? '').split(path.delimiter), ...PATH_EXTRA])].filter(Boolean).join(path.delimiter);
 
 /** One agent per watched repository, so two Sloths on one Mac do not fight over the same label. */
 export const label = () => `dev.sloth.${(cfg().repo.split('/')[1] || 'sloth').replace(/[^\w.-]/g, '-')}`;
@@ -102,10 +104,10 @@ async function install(): Promise<string | undefined> {
   const pnpm = which('pnpm');
   if (!pnpm) return '`pnpm` was not found on PATH, so launchd would have nothing to run.';
   const file = plistPath();
-  fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.mkdirSync(path.dirname(logFile()), { recursive: true });
-  fs.writeFileSync(file, plistNow(pnpm));
-  const r = await run('launchctl', ['bootstrap', `gui/${process.getuid?.() ?? 0}`, file], 30_000);
+  // launchd reads this at every login; half a plist is an agent that never starts and says nothing.
+  writeAtomic(file, plistNow(pnpm));
+  const r = await run('launchctl', ['bootstrap', `gui/${process.getuid?.() ?? 0}`, file], { timeout: 30_000 });
   // A label already bootstrapped is the state we wanted; anything else leaves the plist for a look.
   if (!r.ok && !/already/i.test(r.err)) return `launchctl bootstrap failed: ${r.err.split('\n')[0]}`;
   // Never kickstart from here: this process *is* the running Sloth, and the agent would take its port.
@@ -114,7 +116,7 @@ async function install(): Promise<string | undefined> {
 }
 
 async function remove(): Promise<undefined> {
-  const r = await run('launchctl', ['bootout', target()], 30_000);
+  const r = await run('launchctl', ['bootout', target()], { timeout: 30_000 });
   if (!r.ok && !/not find|no such process|not loaded/i.test(r.err)) log(`autostart: launchctl bootout said: ${r.err.split('\n')[0]}`);
   fs.rmSync(plistPath(), { force: true });
   log(`autostart: ${label()} removed — Sloth no longer starts at login`);

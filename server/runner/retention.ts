@@ -100,7 +100,7 @@ async function pruneWorktrees(): Promise<void> {
     }
     // A slot that leaves the pool takes its warm stack with it: servers, database, record (`warm.ts`).
     if (m[1] === 'slot') await killWarm(name, 'the slot leaves the pool');
-    const r = await run('git', ['-C', c.runnerRoot, 'worktree', 'remove', dir, '--force'], 120_000);
+    const r = await run('git', ['-C', c.runnerRoot, 'worktree', 'remove', dir, '--force'], { timeout: 120_000 });
     if (!r.ok && fs.existsSync(dir)) {
       const why = r.err.split('\n')[0];
       // Only when git disowns it: a removal that failed for any other reason (a lock, a busy file) is
@@ -116,7 +116,7 @@ async function pruneWorktrees(): Promise<void> {
     remove(statePath('slots', name));
     log(`pruned worktree ${name}`);
   }
-  if (removed) await run('git', ['-C', c.runnerRoot, 'worktree', 'prune'], 60_000);
+  if (removed) await run('git', ['-C', c.runnerRoot, 'worktree', 'prune'], { timeout: 60_000 });
 }
 
 /** The dedupe markers that grow without bound: one per `@sloth` comment, one directory per status reply. */

@@ -27,8 +27,18 @@ export default function Agents({ agents, onOpen }: { agents: AgentSummary[]; onO
           {agents.map((a) => (
             <tr
               key={a.agentId}
+              role="button"
+              tabIndex={0}
+              aria-label={`Open subagent ${a.description ?? a.agentId}`}
               onClick={() => onOpen(a.agentId)}
-              className="cursor-pointer border-b border-zinc-900 align-top hover:bg-zinc-900"
+              onKeyDown={(e) => {
+                // The same handling `Board/Card.tsx` gives its cards: a row was reachable only with a
+                // mouse, so the one way into a subagent's transcript was closed to the keyboard.
+                if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+                e.preventDefault();
+                onOpen(a.agentId);
+              }}
+              className="cursor-pointer border-b border-zinc-900 align-top hover:bg-zinc-900 focus:bg-zinc-900 focus:outline-none"
             >
               <td className="max-w-56 px-3 py-2 text-zinc-200">{a.description ?? a.agentId}</td>
               <td className="px-3 py-2 text-zinc-400">{a.subagentType ?? '—'}</td>

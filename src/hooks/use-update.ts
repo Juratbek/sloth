@@ -2,8 +2,8 @@ import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { VersionInfo } from '../../server/types';
 import { fetchJson, postJson } from '../lib/api';
+import { queryKeys } from '../lib/query-keys';
 
-const UPDATE_QUERY_KEY = ['update'] as const;
 const CHECK_EVERY_MS = 10 * 60_000;
 
 /**
@@ -14,7 +14,7 @@ const CHECK_EVERY_MS = 10 * 60_000;
 export function useVersion(enabled: boolean) {
   const queryClient = useQueryClient();
   const query = useQuery({
-    queryKey: UPDATE_QUERY_KEY,
+    queryKey: queryKeys.update,
     queryFn: () => fetchJson<VersionInfo>('/api/update'),
     enabled,
     retry: false,
@@ -30,11 +30,11 @@ export function useVersion(enabled: boolean) {
   }, [restarting, query.isError, query.isSuccess]);
   const check = useMutation({
     mutationFn: () => postJson<VersionInfo>('/api/update/check', {}),
-    onSuccess: (v) => queryClient.setQueryData(UPDATE_QUERY_KEY, v),
+    onSuccess: (v) => queryClient.setQueryData(queryKeys.update, v),
   });
   const update = useMutation({
     mutationFn: () => postJson<VersionInfo>('/api/update/run', {}),
-    onSuccess: (v) => queryClient.setQueryData(UPDATE_QUERY_KEY, v),
+    onSuccess: (v) => queryClient.setQueryData(queryKeys.update, v),
   });
   // One check when the section opens, unless a recent one is on record.
   const checkedAt = query.data?.checkedAt;

@@ -1,7 +1,7 @@
-import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { run } from './exec';
 import { which } from './install';
 import { isDry, log } from './runner/log';
 
@@ -57,22 +57,17 @@ export const sudoUser = (): string => os.userInfo().username;
  * `-p ''` keeps the prompt out of stderr. Only the last line of stderr comes back: sudo never echoes
  * what it read, but the less of a child's output crosses this boundary the better.
  */
-function sudoWith(password: string, args: string[]): Promise<{ ok: boolean; err: string }> {
+async function sudoWith(password: string, args: string[]): Promise<{ ok: boolean; err: string }> {
   const bin = which('sudo');
-  if (!bin) return Promise.resolve({ ok: false, err: 'sudo is not installed on this machine' });
-  return new Promise((resolve) => {
-    const child = execFile(bin, ['-S', '-k', '-p', '', ...args], { timeout: 15_000 }, (error, _out, stderr) =>
-      resolve({ ok: !error, err: String(stderr ?? '').trim().split('\n').at(-1)?.trim() ?? '' }),
-    );
-    child?.stdin?.end(`${password}\n`);
-  });
+  if (!bin) return { ok: false, err: 'sudo is not installed on this machine' };
+  const r = await run(bin, ['-S', '-k', '-p', '', ...args], { timeout: 15_000, stdin: `${password}\n` });
+  return { ok: r.ok, err: r.err.split('\n').at(-1)?.trim() ?? '' };
 }
 
 /** The same without a password: what the rule bought, and the probe `installer()` uses. */
-function sudoNo(args: string[]): Promise<boolean> {
+async function sudoNo(args: string[]): Promise<boolean> {
   const bin = which('sudo');
-  if (!bin) return Promise.resolve(false);
-  return new Promise((resolve) => execFile(bin, ['-n', ...args], { timeout: 15_000 }, (error) => resolve(!error)));
+  return !!bin && (await run(bin, ['-n', ...args], { timeout: 15_000 })).ok;
 }
 
 /** Whether `sudo -n` may already run apt-get here — true for a full NOPASSWD line and for Sloth's own rule. */

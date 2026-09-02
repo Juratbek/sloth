@@ -9,7 +9,7 @@ import { APPROVED_LABEL, MARKERS, OWN_BRANCH, skipped, statePath, unapprove } fr
 import { stopPreview } from './preview';
 import { approvedDir, dirAlive, issueAlive } from './session-dirs';
 import { launch } from './spawn';
-import { park } from './triggers';
+import { park } from './run-control';
 
 /**
  * The end of a card's life: what Sloth does once the work is over or the PR turns out not to be done

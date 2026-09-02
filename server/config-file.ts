@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { writeAtomic } from './atomic';
 import { AGENT_ROLES, CONFIG_DEFAULTS, DEFAULT_MODELS, MERGE_METHODS, STACK, WEBHOOK_EVENTS, defaultDirs, type AgentModels, type AgentRole, type ColumnRef, type MergeMethod, type QaConfig, type Roles, type SlothConfig, type StackChoice, type StackId, type WebhookEvent } from './config-types';
 import { sameLogin } from './roles';
 
@@ -19,9 +20,9 @@ export function readConfigFile(file: string): SlothConfig | undefined {
   }
 }
 
+/** The one file Sloth cannot start without, so it is never left half-written (`atomic.ts`). */
 export function writeConfigFile(file: string, config: SlothConfig): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`);
+  writeAtomic(file, `${JSON.stringify(config, null, 2)}\n`);
 }
 
 const str = (v: unknown, what: string): string => {

@@ -2,6 +2,7 @@ import { cfg } from '../config';
 import { broadcast } from '../events';
 import { pruneBlocked } from './blocked';
 import { fetchBoard } from './board';
+import type { BoardItem } from './board';
 import { setSnapshot } from './board-snapshot';
 import { refreshColumns } from './columns';
 import { comments } from './comments';
@@ -15,7 +16,8 @@ import { previews } from './preview';
 import { qaSweep, qaVerdicts } from './qa';
 import { prune } from './retention';
 import { answered } from './answers';
-import { handover, pausedUntil, pickup, reap, retryStranded, reviews } from './triggers';
+import { pausedUntil, reap } from './run-control';
+import { handover, pickup, retryStranded, reviews } from './triggers';
 import { autoUpdate } from '../update';
 import type { LoopStatus } from '../types';
 
@@ -69,15 +71,31 @@ export function tick(options: TickOptions = { board: true, comments: true }): Pr
   return queued;
 }
 
+/**
+ * One step of a tick, on its own. A tick is a dozen independent errands, and a throw out of any of them
+ * used to end the whole pass: one `gh` shape nobody expected in `reviews` and the cards in Code Review,
+ * In Progress, QA and the pickup column were all left untouched for that tick — with `tick failed: …` the
+ * only trace, naming the error and not the errand. Each step now fails on its own and the tick carries on
+ * with the next; the ones that decide whether there is anything left to do at all (a usage-limit pause, a
+ * user pause, a board that would not load) are still plain early returns above.
+ */
+async function step(name: string, fn: () => Promise<unknown>): Promise<void> {
+  try {
+    await fn();
+  } catch (e) {
+    log(`step ${name} failed: ${(e instanceof Error ? e.message : String(e)).split('\n')[0]}`);
+  }
+}
+
 async function runTick({ board = false, comments: wantComments = false, dryRun = false }: TickOptions): Promise<void> {
   const was = isDry();
   if (dryRun) setDry(true);
   state.ticking = true;
   try {
-    await reap();
+    await step('reap', reap);
     // Previews are finished work, not new work: they run even while paused.
-    await previews();
-    await refreshColumns();
+    await step('previews', previews);
+    await step('columns', refreshColumns);
     const paused = pausedUntil();
     if (nowSec() < paused) {
       log(`paused until ${new Date(paused * 1000).toISOString()} (usage limit)`);
@@ -87,39 +105,40 @@ async function runTick({ board = false, comments: wantComments = false, dryRun =
     const userPaused = isPaused();
     if (userPaused) log('paused — no new work (reap, inbox delivery and status replies still run)');
     // Both kinds of tick may launch (an order does, from a comment): read the machine before either.
-    else await readMachine();
+    else await step('machine', readMachine);
     if (wantComments) {
       state.lastComment = Date.now();
-      await comments();
+      await step('comments', comments);
     }
     if (!board) return;
     state.lastBoard = Date.now();
     // Housekeeping on work that is long over — it costs nothing and skips itself for an hour.
-    await prune();
-    const items = await fetchBoard();
+    await step('prune', prune);
+    let items: BoardItem[] | undefined;
+    await step('board', async () => (items = await fetchBoard()));
     if (!items) return;
     // The home panel's board view mirrors this one read — a dry run reads the board too, and reading is harmless.
     setSnapshot(items);
     // Filing a closed issue away is bookkeeping on work that is already over, not new work — and so is
     // moving a card on the verdict its QA test left behind.
-    await finished(items);
-    await qaVerdicts();
+    await step('finished', () => finished(items!));
+    await step('qa verdicts', qaVerdicts);
     // A blocked card a human has moved on is nobody's to hold back any more.
-    pruneBlocked(items);
+    await step('blocked', async () => pruneBlocked(items!));
     // The webhook hears about all of it even while paused: sessions keep running, so they keep parking.
-    await boardEvents(items);
+    await step('board events', () => boardEvents(items!));
     if (userPaused) return;
     // The review first: a card in Code Review is finished work waiting on a short look, so it goes ahead
     // of everything that starts a build — a red check, a stranded card, an order, the pickup column.
-    await reviews(items);
-    await failedChecks(items);
-    await handover(items);
-    await autoMerge(items);
-    await retryStranded(items);
-    await answered(items);
+    await step('reviews', () => reviews(items!));
+    await step('failed checks', () => failedChecks(items!));
+    await step('handover', () => handover(items!));
+    await step('auto-merge', () => autoMerge(items!));
+    await step('retry stranded', () => retryStranded(items!));
+    await step('answered', () => answered(items!));
     // The day's QA sweep, when it is time: the merged fixes waiting in QA are tested before new ones are started.
-    await qaSweep(items);
-    await pickup(items);
+    await step('qa sweep', () => qaSweep(items!));
+    await step('pickup', () => pickup(items!));
   } finally {
     state.ticking = false;
     setDry(was);

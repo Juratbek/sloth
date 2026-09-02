@@ -1,8 +1,11 @@
 import type { UseMutationResult } from '@tanstack/react-query';
 import { useInstall, useRemote, useRotate, type Remote } from '../hooks/use-remote';
+import Button from './ui/Button';
+import ErrorNote from './ui/ErrorNote';
+import Modal from './ui/Modal';
 
-const button = 'rounded-md border border-zinc-800 px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:text-zinc-600';
-const primary = 'rounded-md border border-sky-800 bg-sky-950/60 px-3 py-1.5 text-xs text-sky-200 hover:bg-sky-900/60 disabled:cursor-not-allowed disabled:text-zinc-600';
+/** Signing every phone out is not undoable, so it is asked about — the same window.confirm the session's Stop uses. */
+const ROTATE_ASK = 'Make a new link? The code changes and every phone that scanned the old one is signed out.';
 
 function Spinner({ text }: { text: string }) {
   return (
@@ -50,10 +53,12 @@ function Body({ data, error, install }: { data?: Remote; error: unknown; install
           is not installed on this machine.
         </p>
         {run.error && <Note tone="red" text={run.error} />}
+        {/* The server's record of the last install, and this page's own failed POST — a refused request never reached it. */}
+        <ErrorNote error={install.error} className="block" />
         {tool.installable ? (
-          <button onClick={() => install.mutate()} disabled={install.isPending} className={primary}>
+          <Button variant="accent" size="wide" onClick={() => install.mutate()} disabled={install.isPending}>
             {run.error ? 'Try again' : `Install ${tool.command}`}
-          </button>
+          </Button>
         ) : (
           <p className="text-xs text-zinc-400">
             Install it by hand (developers.cloudflare.com) or set <code>publicUrl</code> in the config, then restart Sloth.
@@ -75,33 +80,32 @@ export default function RemoteDialog({ onClose }: { onClose: () => void }) {
   const rotate = useRotate();
   const install = useInstall();
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
-      <div
-        role="dialog"
-        aria-label="Open on your phone"
-        className="w-full max-w-sm space-y-3 rounded-lg border border-zinc-800 bg-zinc-950 p-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center">
-          <h2 className="text-sm font-semibold text-zinc-100">Open on your phone</h2>
-          <button onClick={onClose} aria-label="Close" className="ml-auto text-zinc-400 hover:text-zinc-200">
-            ✕
-          </button>
-        </div>
-        <div className="min-h-24 space-y-3">
-          <Body data={data} error={error} install={install} />
-        </div>
-        <div className="flex gap-2">
+    <Modal
+      title="Open on your phone"
+      onClose={onClose}
+      footer={
+        <>
           {data?.link && (
-            <button onClick={() => rotate.mutate()} disabled={rotate.isPending} className={button}>
+            <Button
+              size="dialog"
+              onClick={() => {
+                if (window.confirm(ROTATE_ASK)) rotate.mutate();
+              }}
+              disabled={rotate.isPending}
+            >
               New link
-            </button>
+            </Button>
           )}
-          <button onClick={onClose} className={`${button} ml-auto`}>
+          <ErrorNote error={rotate.error} className="self-center" />
+          <Button size="dialog" className="ml-auto" onClick={onClose}>
             Done
-          </button>
-        </div>
+          </Button>
+        </>
+      }
+    >
+      <div className="min-h-24 space-y-3">
+        <Body data={data} error={error} install={install} />
       </div>
-    </div>
+    </Modal>
   );
 }

@@ -3,6 +3,7 @@ import type { SessionStatus, SessionSummary } from '../../server/types';
 import { STATUS_COLOR, dayLabel, elapsed, k, label, modelName, stepLabel } from '../lib/format';
 import { inputStyle } from '../setup/ui';
 import { LoadBrief } from './SessionLoad';
+import Chip from './ui/Chip';
 
 const GROUPS: { title: string; statuses: SessionStatus[]; byDay?: boolean }[] = [
   { title: 'Live', statuses: ['running', 'waiting'] },
@@ -43,7 +44,11 @@ function Row({ s, active, onSelect }: { s: SessionSummary; active: boolean; onSe
       <div className="flex items-center gap-2">
         <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_COLOR[s.status]} ${s.status === 'running' ? 'animate-pulse' : ''}`} />
         <span className="text-sm font-medium text-zinc-100">{label(s)}</span>
-        {step && <span className="rounded bg-zinc-800 px-1 text-[10px] text-zinc-400">{step}</span>}
+        {step && (
+          <Chip tone="solidDim" size="2xs">
+            {step}
+          </Chip>
+        )}
         <span className="ml-auto text-[11px] text-zinc-400">{elapsed(s)}</span>
       </div>
       {s.title && <div className="mt-0.5 truncate pl-4 text-xs text-zinc-400">{s.title}</div>}

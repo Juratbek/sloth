@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { ColumnRole } from '../../../server/config-types';
 import type { BoardView } from '../../../server/types';
 import { clock } from '../../lib/format';
+import Chip from '../ui/Chip';
 import Column from './Column';
 import Spend from './Spend';
 
@@ -11,9 +12,9 @@ const SHORT: Partial<Record<ColumnRole, string>> = { needsHelp: 'Help' };
 /** A count of cards the view leaves out. Counted, never listed — this view is Sloth's pipeline. */
 const Left = ({ label, count, title }: { label: string; count: number; title: string }) =>
   count ? (
-    <span title={title} className="rounded border border-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">
+    <Chip title={title} size="xs">
       {label} · {count}
-    </span>
+    </Chip>
   ) : null;
 
 /**

@@ -1,5 +1,6 @@
 import type { ToolCounts } from '../../../server/types';
 import { k } from '../../lib/format';
+import Chip from '../ui/Chip';
 
 export function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -25,9 +26,9 @@ export function ToolChips({ counts }: { counts: ToolCounts }) {
   return (
     <div className="flex flex-wrap gap-1 overflow-hidden text-[11px] whitespace-nowrap">
       {entries.map(([name, n]) => (
-        <span key={name} className="rounded border border-zinc-800 px-1.5 py-0.5 text-[11px] text-zinc-400">
+        <Chip key={name} size="sm">
           {name} <span className="text-zinc-200">{n}</span>
-        </span>
+        </Chip>
       ))}
     </div>
   );

@@ -1,34 +1,19 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
+import { run, type Ran } from '../exec';
 import { log } from './log';
 
-export interface Ran {
-  ok: boolean;
-  out: string;
-  err: string;
-}
-
-/** execFile only — never a shell string. Resolves with stdout, or the error text when it failed. */
-export function run(cmd: string, args: string[], timeout = 60_000, cwd?: string): Promise<Ran> {
-  return new Promise((resolve) =>
-    execFile(cmd, args, { timeout, cwd, maxBuffer: 32 << 20 }, (error, stdout, stderr) =>
-      resolve({
-        ok: !error,
-        out: String(stdout ?? '').trim(),
-        err: (String(stderr ?? '').trim() || String(error ?? '')).trim(),
-      }),
-    ),
-  );
-}
+/** The runner's view of `server/exec.ts` — re-exported so every `gh` / `git` caller has one import. */
+export { run } from '../exec';
+export type { Ran, RunOptions } from '../exec';
 
 /** `gh …`, retried once — the API is flaky often enough that a single retry pays for itself. */
 export async function gh(args: string[], timeout = 60_000): Promise<Ran> {
-  const first = await run('gh', args, timeout);
+  const first = await run('gh', args, { timeout });
   if (first.ok) return first;
   await new Promise((r) => setTimeout(r, 1500));
-  return run('gh', args, timeout);
+  return run('gh', args, { timeout });
 }
 
 /** A GraphQL query through `gh api graphql`; throws on transport or GraphQL errors. */

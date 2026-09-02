@@ -3,13 +3,12 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import type { StackId } from '../../server/config-types';
 import type { StackStatus } from '../../server/types';
 import { fetchJson, postJson } from '../lib/api';
-
-const key = (root?: string) => ['stack', root ?? ''] as const;
+import { queryKeys } from '../lib/query-keys';
 
 /** The stack as this machine has it, judged against the checkout at `root` (the configured one when empty). */
 export function useStack(root?: string, enabled = true) {
   return useQuery({
-    queryKey: key(root),
+    queryKey: queryKeys.stack(root),
     queryFn: () => fetchJson<StackStatus>(`/api/stack${root ? `?root=${encodeURIComponent(root)}` : ''}`),
     enabled,
     retry: false,
@@ -23,7 +22,7 @@ export function useInstallStack(root?: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (ids: StackId[]) => postJson<StackStatus>(`/api/stack/install${root ? `?root=${encodeURIComponent(root)}` : ''}`, { ids }),
-    onSuccess: (data) => queryClient.setQueryData(key(root), data),
+    onSuccess: (data) => queryClient.setQueryData(queryKeys.stack(root), data),
   });
 }
 
@@ -44,7 +43,7 @@ export interface Unlock {
  */
 export async function unlockStack(queryClient: QueryClient, root: string | undefined, v: Unlock): Promise<StackStatus> {
   const status = await postJson<StackStatus>(`/api/stack/unlock${root ? `?root=${encodeURIComponent(root)}` : ''}`, v);
-  queryClient.setQueryData(key(root), status);
+  queryClient.setQueryData(queryKeys.stack(root), status);
   return status;
 }
 

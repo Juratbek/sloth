@@ -1,7 +1,8 @@
-import { execFile, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { SLOTH_ROOT, cfg } from './config';
+import { run } from './exec';
 import { broadcast } from './events';
 import { which } from './install';
 import { log } from './runner/log';
@@ -26,13 +27,9 @@ let checkedAt: string | undefined;
 let checkError: string | undefined;
 let checking: Promise<void> | undefined;
 
-function git(args: string[], timeout = 60_000): Promise<{ ok: boolean; out: string; err: string }> {
-  return new Promise((resolve) =>
-    execFile(which('git') ?? 'git', args, { cwd: SLOTH_ROOT, timeout, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } }, (e, out, err) =>
-      resolve({ ok: !e, out: out.trim(), err: (err || (e ? e.message : '')).trim() }),
-    ),
-  );
-}
+/** `git` in this checkout, never prompting for credentials — the update runs with nobody watching. */
+const git = (args: string[], timeout = 60_000) =>
+  run(which('git') ?? 'git', args, { cwd: SLOTH_ROOT, timeout, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
 
 function packageVersion(): string {
   try {
@@ -80,20 +77,28 @@ export async function versionInfo(): Promise<VersionInfo> {
 /** Fetches the remote and counts the commits this checkout is behind. One fetch at a time; callers share it. */
 export function check(): Promise<void> {
   checking ??= (async () => {
-    local = await readLocal();
-    const branch = local.branch ?? 'main';
-    const fetch = await git(['fetch', '-q', REMOTE, branch], 120_000);
-    if (!fetch.ok) {
-      checkError = fetch.err.split('\n')[0] || 'git fetch failed';
+    try {
+      local = await readLocal();
+      const branch = local.branch ?? 'main';
+      const fetch = await git(['fetch', '-q', REMOTE, branch], 120_000);
+      if (!fetch.ok) {
+        checkError = fetch.err.split('\n')[0] || 'git fetch failed';
+        behind = undefined;
+      } else {
+        const count = await git(['rev-list', '--count', `HEAD..${REMOTE}/${branch}`]);
+        behind = count.ok ? Number(count.out) || 0 : undefined;
+        checkError = count.ok ? undefined : count.err.split('\n')[0];
+      }
+    } catch (e) {
+      // Nothing here may reject: `autoUpdate` runs on the watcher's own chain and the settings page awaits
+      // this. And nothing here may keep `checking` set either, or one bad look would freeze every later one.
+      checkError = (e instanceof Error ? e.message : String(e)).split('\n')[0];
       behind = undefined;
-    } else {
-      const count = await git(['rev-list', '--count', `HEAD..${REMOTE}/${branch}`]);
-      behind = count.ok ? Number(count.out) || 0 : undefined;
-      checkError = count.ok ? undefined : count.err.split('\n')[0];
+    } finally {
+      checkedAt = new Date().toISOString();
+      checking = undefined;
+      broadcast();
     }
-    checkedAt = new Date().toISOString();
-    checking = undefined;
-    broadcast();
   })();
   return checking;
 }

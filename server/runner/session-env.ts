@@ -45,7 +45,7 @@ export function sessionEnv(dir: string, target: Target, model: string, chrome: b
   const worktree = extras.worktree ?? '';
   return {
     ...process.env,
-    PATH: [...new Set([...(process.env.PATH ?? '').split(':'), ...PATH_EXTRA])].filter(Boolean).join(':'),
+    PATH: [...new Set([...(process.env.PATH ?? '').split(path.delimiter), ...PATH_EXTRA])].filter(Boolean).join(path.delimiter),
     // A model that is not Anthropic's is reached by pointing Claude Code at its provider (`models.ts`);
     // for Anthropic's own this is empty and the session keeps the machine's Claude Code credentials.
     ...providerEnv(model, process.env),

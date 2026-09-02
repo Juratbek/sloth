@@ -102,7 +102,16 @@ export default function Settings({
         </span>
         <span className="flex-1" />
         {section.defaults && (
-          <button onClick={() => patch(section.defaults!(draft))} className="text-xs text-zinc-400 hover:text-zinc-200">
+          <button
+            onClick={() => {
+              // Destructive and one click away from every section: it overwrites what is on this page,
+              // saved or not. Asked the way the session view asks before it stops a run.
+              if (window.confirm(`Restore the ${section.label} defaults? Every value in this section goes back to Sloth's own, replacing what is there.`)) {
+                patch(section.defaults!(draft));
+              }
+            }}
+            className="text-xs text-zinc-400 hover:text-zinc-200"
+          >
             ↺ Restore defaults
           </button>
         )}
