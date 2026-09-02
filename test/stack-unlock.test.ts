@@ -68,6 +68,17 @@ describe('installer', () => {
   });
 });
 
+describe('POST /api/stack/install', () => {
+  it('reads `auto` as what the configured stack still lacks, like the unlock path — not as nothing', async () => {
+    debian();
+    configure({ stack: ['redis'] });
+    const status = await handleStack('/api/stack/install', 'POST', undefined, { ids: 'auto', ai: true });
+    expect(status.installError).toBeUndefined();
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0].args).toContain('/sloth:stack redis');
+  });
+});
+
 describe('POST /api/stack/unlock', () => {
   it('refuses an empty or absent password without touching sudo', async () => {
     debian();

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { cfg } from '../config';
 import { canAnswer, canOrder, roleOf } from '../roles';
 import type { Role } from '../roles';
-import { gh, graphql } from './gh';
+import { gh, graphql, react } from './gh';
 import { isDry, log, write } from './log';
 import { isPaused } from './pause';
 import { snapshot } from './board-snapshot';
@@ -161,6 +161,9 @@ export async function comments(): Promise<void> {
       const seen = path.join(seenDir, String(comment.id));
       if (fs.existsSync(seen)) continue;
       const role = roleOf(c.roles, comment.login);
+      // Read, whatever happens to it next: the 👀 says so on the comment itself. A login with no role
+      // gets none — Sloth does not talk to strangers, not even with a reaction.
+      if (role && !isDry()) await react(c.repo, comment.id, 'eyes');
       if (!role) log(`${where(t)} ignored comment ${comment.id} by ${comment.login} (no role)`);
       else if (unwired) await unwiredReply(t, comment);
       else if (issueAlive(t.issue)) deliver(t, comment, role);

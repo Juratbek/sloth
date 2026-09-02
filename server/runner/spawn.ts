@@ -4,6 +4,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { PLUGIN_DIR, cfg } from '../config';
+import { announce } from './announce';
 import { moveCard } from './board';
 import { mcpConfig } from './browser';
 import { runHeader } from './exits';
@@ -85,6 +86,9 @@ export function start(bookDir: string, sessionDir: string, prompt: string, targe
   // at every step; this it never touches, so the time budget has something it cannot move (`launchedAt`).
   write(path.join(bookDir, 'started'), String(Math.floor(Date.now() / 1000)));
   child.unref();
+  // A run on an issue tells the issue where to watch it; a status reply borrows the directory and is
+  // not a run of its own (`bookDir` differs), and the stack install has no issue.
+  if (target.issue && bookDir === sessionDir) void announce(target.issue, sessionId, prompt, model);
 }
 
 /** Trigger 1 / 2 / 3: implement an issue. A fresh run clears the previous run's state and inbox. */

@@ -153,6 +153,9 @@ QA on `<branch>` @ <sha>: **failed** — <one line: which requirement, in what w
 QA on `<branch>` @ <sha>: **inconclusive** — <one line: what stood in the way>. A human has to test this one.
 ```
 
+Every verdict ends with one more line, `_QA tester on \`$SLOTH_MODEL\`._` — who tested and on what, for
+whoever reads the card later.
+
 A failure's numbered steps are the brief of the implement run that follows: exact, reproducible, one
 observation per line, the expected behaviour beside it. Only screenshots the tester saved — never a link
 to one that was not taken. Then the verdict, one word, for the server:

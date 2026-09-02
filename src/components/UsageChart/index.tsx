@@ -13,7 +13,7 @@ export default function UsageChart({ days = 7 }: { days?: number }) {
   if (!data) return <p className="text-sm text-zinc-400">Loading usage…</p>;
 
   const { buckets, cost, byModel } = data;
-  const max = niceMax(Math.max(...buckets.map(totalOf)));
+  const max = niceMax(Math.max(...buckets.map(totalOf)), TICKS);
   const band = PLOT.w / buckets.length;
   const baseline = PLOT.y + PLOT.h;
   const totals = SERIES.map((s) => ({ ...s, total: buckets.reduce((n, b) => n + b[s.key], 0) }));

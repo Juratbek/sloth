@@ -29,7 +29,7 @@ The short version; the tick-by-tick account is in [docs/how-it-works.md](docs/ho
 |---|---|---|
 | 1 | An issue sits in the watched column | Moves it to In Progress and starts `/sloth:implement <n>`, most important card first (`priorityField`) |
 | 2 | An issue sits in In Progress with no live session | Relaunches it, at most `maxRetries` times in a row; the comment that then parks the card says how each run ended — its last step and its own final report — so nobody has to open `run.log` to learn why |
-| 3 | Someone on the team mentions `@sloth` in a comment — on an issue, or on the PR that closes it | Delivers it to the live session; with no session, an order (admin or developer) starts one and anything else gets a status reply, on the thread it was written in. A login with no role is ignored; a PR linked to no issue gets told so |
+| 3 | Someone on the team mentions `@sloth` in a comment — on an issue, or on the PR that closes it | Leaves 👀 on the comment, then delivers it to the live session; with no session, an order (admin or developer) starts one and anything else gets a status reply, on the thread it was written in. A login with no role is ignored; a PR linked to no issue gets told so |
 | 4 | An issue in Code Review — `Sloth: skip` or not, Sloth's PR or a human's, draft or ready — has an open wired PR whose current head has not been reviewed | **Sloth's first priority**: runs `/sloth:review <pr> final` on the review model (`models.final`, `fable` by default), once per PR head — ahead of every other row that starts a session, and held back by the machine only, never by the session caps. The verdict is posted on the PR either way: a pass labels the issue `Fable: approved` and moves the card to Approved, a fail comments inline and moves it back to In Progress, where row 2 sends the session back to address the findings. An Approved card pushed to after its pass loses the label and comes back to Code Review for a fresh review. Pending checks wait a tick; red ones are row 7's. One owner per card: the review waits until the session that wrote the PR has ended, and a Code Review card whose head already has a verdict on the PR — with nobody on it — is put where that verdict says, so a card left behind by a race unsticks itself |
 | 5 | An issue in Approved carries `Fable: approved` for its current head | Comments once on the issue that it is ready for a human to test — with the preview link when the app is up behind one, else the PR to check out |
 | 6 | An issue Sloth was working on is **closed** | Moves the card to Done, takes its preview, servers, database and worktree down, and deletes the `sloth/issue-<n>-…` branch of the PR that closed it. A PR closed *without* being merged parks its still-open issue instead |
@@ -297,6 +297,11 @@ headers above.
 
 A tunnel that drops is started again, with a backoff that doubles to a minute and resets the moment an
 address is printed — however many times in a row it drops, and without needing Sloth restarted.
+
+While an address is known — a tunnel that printed one, or `publicUrl` — every session Sloth starts on an
+issue (implement, QA, the final review) leaves one comment on that issue with the link to its page on the
+monitor, so the run can be followed from GitHub. The link is bare: a browser signed in through the QR
+opens it, anyone else gets the 401. Without an address nothing is written.
 
 A quick tunnel gets a new address on every start — the QR follows it. For a stable address run your
 own tunnel (a named `cloudflared` tunnel on your domain, `jprq`, `ngrok`) and set `publicUrl`, or

@@ -61,3 +61,14 @@ export async function comment(repo: string, issue: number, body: string): Promis
   if (!r.ok) log(`#${issue} comment failed: ${r.err.split('\n')[0]}`);
   return r.ok;
 }
+
+/**
+ * A reaction on a comment — the 👀 Sloth leaves on every mention it has read, so the author knows it
+ * landed before any reply does. GitHub answers the same reaction twice with the one already there, so a
+ * comment looked at again on a later tick (a held order, a queued reply) gets no second pair of eyes.
+ */
+export async function react(repo: string, commentId: number, content: 'eyes'): Promise<boolean> {
+  const r = await gh(['api', `repos/${repo}/issues/comments/${commentId}/reactions`, '-f', `content=${content}`, '--jq', '.id']);
+  if (!r.ok) log(`comment ${commentId}: reaction failed: ${r.err.split('\n')[0]}`);
+  return r.ok;
+}

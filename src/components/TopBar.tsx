@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import type { Overview } from '../../server/types';
 import usePause from '../hooks/use-pause';
+import useCooldown from '../hooks/use-cooldown';
 import useTick from '../hooks/use-tick';
 import { clock, nextAt } from '../lib/format';
 
@@ -47,13 +47,12 @@ function PauseButton({ paused }: { paused: boolean }) {
 
 function TickButton({ busy }: { busy: boolean }) {
   const tick = useTick();
-  const [until, setUntil] = useState(0);
-  const cooling = until > Date.now();
+  const { cooling, arm } = useCooldown(COOLDOWN_MS);
   return (
     <button
       disabled={busy || cooling || tick.isPending}
       onClick={() => {
-        setUntil(Date.now() + COOLDOWN_MS);
+        arm();
         tick.mutate();
       }}
       title="Runs the next tick now. While paused it still reaps, delivers @sloth comments and answers status questions — it starts no new work."
