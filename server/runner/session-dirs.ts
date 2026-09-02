@@ -94,15 +94,26 @@ export function stateOf(dir: string): RunState {
   }
 }
 
-/** When the current phase of the run started — the session's own mark, else the pid file's mtime. */
-export function startedAt(dir: string): number {
-  const since = stateOf(dir).since;
-  if (since) return since;
+/**
+ * When the run itself was launched — `started`, written by `start` and by nothing else. This is what the
+ * time budget is measured from. The session's own `since` cannot be: the plugin's `set_state` helper
+ * defaults it to now on every call, so a session that changes step every few minutes pushes its own
+ * deadline back for ever and is never killed, which is the opposite of what a budget is for. A run
+ * launched by an older Sloth has no `started`, and the pid file's mtime dates it well enough.
+ */
+export function launchedAt(dir: string): number {
+  const started = readNumber(path.join(dir, 'started'));
+  if (started) return started;
   try {
     return Math.floor(fs.statSync(path.join(dir, 'pid')).mtimeMs / 1000);
   } catch {
     return Math.floor(Date.now() / 1000);
   }
+}
+
+/** When the current phase of the run started — the session's own mark, else when it was launched. */
+export function startedAt(dir: string): number {
+  return stateOf(dir).since || launchedAt(dir);
 }
 
 export const counter = (dir: string, name: string) => readNumber(path.join(dir, name));

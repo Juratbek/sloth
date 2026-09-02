@@ -140,10 +140,13 @@ export function guard(req: IncomingMessage, res: ServerResponse, next: () => voi
     }
     // The code signs the browser in and drops out of the address bar; the secret is never in a URL.
     url.searchParams.delete('code');
+    // `//evil.example` and `/\\evil.example` are absolute URLs to a browser, so a crafted sign-in link
+    // would bounce the visitor off Sloth entirely. Anything that is not a plain path lands on the home page.
+    const where = /^\/[^/\\]/.test(url.pathname) || url.pathname === '/' ? url.pathname + url.search : '/';
     const secure = req.headers['x-forwarded-proto'] === 'http' ? '' : '; Secure';
     res.writeHead(302, {
       'set-cookie': `${COOKIE}=${secret}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${COOKIE_MAX_AGE}${secure}`,
-      location: url.pathname + url.search,
+      location: where,
     });
     res.end();
     return;
@@ -182,6 +185,11 @@ function fail(argv: string[], error: string) {
 
 function launch(argv: string[]) {
   const [cmd, ...args] = argv;
+  // Normalisation keeps this non-empty; a config written by hand and read by an older Sloth may not have.
+  if (!cmd) {
+    fail(argv, 'no tunnel command is configured');
+    return;
+  }
   const bin = which(cmd);
   if (!bin) {
     fail(argv, `${cmd} is not installed`);

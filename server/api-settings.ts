@@ -16,22 +16,28 @@ import { check, update, versionInfo } from './update';
 
 const MAX_BODY = 1 << 20; // 1 MiB — a config payload is a few KB; anything larger is rejected
 
+/**
+ * The request body, parsed as JSON. The chunks are kept as bytes and joined before anything is decoded:
+ * a body big enough to arrive in several of them can split a multi-byte character across two, and
+ * decoding each chunk on its own turns that character into U+FFFD — an accented project title or
+ * `botPrefix` in a config payload came back mangled.
+ */
 function readBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
-    let raw = '';
+    const chunks: Buffer[] = [];
     let size = 0;
-    req.on('data', (chunk) => {
+    req.on('data', (chunk: Buffer) => {
       size += chunk.length;
       if (size > MAX_BODY) {
         reject(new Error('request body too large'));
         req.destroy();
         return;
       }
-      raw += chunk;
+      chunks.push(chunk);
     });
     req.on('end', () => {
       try {
-        resolve(JSON.parse(raw || '{}'));
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'));
       } catch {
         resolve({});
       }

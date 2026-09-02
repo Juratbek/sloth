@@ -29,20 +29,17 @@ const state: LoopStatus = { running: false, ticking: false };
 const timers: Partial<Record<Timed, NodeJS.Timeout>> = {};
 let chain: Promise<unknown> = Promise.resolve();
 /**
- * Which set of timers is the current one. Every `schedule` carries the generation it belongs to and
- * re-arms only while that is still it: saving the settings mid-tick calls `startLoop` again, and the
- * tick left over from the old set would otherwise reach its `.finally`, see `running` back at true and
- * arm a second chain of its own. Both then fire for ever — the board polled twice per `boardSeconds`,
- * and twice as often again with every save made during a tick.
+ * Which set of timers is the current one: a `schedule` re-arms only while its generation is still it.
+ * Saving the settings mid-tick calls `startLoop` again, and the old set's tick would otherwise reach
+ * its `.finally`, see `running` back at true and arm a second chain — the board polled twice for ever.
  */
 let generation = 0;
 
 /**
- * One reading of the machine, and what it means for the sessions already running. Both the tick and the
- * machine timer come through here: the board is read every five minutes, and memory can be gone in five
- * seconds — a session that boots an app, a build and a browser at once has been killed by the kernel
- * before a tick ever noticed. `machineSeconds` is what makes the difference; the tick keeps its own
- * reading so a tick asked for by hand still sees the machine it is launching into.
+ * One reading of the machine, and what it means for the sessions already running. The tick and the
+ * machine timer both come through here: the board is read every five minutes, and memory can be gone in
+ * five seconds — `machineSeconds` is what makes the difference; the tick keeps its own reading so one
+ * asked for by hand still sees the machine it is launching into.
  */
 async function readMachine(): Promise<void> {
   const machine = await sampleMachine();
@@ -51,6 +48,18 @@ async function readMachine(): Promise<void> {
   state.machine = machine;
   // A machine that stays over its limits with sessions running pauses the lowest-priority one.
   pressure();
+}
+
+/**
+ * Runs `fn` between ticks — after the one in flight, before the next. The wizard saves through here: a
+ * tick reads `cfg()` lazily at every step, so a config swapped out underneath one makes it straddle two —
+ * the old board's item ids written with the new board's field ids, the snapshot refilled from a board gone.
+ */
+export function betweenTicks<T>(fn: () => T | Promise<T>): Promise<T> {
+  const queued = chain.then(fn);
+  // The chain must survive a failing `fn`, or every tick after it is rejected too.
+  chain = queued.catch(() => undefined);
+  return queued;
 }
 
 /** One pass. Ticks never overlap: every caller is queued behind the one in flight. */

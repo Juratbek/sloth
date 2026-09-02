@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { setDry } from '../server/runner/log';
+import { cfg } from '../server/config';
+import { nowSec, setDry } from '../server/runner/log';
 import { handover, park, pickup, reap, retryStranded, reviews, stop } from '../server/runner/triggers';
 import { exitsOf } from '../server/runner/exits';
 import { qaVerdicts } from '../server/runner/qa';
@@ -507,7 +508,9 @@ describe('reap', () => {
   });
   it('cleans up the servers, database and worktree of a run that died mid-way, working or on the limit', async () => {
     fs.mkdirSync(path.join(configure().worktreesDir, 'issue-1'), { recursive: true });
-    makeSession('issue', 1, { pid: '2000000000', 'state.json': { state: 'working', servers: 'running' }, 'run.log': 'died\n', 'dev.pid': '2000000001\n', 'redis.pid': '2000000002\n', 'demo.db': 'sloth_1\n' });
+    // Two databases, one per line, like the pid files beside it — a project skill that seeds a shadow
+    // writes both. The file used to go to `dropdb` whole, which dropped neither and leaked both.
+    makeSession('issue', 1, { pid: '2000000000', 'state.json': { state: 'working', servers: 'running' }, 'run.log': 'died\n', 'dev.pid': '2000000001\n', 'redis.pid': '2000000002\n', 'demo.db': 'sloth_1\nsloth_1_shadow\n' });
     makeSession('issue', 2, { pid: '2000000000', 'run.log': 'Claude AI usage limit reached|123\n', 'demo.db': 'sloth_2\n' });
     makeSession('qa', 3, { pid: '2000000000', 'run.log': 'usage limit reached\n', 'demo.db': 'sloth_qa_3\n' });
     await reap();
@@ -518,6 +521,7 @@ describe('reap', () => {
     }
     expect(exists(sessionDir('qa', 3), 'demo.db')).toBe(false);
     expect(called(/dropdb --if-exists sloth_1$/)).toHaveLength(1);
+    expect(called(/dropdb --if-exists sloth_1_shadow$/)).toHaveLength(1);
     expect(called(/dropdb --if-exists sloth_2$/)).toHaveLength(1);
     expect(called(/dropdb --if-exists sloth_qa_3$/)).toHaveLength(1);
     expect(called(/worktree remove .*issue-1 --force/)).toHaveLength(1);
@@ -570,7 +574,7 @@ describe('reap', () => {
     try {
       // `launchApproved` writes the issue beside the run; the head keeps its marker, so nothing here
       // would ever review it again and the card would wait in Code Review for a push that never comes.
-      makeSession('approved', 30, { pid: '12345', issue: '12', 'state.json': { state: 'working', since: 1 } });
+      makeSession('approved', 30, { pid: '12345', issue: '12', started: '1', 'state.json': { state: 'working', since: nowSec() } });
       fs.mkdirSync(statePath('approved'), { recursive: true });
       fs.writeFileSync(statePath('approved', '30-abc'), '');
       onGh(/project item-add/, 'ITEM');
@@ -604,12 +608,31 @@ describe('reap', () => {
       kill.mockRestore();
     }
   });
+  it('kills a run past its budget however often the session has rewritten its own state', async () => {
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    try {
+      // The plugin's `set_state` defaults `since` to now on every call, so a session that changes step
+      // every few minutes used to push its own deadline back for ever and was never killed — only one
+      // hung inside a single step ever was. `started` is Sloth's own mark and the session cannot move it.
+      const budget = (cfg().budgetMinutes + 10) * 60;
+      makeSession('issue', 3, { pid: '12345', started: String(nowSec() - budget), 'state.json': { state: 'working', step: '5', since: nowSec() - 30 } });
+      // Well inside its budget, whatever step it is on: this one keeps running.
+      makeSession('issue', 4, { pid: '12346', started: String(nowSec() - 60), 'state.json': { state: 'working', step: '2', since: nowSec() - 60 } });
+      onGh(/project item-add/, 'ITEM');
+      await reap();
+      const logged = readLog().join('\n');
+      expect(logged).toMatch(/#3 stopped: hung past the budget/);
+      expect(logged).not.toMatch(/#4 stopped/);
+    } finally {
+      kill.mockRestore();
+    }
+  });
   it('drops the QA head marker when a hung QA run is killed, and keeps a hung review’s', async () => {
     // Kills are stubbed out so the "live" hung sessions can be killed without taking the test down with them.
     const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
     try {
-      makeSession('qa', 9, { pid: '12345', 'state.json': { state: 'working', since: 1 } });
-      makeSession('review', 5, { pid: '12346', 'state.json': { state: 'working', since: 1 } });
+      makeSession('qa', 9, { pid: '12345', started: '1', 'state.json': { state: 'working', since: nowSec() } });
+      makeSession('review', 5, { pid: '12346', started: '1', 'state.json': { state: 'working', since: nowSec() } });
       fs.mkdirSync(statePath('qa'), { recursive: true });
       fs.writeFileSync(statePath('qa', '9-abc'), '');
       fs.mkdirSync(statePath('reviewed'), { recursive: true });
