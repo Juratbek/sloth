@@ -24,7 +24,7 @@ afterEach(() => stopTunnel());
 
 describe('the session link on the issue', () => {
   it('tells the issue where its implement run can be watched, on the public address', async () => {
-    configure({ publicUrl: 'https://sloth.example.com' });
+    configure({ publicUrl: 'https://sloth.example.com', liveLinks: true });
     startTunnel(4400);
     expect(await launch(4)).toBe(true);
     await flush();
@@ -33,7 +33,7 @@ describe('the session link on the issue', () => {
     expect(links()[0].args.at(-1)).toBe(`**Sloth:** An implement session started on \`fable\` — follow it live: https://sloth.example.com/sessions/${id}`);
   });
   it('names a final review as one, on the issue the PR closes', async () => {
-    configure({ publicUrl: 'https://sloth.example.com' });
+    configure({ publicUrl: 'https://sloth.example.com', liveLinks: true });
     startTunnel(4400);
     expect(launchApproved(12, 4, 'abc1234')).toBe(true);
     await flush();
@@ -42,13 +42,20 @@ describe('the session link on the issue', () => {
     expect(links()[0].args.at(-1)).toMatch(/^\*\*Sloth:\*\* A review session started on `fable` — follow it live: https:\/\/sloth\.example\.com\/sessions\//);
   });
   it('writes nothing when no address is known — a link to localhost helps nobody', async () => {
-    configure();
+    configure({ liveLinks: true });
+    expect(await launch(4)).toBe(true);
+    await flush();
+    expect(links()).toHaveLength(0);
+  });
+  it('writes nothing by default: the public address goes to a thread everyone can read only when asked to', async () => {
+    configure({ publicUrl: 'https://sloth.example.com' });
+    startTunnel(4400);
     expect(await launch(4)).toBe(true);
     await flush();
     expect(links()).toHaveLength(0);
   });
   it('is not a status reply: that borrows the issue directory and is answered on the thread already', async () => {
-    configure({ publicUrl: 'https://sloth.example.com' });
+    configure({ publicUrl: 'https://sloth.example.com', liveLinks: true });
     startTunnel(4400);
     expect(statusReply(4, '77')).toBe(true);
     await flush();

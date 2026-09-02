@@ -208,6 +208,8 @@ export function normalizeConfig(input: unknown): SlothConfig {
     helpWebhook: url(b.helpWebhook, 'helpWebhook'),
     webhookEvents: webhookEvents(b.webhookEvents, d.webhookEvents),
     autoMerge: mergeMethod(b.autoMerge),
+    // Opt-in: the follow-it-live comment puts the public address in a thread everyone can read.
+    liveLinks: b.liveLinks === true,
     tunnel: argv(b.tunnel, d.tunnel),
     publicUrl: url(b.publicUrl, 'publicUrl'),
     stack: stackOf(b.stack),

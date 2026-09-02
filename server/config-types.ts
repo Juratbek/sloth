@@ -207,6 +207,12 @@ export interface SlothConfig {
    * leaves the merge to a human.
    */
   autoMerge: MergeMethod;
+  /**
+   * Comment a "follow it live" link to the session's monitor page on the issue a run starts for. The
+   * link is on the public address, in a thread everyone with read access to the repository can see —
+   * so off by default, even when a tunnel or `publicUrl` makes the UI reachable.
+   */
+  liveLinks: boolean;
   /** The argv Sloth runs to reach the UI from outside; `{port}` is the UI's port. The first bare https URL it prints is the address. */
   tunnel: string[];
   /** Where the UI is already reachable (your own tunnel or domain). Set, no tunnel is started. */
@@ -269,6 +275,7 @@ export const CONFIG_DEFAULTS = {
   helpWebhook: '',
   webhookEvents: ['needsHelp'] as WebhookEvent[],
   autoMerge: '' as MergeMethod,
+  liveLinks: false,
   tunnel: DEFAULT_TUNNEL,
   publicUrl: '',
   stack: 'auto' as StackChoice,

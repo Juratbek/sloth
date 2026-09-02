@@ -159,6 +159,12 @@ export function Remote({ draft, patch }: SectionProps) {
       >
         <TextInput value={draft.publicUrl} onChange={(publicUrl) => patch({ publicUrl })} placeholder="https://sloth.example.com" />
       </Row>
+      <Row
+        label="Live session links"
+        hint="Comment a follow-it-live link to the session's page here on the issue a run starts for. The link is on the public address above, visible to everyone who can read the repository — so off unless you turn it on."
+      >
+        <Toggle checked={draft.liveLinks} onChange={(liveLinks) => patch({ liveLinks })} label="Live session links" />
+      </Row>
     </>
   );
 }
