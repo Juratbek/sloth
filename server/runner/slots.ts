@@ -4,7 +4,7 @@ import { cfg } from '../config';
 import { run } from './gh';
 import { log, readFile, remove, write } from './log';
 import { statePath } from './markers';
-import { dirAlive, dirOf, issueDir, type Kind } from './session-dirs';
+import { dirAlive, dirOf, issueDir, parseRunName, type Kind } from './session-dirs';
 import { warmOf } from './warm';
 
 /**
@@ -25,10 +25,9 @@ const runName = (kind: Kind, target: number) => `${kind}-${target}`;
 
 /** Whether the run a lease names is still using its slot: alive, or done with its app kept up for a preview. */
 function holds(lease: string): boolean {
-  const m = /^(issue|review|approved|qa)-(\d+)$/.exec(lease);
-  if (!m) return false;
-  const kind = m[1] as Kind;
-  const target = Number(m[2]);
+  const run = parseRunName(lease);
+  if (!run) return false;
+  const { kind, target } = run;
   if (dirAlive(dirOf(kind, target))) return true;
   return kind === 'issue' && fs.existsSync(path.join(issueDir(target), 'preview-state.json'));
 }
@@ -78,8 +77,8 @@ export async function leaseSlot(kind: Kind, target: number): Promise<string | un
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(c.worktreesDir, { recursive: true });
     // A leftover registration of a slot whose directory went missing would block the add.
-    await run('git', ['-C', c.runnerRoot, 'worktree', 'prune'], 60_000);
-    const r = await run('git', ['-C', c.runnerRoot, 'worktree', 'add', '--detach', dir, 'HEAD'], 120_000);
+    await run('git', ['-C', c.runnerRoot, 'worktree', 'prune'], { timeout: 60_000 });
+    const r = await run('git', ['-C', c.runnerRoot, 'worktree', 'add', '--detach', dir, 'HEAD'], { timeout: 120_000 });
     if (!r.ok) {
       log(`${free} could not be created: ${r.err.split('\n')[0]}`);
       return undefined;
@@ -99,5 +98,5 @@ export async function releaseSlot(kind: Kind, target: number): Promise<void> {
   if (!name) return;
   remove(leaseFile(name));
   const dir = slotDir(name);
-  if (fs.existsSync(dir)) await run('git', ['-C', dir, 'checkout', '-q', '--detach'], 60_000);
+  if (fs.existsSync(dir)) await run('git', ['-C', dir, 'checkout', '-q', '--detach'], { timeout: 60_000 });
 }

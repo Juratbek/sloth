@@ -70,8 +70,8 @@ export async function handOver(kind: Kind, target: number, slot: string, tainted
   if (![...dev, ...redis].some(pidAlive)) return false;
   // Before `releaseSlot` detaches it, the worktree still says what the stack was built for.
   const wt = path.join(cfg().worktreesDir, slot);
-  const br = await run('git', ['-C', wt, 'rev-parse', '--abbrev-ref', 'HEAD'], 30_000);
-  const head = await run('git', ['-C', wt, 'rev-parse', 'HEAD'], 30_000);
+  const br = await run('git', ['-C', wt, 'rev-parse', '--abbrev-ref', 'HEAD'], { timeout: 30_000 });
+  const head = await run('git', ['-C', wt, 'rev-parse', 'HEAD'], { timeout: 30_000 });
   const branch = br.ok && br.out.trim() !== 'HEAD' ? br.out.trim() : undefined;
   const db = readFile(path.join(dir, 'demo.db'))?.trim() || undefined;
   const state: WarmState = { run: `${kind}-${target}`, branch, head: !tainted && head.ok ? head.out.trim() : undefined, dev, redis, db, at: nowSec() };
@@ -98,7 +98,7 @@ export async function killWarm(slot: string, reason: string): Promise<void> {
       }
     }
   }
-  if (w.db) await run('dropdb', ['--if-exists', w.db], 60_000);
+  if (w.db) await run('dropdb', ['--if-exists', w.db], { timeout: 60_000 });
   log(`the warm stack of ${slot} taken down (${reason})`);
 }
 

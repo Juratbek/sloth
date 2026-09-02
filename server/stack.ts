@@ -1,5 +1,5 @@
-import { execFile } from 'node:child_process';
 import { cfg } from './config';
+import { run } from './exec';
 import { STACK, type StackId } from './config-types';
 import { stackOf } from './config-file';
 import { installStatus, runJob, which, type Step } from './install';
@@ -21,20 +21,14 @@ export { detectStack, requiredStack } from './stack-detect';
  * writes the rule that grants it (`sudo.ts`); anything else reports what to install by hand.
  */
 
-function run(cmd: string, args: string[]): Promise<{ ok: boolean; out: string }> {
-  return new Promise((resolve) =>
-    execFile(cmd, args, { timeout: 20_000 }, (error, stdout, stderr) =>
-      resolve({ ok: !error, out: `${String(stdout ?? '')}\n${String(stderr ?? '')}`.trim().split('\n')[0].trim() }),
-    ),
-  );
-}
-
 /** Installed means the executable is there *and* answers — macOS ships a `java` stub that only says there is no Java. */
 async function check(id: StackId, detected: StackId[]): Promise<StackTool> {
   const t = TOOLS[id];
   const bin = which(t.command);
-  const r = bin ? await run(bin, t.version) : { ok: false, out: '' };
-  return { id, label: t.label, command: t.command, installed: r.ok, ...(r.ok && r.out ? { version: r.out } : {}), detected: detected.includes(id) };
+  const r = bin ? await run(bin, t.version, { timeout: 20_000 }) : { ok: false, out: '', err: '' };
+  // `java -version` and friends answer on stderr, so the version line may be on either stream.
+  const version = (r.out || r.err).split('\n')[0].trim();
+  return { id, label: t.label, command: t.command, installed: r.ok, ...(r.ok && version ? { version } : {}), detected: detected.includes(id) };
 }
 
 /** Of `ids`, the tools this machine does not have. */

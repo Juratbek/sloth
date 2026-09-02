@@ -6,6 +6,8 @@ import useQaRun from '../hooks/use-qa-run';
 import useUnblock from '../hooks/use-unblock';
 import { queued } from '../lib/queued';
 import IssuesTable from './IssuesTable';
+import Chip from './ui/Chip';
+import ErrorNote from './ui/ErrorNote';
 import UsageChart from './UsageChart';
 
 /** The QA sweep's line on the panel: its column, when it runs, and a button that runs it now. Nothing without a column. */
@@ -17,8 +19,8 @@ function QaSweep({ column, at }: { column: string; at: string }) {
       · QA sweep of {column} {at ? `daily at ${at}` : 'not scheduled'}{' '}
       <button onClick={() => run.mutate()} disabled={run.isPending} className="text-sky-400 hover:underline disabled:text-zinc-600" title="Test every card in the QA column now">
         {run.isPending ? 'sweeping…' : 'sweep now'}
-      </button>
-      {run.error && <span className="text-red-400"> {String(run.error)}</span>}
+      </button>{' '}
+      <ErrorNote error={run.error} />
     </span>
   );
 }
@@ -59,7 +61,7 @@ function Blocked({ cards, repo }: { cards: BlockedCard[]; repo: string }) {
           </li>
         ))}
       </ul>
-      {unblock.error && <p className="text-[11px] text-red-400">{String(unblock.error)}</p>}
+      <ErrorNote error={unblock.error} className="block" />
     </section>
   );
 }
@@ -80,9 +82,9 @@ export default function WatcherPanel({ overview, onSelect }: { overview: Overvie
           <h3 className="text-[10px] font-semibold tracking-wide text-zinc-400 uppercase">queued ({pending.length})</h3>
           <div className="flex flex-wrap gap-1">
             {pending.map((t) => (
-              <span key={t} className="rounded border border-amber-900 bg-amber-950/40 px-1.5 py-0.5 text-[11px] text-amber-300">
+              <Chip key={t} tone="amber" size="sm">
                 {t}
-              </span>
+              </Chip>
             ))}
           </div>
         </section>

@@ -363,7 +363,7 @@ in the session's header; the next one gets a fresh key.
 
 ## Conventions
 
-Source files stay under 200 lines. Every shell-out is `execFile` / `spawn` with an argv array — no
+Source files stay under 300 lines (`test/line-limit.test.ts` enforces it). Every shell-out is `execFile` / `spawn` with an argv array — no
 shell strings. `useEffect` only lives in a dedicated hook that subscribes to something outside React.
 `pnpm lint` (tsc), `pnpm test` (vitest — `test/`, every `gh` call mocked, a throwaway `$HOME`, never the real
 board) and `pnpm build` — run all three before a PR. MIT licensed.

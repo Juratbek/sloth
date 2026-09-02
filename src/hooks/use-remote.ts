@@ -2,8 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import QRCode from 'qrcode';
 import type { RemoteLink } from '../../server/types';
 import { fetchJson, postJson } from '../lib/api';
-
-const REMOTE_QUERY_KEY = ['remote'] as const;
+import { queryKeys } from '../lib/query-keys';
 
 /** Whether this page is open on the machine Sloth runs on — the only place /api/remote answers. */
 export const isLocalPage = () => ['localhost', '127.0.0.1', '[::1]', '::1'].includes(location.hostname);
@@ -22,7 +21,7 @@ async function load(): Promise<Remote> {
 
 export function useRemote(enabled: boolean) {
   return useQuery({
-    queryKey: REMOTE_QUERY_KEY,
+    queryKey: queryKeys.remote,
     queryFn: load,
     enabled,
     // Quicker while brew is talking, so its output and the moment the QR appears show up promptly.
@@ -35,7 +34,7 @@ export function useInstall() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => postJson<RemoteLink>('/api/remote/install', {}),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: REMOTE_QUERY_KEY }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.remote }),
   });
 }
 
@@ -44,6 +43,6 @@ export function useRotate() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => postJson<RemoteLink>('/api/remote/rotate', {}),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: REMOTE_QUERY_KEY }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.remote }),
   });
 }

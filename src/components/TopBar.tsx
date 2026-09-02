@@ -3,45 +3,33 @@ import usePause from '../hooks/use-pause';
 import useCooldown from '../hooks/use-cooldown';
 import useTick from '../hooks/use-tick';
 import { clock, nextAt } from '../lib/format';
+import Button from './ui/Button';
+import Chip from './ui/Chip';
+import ErrorNote from './ui/ErrorNote';
 
 const COOLDOWN_MS = 10_000;
 
 const BUCKET_NAMES: Record<string, string> = { core: 'REST', graphql: 'GraphQL', search: 'Search' };
 
-function Pill({ label, value, tone = 'zinc' }: { label?: string; value: string; tone?: 'zinc' | 'red' | 'amber' | 'emerald' }) {
-  const tones = {
-    zinc: 'border-zinc-800 text-zinc-300',
-    red: 'border-red-900 bg-red-950/50 text-red-300',
-    amber: 'border-amber-900 bg-amber-950/50 text-amber-300',
-    emerald: 'border-emerald-900 bg-emerald-950/40 text-emerald-300',
-  };
-  return (
-    <span className={`rounded-md border px-2 py-0.5 text-xs ${tones[tone]}`}>
-      {label && <span className="text-zinc-400">{label} </span>}
-      {value}
-    </span>
-  );
-}
-
 function PauseButton({ paused }: { paused: boolean }) {
   const pause = usePause();
   return (
-    <button
-      disabled={pause.isPending}
-      onClick={() => pause.mutate(!paused)}
-      title={
-        paused
-          ? 'Resume: Sloth starts new work again — pickups, relaunches, reviews and orders.'
-          : 'Pause: Sloth starts no new work. Running sessions continue, and Tick now still reaps, delivers @sloth comments and answers status questions.'
-      }
-      className={`rounded-md border px-2 py-0.5 text-xs disabled:cursor-not-allowed disabled:text-zinc-600 ${
-        paused
-          ? 'border-amber-800 bg-amber-950/50 text-amber-300 hover:bg-amber-900/50'
-          : 'border-zinc-800 text-zinc-300 hover:bg-zinc-900'
-      }`}
-    >
-      {paused ? 'Resume' : 'Pause'}
-    </button>
+    <>
+      <Button
+        size="bar"
+        variant={paused ? 'warn' : 'ghost'}
+        disabled={pause.isPending}
+        onClick={() => pause.mutate(!paused)}
+        title={
+          paused
+            ? 'Resume: Sloth starts new work again — pickups, relaunches, reviews and orders.'
+            : 'Pause: Sloth starts no new work. Running sessions continue, and Tick now still reaps, delivers @sloth comments and answers status questions.'
+        }
+      >
+        {paused ? 'Resume' : 'Pause'}
+      </Button>
+      <ErrorNote error={pause.error} />
+    </>
   );
 }
 
@@ -49,21 +37,22 @@ function TickButton({ busy }: { busy: boolean }) {
   const tick = useTick();
   const { cooling, arm } = useCooldown(COOLDOWN_MS);
   return (
-    <button
-      disabled={busy || cooling || tick.isPending}
-      onClick={() => {
-        arm();
-        tick.mutate();
-      }}
-      title="Runs the next tick now. While paused it still reaps, delivers @sloth comments and answers status questions — it starts no new work."
-      className="rounded-md border border-zinc-800 px-2 py-0.5 text-xs text-zinc-300 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:text-zinc-600 disabled:hover:bg-transparent"
-    >
-      {busy ? 'Ticking…' : cooling ? 'Ticked' : 'Tick now'}
-    </button>
+    <>
+      <Button
+        size="bar"
+        disabled={busy || cooling || tick.isPending}
+        onClick={() => {
+          arm();
+          tick.mutate();
+        }}
+        title="Runs the next tick now. While paused it still reaps, delivers @sloth comments and answers status questions — it starts no new work."
+      >
+        {busy ? 'Ticking…' : cooling ? 'Ticked' : 'Tick now'}
+      </Button>
+      <ErrorNote error={tick.error} />
+    </>
   );
 }
-
-const iconButton = 'rounded-md border border-zinc-800 px-2 py-0.5 text-xs text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200';
 
 export default function TopBar({
   overview,
@@ -91,7 +80,7 @@ export default function TopBar({
   const full = working >= config.maxActive;
   const limitPaused = watcher.pausedUntil && watcher.pausedUntil * 1000 > Date.now();
   const machine = watcher.loop.machine;
-  // Only a bucket that is nearly spent is worth a pill.
+  // Only a bucket that is nearly spent is worth a chip.
   const low = Object.entries(rateLimit ?? {}).find(([, b]) => b.remaining < b.limit * 0.1);
 
   return (
@@ -99,61 +88,55 @@ export default function TopBar({
       <button onClick={onHome} className="mr-2 text-sm font-semibold text-zinc-100 hover:text-white">
         {config.title}
       </button>
-      <Pill
-        label="sessions"
-        value={`${working}${full ? `/${config.maxActive}` : ''} working · ${waiting} waiting`}
-        tone={full ? 'amber' : 'emerald'}
-      />
+      <Chip label="sessions" tone={full ? 'amber' : 'emerald'}>
+        {`${working}${full ? `/${config.maxActive}` : ''} working · ${waiting} waiting`}
+      </Chip>
       {machine?.hold && (
-        <span title={`${machine.hold} — running sessions go on; new ones wait for the next tick`}>
-          <Pill
-            label="machine"
-            value={`${machine.memoryFree}% memory · ${machine.cpuIdle}% CPU idle${machine.diskIdle === undefined ? '' : ` · ${machine.diskIdle}% disk idle`}`}
-            tone="amber"
-          />
-        </span>
+        <Chip label="machine" tone="amber" title={`${machine.hold} — running sessions go on; new ones wait for the next tick`}>
+          {`${machine.memoryFree}% memory · ${machine.cpuIdle}% CPU idle${machine.diskIdle === undefined ? '' : ` · ${machine.diskIdle}% disk idle`}`}
+        </Chip>
       )}
       <span className="hidden md:contents">
-        <Pill label="pickup" value={config.pickupColumn} />
-        <Pill label="board" value={nextAt(watcher.loop.nextBoard)} />
-        <Pill label="comments" value={nextAt(watcher.loop.nextComment)} />
+        <Chip label="pickup">{config.pickupColumn}</Chip>
+        <Chip label="board">{nextAt(watcher.loop.nextBoard)}</Chip>
+        <Chip label="comments">{nextAt(watcher.loop.nextComment)}</Chip>
       </span>
       <TickButton busy={watcher.loop.ticking} />
       <PauseButton paused={watcher.paused} />
-      <button
-        onClick={onBoard}
-        title="The board as the last tick read it, on a page of its own"
-        className="rounded-md border border-zinc-800 px-2 py-0.5 text-xs text-zinc-300 hover:bg-zinc-900"
-      >
+      <Button size="bar" onClick={onBoard} title="The board as the last tick read it, on a page of its own">
         Board
-      </button>
-      {watcher.paused && <Pill value="paused" tone="amber" />}
-      {limitPaused && <Pill label="paused until" value={clock(watcher.pausedUntil! * 1000)} tone="amber" />}
+      </Button>
+      {watcher.paused && <Chip tone="amber">paused</Chip>}
+      {limitPaused && (
+        <Chip label="paused until" tone="amber">
+          {clock(watcher.pausedUntil! * 1000)}
+        </Chip>
+      )}
       <span className="flex-1" />
       {onRemote && (
-        <button
+        <Button
+          size="bar"
+          variant="icon"
           onClick={onRemote}
           title={remote.error ?? 'Open on your phone'}
           aria-label="Open on your phone"
-          className={`${iconButton} ${remote.error ? 'border-amber-900 text-amber-300' : ''}`}
+          className={remote.error ? 'border-amber-900 text-amber-300' : ''}
         >
           ▦
-        </button>
+        </Button>
       )}
       {onSettings && (
-        <button onClick={onSettings} title="Settings" aria-label="Settings" className={iconButton}>
+        <Button size="bar" variant="icon" onClick={onSettings} title="Settings" aria-label="Settings">
           ⚙
-        </button>
+        </Button>
       )}
-      <button onClick={onMenu} className={`${iconButton} md:hidden`} aria-expanded={menu}>
+      <Button size="bar" variant="icon" onClick={onMenu} className="md:hidden" aria-expanded={menu}>
         {menu ? 'Close' : 'Sessions'}
-      </button>
+      </Button>
       {low && (
-        <Pill
-          label={`${BUCKET_NAMES[low[0]] ?? low[0]} quota`}
-          value={`${low[1].remaining}/${low[1].limit} · resets ${clock(low[1].reset * 1000)}`}
-          tone={low[1].remaining === 0 ? 'red' : 'amber'}
-        />
+        <Chip label={`${BUCKET_NAMES[low[0]] ?? low[0]} quota`} tone={low[1].remaining === 0 ? 'red' : 'amber'}>
+          {`${low[1].remaining}/${low[1].limit} · resets ${clock(low[1].reset * 1000)}`}
+        </Chip>
       )}
     </header>
   );

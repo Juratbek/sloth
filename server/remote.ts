@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
+import { writeAtomic } from './atomic';
 import { cfg } from './config';
 import { broadcast } from './events';
 import { installStatus, installable, which } from './install';
@@ -50,8 +51,8 @@ export function token(): string {
 /** A fresh secret — every phone that scanned the old code is signed out, and pending links die. */
 export function rotateToken(): string {
   const t = crypto.randomBytes(24).toString('hex');
-  fs.mkdirSync(path.dirname(tokenFile()), { recursive: true });
-  fs.writeFileSync(tokenFile(), `${t}\n`, { mode: 0o600 });
+  // Read back on every request and on every restart: a half-written token signs everybody out for good.
+  writeAtomic(tokenFile(), `${t}\n`, { mode: 0o600 });
   codes.clear();
   activeCode = undefined;
   return t;

@@ -1,27 +1,15 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ComponentProps, type ReactNode } from 'react';
+import UiButton from '../components/ui/Button';
 
-export function Button({
-  children,
-  onClick,
-  disabled,
-  variant = 'ghost',
-  type = 'button',
-}: {
-  children: ReactNode;
-  onClick?: () => void;
-  disabled?: boolean;
-  variant?: 'ghost' | 'primary';
-  type?: 'button' | 'submit';
-}) {
-  const style =
-    variant === 'primary'
-      ? 'bg-zinc-100 text-zinc-900 hover:bg-white disabled:bg-zinc-800 disabled:text-zinc-500'
-      : 'border border-zinc-800 text-zinc-300 hover:bg-zinc-900 disabled:text-zinc-600';
-  return (
-    <button type={type} onClick={onClick} disabled={disabled} className={`rounded-md px-3 py-1.5 text-sm disabled:cursor-not-allowed ${style}`}>
-      {children}
-    </button>
-  );
+type ButtonProps = ComponentProps<typeof UiButton>;
+
+/**
+ * The wizard's and the settings' button — the shared one at its form size, with only the two variants
+ * those pages use. Re-exported rather than re-implemented so that a change to the button is one change;
+ * the rest of the UI reaches for `components/ui/Button` and its other sizes directly.
+ */
+export function Button(props: Omit<ButtonProps, 'size'>) {
+  return <UiButton {...props} size="form" />;
 }
 
 export function Choice({

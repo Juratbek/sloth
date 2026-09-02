@@ -7,7 +7,17 @@ import { STATUS_COLOR, ago, k, usd } from '../lib/format';
  * "what did #42 cost me" is one line. Dearest first, as the server rolled it up.
  */
 export default function IssuesTable({ issues, config }: { issues: IssueCost[]; config: MonitorConfig }) {
-  if (!issues.length) return null;
+  // Returning null pulled the whole column out of the panel's flex row, so the watcher log jumped from
+  // half the width to all of it and back the moment the first issue was costed. The heading stays.
+  if (!issues.length)
+    return (
+      <section className="flex min-h-0 min-w-0 flex-1 basis-0 flex-col gap-1">
+        <h3 className="text-[10px] font-semibold tracking-wide text-zinc-400 uppercase">cost by issue</h3>
+        <p className="rounded-md border border-zinc-800 p-3 text-[11px] text-zinc-400">
+          Nothing costed yet — an issue appears here once Sloth has run on it.
+        </p>
+      </section>
+    );
   return (
     <section className="flex min-h-0 min-w-0 flex-1 basis-0 flex-col gap-1">
       <h3 className="text-[10px] font-semibold tracking-wide text-zinc-400 uppercase">cost by issue ({issues.length})</h3>

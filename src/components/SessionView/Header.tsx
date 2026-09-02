@@ -3,6 +3,9 @@ import useStopPreview from '../../hooks/use-preview';
 import useStopSession from '../../hooks/use-stop-session';
 import { STATUS_COLOR, ago, elapsed, githubUrl, k, label, modelName, newInput, safeUrl, stepLabel, untilLabel, usd } from '../../lib/format';
 import { LoadChips } from '../SessionLoad';
+import Button from '../ui/Button';
+import Chip from '../ui/Chip';
+import ErrorNote from '../ui/ErrorNote';
 import { ToolChips } from './Usage';
 
 function Stats({ s }: { s: SessionDetail }) {
@@ -42,13 +45,10 @@ function PreviewLine({ issue, preview }: { issue: number; preview: NonNullable<S
         <span className="text-zinc-400">preview starting…</span>
       )}
       <span className="text-[11px] text-zinc-400">{untilLabel(preview.expiresAt)}</span>
-      <button
-        onClick={() => stop.mutate(issue)}
-        disabled={stop.isPending}
-        className="rounded border border-zinc-800 px-1.5 py-0.5 text-[11px] text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 disabled:opacity-50"
-      >
+      <Button size="inline" variant="icon" onClick={() => stop.mutate(issue)} disabled={stop.isPending}>
         {stop.isPending ? 'stopping…' : 'stop'}
-      </button>
+      </Button>
+      <ErrorNote error={stop.error} />
     </span>
   );
 }
@@ -68,16 +68,20 @@ function StopButton({ s }: { s: SessionDetail }) {
         hint: 'Ends the parked run: its servers, database and worktree go and it leaves Needs help. The card stays where it is; an answer on the issue starts a new run.',
       };
   return (
-    <button
-      onClick={() => {
-        if (window.confirm(text.ask)) stop.mutate(s.id);
-      }}
-      disabled={stop.isPending}
-      title={text.hint}
-      className="rounded border border-red-900 px-1.5 py-0.5 text-[11px] text-red-300 hover:bg-red-950/60 disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      {stop.isPending ? 'stopping…' : s.live ? 'stop' : 'end'}
-    </button>
+    <>
+      <Button
+        size="inline"
+        variant="danger"
+        onClick={() => {
+          if (window.confirm(text.ask)) stop.mutate(s.id);
+        }}
+        disabled={stop.isPending}
+        title={text.hint}
+      >
+        {stop.isPending ? 'stopping…' : s.live ? 'stop' : 'end'}
+      </Button>
+      <ErrorNote error={stop.error} />
+    </>
   );
 }
 
@@ -90,9 +94,9 @@ function WatcherLine({ s }: { s: SessionDetail }) {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="text-zinc-400">{w.name}</span>
         {st?.step && (
-          <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[11px]" title={`step ${st.step}`}>
+          <Chip tone="solidDim" size="sm" title={`step ${st.step}`}>
             {stepLabel(w.kind, st.step)}
-          </span>
+          </Chip>
         )}
         {st?.branch && <span className="font-mono text-[11px] text-zinc-400">{st.branch}</span>}
         {safeUrl(st?.pr) && (
@@ -126,11 +130,13 @@ export default function Header({ s, config }: { s: SessionDetail; config: Monito
             {s.title ?? url.replace(`https://github.com/${config.repo}/`, '')}
           </a>
         )}
-        <span className="rounded border border-zinc-700 px-1.5 py-0.5 text-[11px] text-zinc-300">{s.status}</span>
+        <Chip tone="outline" size="sm">
+          {s.status}
+        </Chip>
         {s.model && (
-          <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[11px] text-zinc-300" title={s.model}>
+          <Chip tone="solid" size="sm" title={s.model}>
             {modelName(s.model)}
-          </span>
+          </Chip>
         )}
         <span className="text-[11px] text-zinc-400">{elapsed(s)}</span>
         <StopButton s={s} />

@@ -7,8 +7,9 @@ import { startLoop, stopLoop, tick } from './runner/loop';
 import { isPaused, setPaused } from './runner/pause';
 import { closeTunnels, stopPreview } from './runner/preview';
 import { unblock } from './runner/blocked';
+import { log } from './runner/log';
 import { openSweep } from './runner/qa';
-import { stop as stopRun } from './runner/triggers';
+import { stop as stopRun } from './runner/run-control';
 import { handleSettings, isSettings } from './api-settings';
 import { previewIndex, withTitle } from './preview-index';
 import { guard, isLocal, sameOrigin, startTunnel, stopTunnel } from './remote';
@@ -132,9 +133,25 @@ export function apiMiddleware(req: IncomingMessage, res: ServerResponse, next: (
     .catch((e) => fail(res, e));
 }
 
+let guarded = false;
+/**
+ * The last net under everything. Sloth is one long-lived process: the watcher, the timers, the tunnels
+ * and the preview guards all live in it, and Node's default answer to a promise nobody caught is to end
+ * that process — so a stray rejection in a corner nothing depends on used to stop the board being watched
+ * at all, silently, with the reason on a stdout nobody was reading. Every path that can be caught is
+ * caught where it happens; this only makes sure the ones that were missed cost a line in `watcher.log`
+ * instead of the night's work. Installed once, when the API mounts (the preview server mounts it again).
+ */
+function guardProcess(): void {
+  if (guarded) return;
+  guarded = true;
+  process.on('unhandledRejection', (reason) => log(`unhandled rejection: ${(reason instanceof Error ? reason.stack || reason.message : String(reason)).split('\n')[0]}`));
+}
+
 /** Vite plugin: serves the read-only monitor API from the same process as the UI (dev and preview). */
 export function monitorApi(): Plugin {
   const mount = (server: ViteDevServer | PreviewServer) => {
+    guardProcess();
     watchAll();
     // The watcher is this process: it starts with the server and stops when the server stops.
     startLoop();

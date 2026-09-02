@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import type { StackId } from '../../server/config-types';
 import { useUnlockStack } from '../hooks/use-stack';
-import { Button, inputStyle } from '../setup/ui';
+import { inputStyle } from '../setup/ui';
+import Button from './ui/Button';
+import Modal from './ui/Modal';
 
 /**
  * Asks for the sudo password of the user Sloth runs as — the one thing Sloth cannot work out by
@@ -9,6 +11,10 @@ import { Button, inputStyle } from '../setup/ui';
  * field is cleared before the request is even awaited, the POST is a plain one so no cache keeps it
  * (`useUnlockStack`), and the server spends it on `/etc/sudoers.d/sloth` without writing it anywhere.
  * Nothing else in the UI ever sees it.
+ *
+ * The form sits inside the dialog rather than being it, so `Modal` owns the backdrop, Escape and the
+ * focus trap while Enter in the field still submits. `data-autofocus` is what tells `Modal` to leave
+ * the focus here instead of on the close button.
  */
 export default function SudoDialog({ root, ids, onClose }: { root?: string; ids: StackId[]; onClose: () => void }) {
   const [password, setPassword] = useState('');
@@ -31,20 +37,8 @@ export default function SudoDialog({ root, ids, onClose }: { root?: string; ids:
   };
 
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
-      <form
-        role="dialog"
-        aria-label="Install with a password"
-        className="w-full max-w-sm space-y-3 rounded-lg border border-zinc-800 bg-zinc-950 p-4"
-        onClick={(e) => e.stopPropagation()}
-        onSubmit={submit}
-      >
-        <div className="flex items-center">
-          <h2 className="text-sm font-semibold text-zinc-100">Install with a password</h2>
-          <button type="button" onClick={onClose} aria-label="Close" className="ml-auto text-zinc-400 hover:text-zinc-200">
-            ✕
-          </button>
-        </div>
+    <Modal title="Install with a password" onClose={onClose}>
+      <form className="space-y-3" onSubmit={submit}>
         <p className="text-xs leading-relaxed text-zinc-400">
           The password of the user Sloth runs as is used <b className="text-zinc-200">once, right now</b>, to write{' '}
           <code className="text-zinc-300">/etc/sudoers.d/sloth</code> — the line that lets Sloth run <code>apt-get</code>,{' '}
@@ -55,7 +49,7 @@ export default function SudoDialog({ root, ids, onClose }: { root?: string; ids:
         <input
           type="password"
           autoComplete="off"
-          autoFocus
+          data-autofocus
           spellCheck={false}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
@@ -73,6 +67,6 @@ export default function SudoDialog({ root, ids, onClose }: { root?: string; ids:
           </span>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }

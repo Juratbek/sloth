@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { cfg } from '../config';
+import type { WatcherState } from '../types';
 import { readFile, readNumber } from './log';
 
 /**
@@ -62,6 +63,16 @@ export const pidOf = (dir: string) => readNumber(path.join(dir, 'pid')) || undef
 export const dirAlive = (dir: string) => pidAlive(pidOf(dir)) && !predatesBoot(path.join(dir, 'pid'));
 export const issueAlive = (issue: number) => dirAlive(issueDir(issue));
 
+/**
+ * A run's name back into the kind and target it was made from — `dirOf` read backwards. One reader, so a
+ * kind added to `KINDS` is a kind every caller sees: a directory listing, a worktree lease, the monitor.
+ * Anything else (a stray file, a directory a human made) is not a run.
+ */
+export function parseRunName(name: string): { kind: Kind; target: number } | undefined {
+  const m = /^(issue|review|approved|qa)-(\d+)$/.exec(name);
+  return m ? { kind: m[1] as Kind, target: Number(m[2]) } : undefined;
+}
+
 /** Every session directory Sloth has ever created, live or not. */
 export function runDirs(): RunDir[] {
   let names: string[] = [];
@@ -71,28 +82,29 @@ export function runDirs(): RunDir[] {
     return [];
   }
   return names.flatMap((name) => {
-    const m = /^(issue|review|approved|qa)-(\d+)$/.exec(name);
-    return m ? [{ name, kind: m[1] as Kind, target: Number(m[2]), dir: path.join(cfg().sessionsDir, name) }] : [];
+    const run = parseRunName(name);
+    return run ? [{ name, ...run, dir: path.join(cfg().sessionsDir, name) }] : [];
   });
 }
 
-export interface RunState {
-  state?: string;
-  since?: number;
-  step?: string;
-  note?: string;
-  branch?: string;
-  pr?: string;
-  servers?: string;
-}
+/**
+ * What a session writes into its `state.json` (the contract is in `plugin/README.md`). One shape, shared
+ * with the monitor: `WatcherState` in `types.ts` is what the UI reads off the very same file, and two
+ * copies of it drifted apart the moment either end learned a new field.
+ */
+export type RunState = WatcherState;
 
-export function stateOf(dir: string): RunState {
+/** The run's `state.json`, or undefined when it has none yet — or one no parser will take. */
+export function readState(dir: string): RunState | undefined {
   try {
     return JSON.parse(readFile(path.join(dir, 'state.json')) ?? '') as RunState;
   } catch {
-    return {};
+    return undefined;
   }
 }
+
+/** The same, as the runner wants it: a run that has said nothing is a run with nothing to say. */
+export const stateOf = (dir: string): RunState => readState(dir) ?? {};
 
 /**
  * When the run itself was launched — `started`, written by `start` and by nothing else. This is what the

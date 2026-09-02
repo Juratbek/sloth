@@ -6,6 +6,10 @@ import type { SectionProps } from './ui';
 
 const STEP: Record<string, string> = { pull: 'Pulling…', install: 'Installing…', build: 'Building…', restart: 'Restarting…' };
 
+/** Updating ends this process and starts another; the page goes away with it, so it is asked about first. */
+const UPDATE_ASK =
+  'Update Sloth now? It pulls, installs, builds and then restarts this process — the page reloads when Sloth is back. Running sessions keep going.';
+
 /** Which Sloth this is, whether a newer one is on the remote, and the button — or the timer — that installs it. */
 export default function AboutSection({ draft, patch }: SectionProps) {
   const { query, check, update } = useVersion(true);
@@ -58,7 +62,13 @@ export default function AboutSection({ draft, patch }: SectionProps) {
           <Button onClick={() => check.mutate()} disabled={busy || check.isPending}>
             {check.isPending ? 'Checking…' : 'Check'}
           </Button>
-          <Button variant="primary" onClick={() => update.mutate()} disabled={busy || update.isPending || !v.behind}>
+          <Button
+            variant="primary"
+            onClick={() => {
+              if (window.confirm(UPDATE_ASK)) update.mutate();
+            }}
+            disabled={busy || update.isPending || !v.behind}
+          >
             {busy ? STEP[u.step ?? ''] ?? 'Updating…' : 'Update'}
           </Button>
         </span>

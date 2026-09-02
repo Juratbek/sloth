@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { PROVIDERS, toChoices } from '../../server/models';
 import type { ModelChoice } from '../../server/types';
 import { fetchJson } from '../lib/api';
+import { queryKeys } from '../lib/query-keys';
 
 /** Anthropic's models, which need no key of their own — what the picker offers before the server answers. */
 const ALWAYS: ModelChoice[] = PROVIDERS.filter((p) => !p.tokenEnv).flatMap((p) => toChoices(p, true));
@@ -13,7 +14,7 @@ const ALWAYS: ModelChoice[] = PROVIDERS.filter((p) => !p.tokenEnv).flatMap((p) =
  */
 export function useModels() {
   const query = useQuery({
-    queryKey: ['models'],
+    queryKey: queryKeys.models,
     queryFn: () => fetchJson<ModelChoice[]>('/api/models'),
     retry: false,
     staleTime: 60_000,

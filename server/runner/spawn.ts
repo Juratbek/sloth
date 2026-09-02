@@ -3,20 +3,21 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { writeAtomic } from '../atomic';
 import { PLUGIN_DIR, cfg } from '../config';
 import { announce } from './announce';
 import { moveCard } from './board';
 import { mcpConfig } from './browser';
 import { runHeader } from './exits';
 import { run } from './gh';
-import { isDry, log, readFile, remove, write } from './log';
+import { isDry, log, remove, write } from './log';
 import { cleanup } from './cleanup';
 import { stopPreview } from './preview';
 import { APPEND_PROMPT, sessionEnv, type SessionExtras, type Target } from './session-env';
 import { approvedDir, issueDir, qaDir, slotsFull, statusDir, triesOn } from './session-dirs';
 import { machineHold } from './machine';
 import { forgetPause } from './pressure';
-import { leaseSlot } from './slots';
+import { leaseSlot, releaseSlot } from './slots';
 import { claimWarm, warmOf } from './warm';
 
 /** Why nothing may start right now: every slot taken, or the machine too loaded to take one more run. */
@@ -39,7 +40,9 @@ export function ensureTrust(root: string): void {
   if (projects[root]?.hasTrustDialogAccepted === true) return;
   if (fs.existsSync(file)) fs.copyFileSync(file, `${file}.sloth-backup`);
   projects[root] = { ...(projects[root] ?? {}), hasTrustDialogAccepted: true, hasCompletedProjectOnboarding: true };
-  fs.writeFileSync(file, JSON.stringify(data, null, 2));
+  // Claude Code's own file, not Sloth's: truncating it and dying mid-write would leave every session on
+  // this machine without its settings, hence the backup above and the atomic replace here.
+  writeAtomic(file, JSON.stringify(data, null, 2));
   log(`trusted ${root} for Claude Code`);
 }
 
@@ -117,15 +120,28 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
   // pickup, a QA fail — removes it before calling launch.
   forgetPause(dir);
   for (const f of fs.readdirSync(path.join(dir, 'inbox'))) remove(path.join(dir, 'inbox', f));
-  await moveCard(issue, cfg().statusField.columns.inProgress.id);
-  await run('git', ['-C', cfg().runnerRoot, 'fetch', '-q', 'origin'], 120_000);
+  // Without this fetch the session branches off whatever the runner checkout last saw: work already
+  // merged is done again, and `warmOf` below cannot tell whether the slot's stack is on the current head.
+  // A launch that cannot fetch is abandoned rather than started wrong — the slot goes back, no retry is
+  // spent (the callers stop on `false` before counting one), the card is still in its column, and the next tick tries again.
+  const fetched = await run('git', ['-C', cfg().runnerRoot, 'fetch', '-q', 'origin'], { timeout: 120_000 });
+  if (!fetched.ok) {
+    await releaseSlot('issue', issue);
+    log(`#${issue} not launched: git fetch origin failed — ${fetched.err.split('\n')[0]}`);
+    return false;
+  }
+  // `moveCard` says why it failed; the run still starts, because the card being in the wrong column is a
+  // smaller wrong than nobody working the issue. Trigger 2 sees the session and leaves it alone.
+  if (!(await moveCard(issue, cfg().statusField.columns.inProgress.id))) {
+    log(`#${issue} could not be moved to ${cfg().statusField.columns.inProgress.name} — launching anyway`);
+  }
   // The slot may hold a warm stack (`warm.ts`). "Same head" for an implement run means the branch the
   // stack last served has not moved on the remote — the fetch above just made that answerable; a branch
   // that was never pushed resolves to nothing and counts as new work, which only costs a reseed.
   let head: string | undefined;
   const w = warmOf(slot);
   if (w?.run === `issue-${issue}` && w.branch) {
-    const r = await run('git', ['-C', cfg().runnerRoot, 'rev-parse', `origin/${w.branch}`], 30_000);
+    const r = await run('git', ['-C', cfg().runnerRoot, 'rev-parse', `origin/${w.branch}`], { timeout: 30_000 });
     if (r.ok) head = r.out.trim();
   }
   const warm = await claimWarm('issue', issue, slot, head);
@@ -199,11 +215,18 @@ export async function launchQa(issue: number, sha: string, branch: string): Prom
   }
   const slot = await leaseSlot('qa', issue);
   if (!slot) return noSlot(`QA #${issue}`);
+  // Before the books are written: a test of a head the checkout has not fetched is a test of the wrong
+  // code, and a run abandoned here must not count against the card's `retries` — see `launch` above.
+  const fetched = await run('git', ['-C', c.runnerRoot, 'fetch', '-q', 'origin'], { timeout: 120_000 });
+  if (!fetched.ok) {
+    await releaseSlot('qa', issue);
+    log(`QA #${issue} not launched: git fetch origin failed — ${fetched.err.split('\n')[0]}`);
+    return false;
+  }
   const retries = triesOn(dir, sha);
   for (const f of ['state.json', 'verdict', 'handled']) remove(path.join(dir, f));
   write(path.join(dir, 'sha'), sha);
   write(path.join(dir, 'retries'), String(retries + 1));
-  await run('git', ['-C', c.runnerRoot, 'fetch', '-q', 'origin'], 120_000);
   // The head under test is known here, so a warm stack from an earlier test of this card on the same
   // head is reused untouched; the same stack on a moved branch still saves the boot, minus a reseed.
   const warm = await claimWarm('qa', issue, slot, sha);

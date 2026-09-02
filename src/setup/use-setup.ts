@@ -1,8 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnRef, ConfigProject, SetupEnv, SetupFields, SetupProject, SlothConfig, StackChoice } from '../../server/config-types';
 import { fetchJson, postJson } from '../lib/api';
-
-export const CONFIG_QUERY_KEY = ['setup', 'config'] as const;
+import { queryKeys } from '../lib/query-keys';
 
 /**
  * What the wizard posts: the values it asks about, plus whatever the saved config already had.
@@ -69,7 +68,7 @@ export const draftFrom = (config: SlothConfig | null | undefined): Draft => ({
 /** The saved config, for the wizard. Only the machine Sloth runs on may read it — a phone never asks. */
 export function useConfig(enabled = true) {
   return useQuery({
-    queryKey: CONFIG_QUERY_KEY,
+    queryKey: queryKeys.setupConfig,
     enabled,
     queryFn: async () => {
       const res = await fetch('/api/setup/config');
@@ -83,7 +82,7 @@ export function useConfig(enabled = true) {
 
 export function useSetupEnv() {
   return useQuery({
-    queryKey: ['setup', 'env'],
+    queryKey: queryKeys.setupEnv,
     queryFn: () => fetchJson<SetupEnv>('/api/setup/env'),
     staleTime: 0,
     gcTime: 0,
@@ -93,7 +92,7 @@ export function useSetupEnv() {
 
 export function useProjects() {
   return useQuery({
-    queryKey: ['setup', 'projects'],
+    queryKey: queryKeys.setupProjects,
     queryFn: () => fetchJson<SetupProject[]>('/api/setup/projects'),
     staleTime: 60_000,
     retry: false,
@@ -102,7 +101,7 @@ export function useProjects() {
 
 export function useProjectFields(projectId: string | undefined) {
   return useQuery({
-    queryKey: ['setup', 'fields', projectId],
+    queryKey: queryKeys.setupFields(projectId),
     queryFn: () => fetchJson<SetupFields>(`/api/setup/projects/${projectId}/fields`),
     enabled: !!projectId,
     staleTime: 60_000,
@@ -117,10 +116,21 @@ export function useClone() {
   });
 }
 
+/**
+ * Writes the whole config. What a save changes is named rather than swept up by a bare
+ * `invalidateQueries()`: the server validates the config, creates the columns still to be created and
+ * restarts the watcher and the tunnel on the new values, so the config itself, the overview, the QR and
+ * the stack judged against the (possibly new) checkout are all stale — and nothing else is. The
+ * transcripts a save cannot touch are left where they are.
+ */
 export function useSaveConfig() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (config: ConfigPayload) => postJson<{ ok: boolean; path: string; config: SlothConfig }>('/api/setup/config', config),
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: () => {
+      for (const queryKey of [queryKeys.setup, queryKeys.overview, queryKeys.remote, queryKeys.allStack, queryKeys.service]) {
+        void queryClient.invalidateQueries({ queryKey });
+      }
+    },
   });
 }

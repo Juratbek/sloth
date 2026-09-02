@@ -3,7 +3,7 @@ import path from 'node:path';
 import { cfg } from '../config';
 import { run } from './gh';
 import { log, readFile, remove } from './log';
-import { dirOf, predatesBoot, worktreeName, type Kind } from './session-dirs';
+import { dirOf, pidAlive, predatesBoot, worktreeName, type Kind } from './session-dirs';
 import { releaseSlot, slotOf } from './slots';
 import { handOver } from './warm';
 
@@ -70,7 +70,7 @@ export async function cleanupRun(kind: Kind, target: number, tainted = false): P
     // two. The whole file used to be handed to `dropdb` as a single name, so a run with two dropped
     // neither and leaked both.
     const dbs = (readFile(path.join(dir, 'demo.db')) ?? '').split('\n').map((line) => line.trim()).filter(Boolean);
-    for (const db of dbs) await run('dropdb', ['--if-exists', db], 60_000);
+    for (const db of dbs) await run('dropdb', ['--if-exists', db], { timeout: 60_000 });
     if (dbs.length) remove(path.join(dir, 'demo.db'));
   }
   // A cleaned-up run has nothing left to show.
@@ -78,8 +78,8 @@ export async function cleanupRun(kind: Kind, target: number, tainted = false): P
   await releaseSlot(kind, target);
   const worktree = path.join(cfg().worktreesDir, worktreeName(kind, target));
   if (fs.existsSync(worktree)) {
-    await run('git', ['-C', cfg().runnerRoot, 'worktree', 'remove', worktree, '--force'], 120_000);
-    await run('git', ['-C', cfg().runnerRoot, 'worktree', 'prune'], 60_000);
+    await run('git', ['-C', cfg().runnerRoot, 'worktree', 'remove', worktree, '--force'], { timeout: 120_000 });
+    await run('git', ['-C', cfg().runnerRoot, 'worktree', 'prune'], { timeout: 60_000 });
   }
 }
 
@@ -107,12 +107,5 @@ export function serversUp(issue: number): boolean {
   const { pids, stale } = pidsOf(path.join(dirOf('issue', issue), 'dev.pid'));
   if (stale) return false;
   if (!pids.length) return true;
-  return pids.some((pid) => {
-    try {
-      process.kill(pid, 0);
-      return true;
-    } catch {
-      return false;
-    }
-  });
+  return pids.some(pidAlive);
 }
