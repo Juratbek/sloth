@@ -1,12 +1,13 @@
 import { useVersion } from '../hooks/use-update';
 import { ago } from '../lib/format';
-import { Button } from '../setup/ui';
-import { Row } from './ui';
+import { Button, NumberInput } from '../setup/ui';
+import { Row, Toggle } from './ui';
+import type { SectionProps } from './ui';
 
 const STEP: Record<string, string> = { pull: 'Pulling…', install: 'Installing…', build: 'Building…', restart: 'Restarting…' };
 
-/** Which Sloth this is, whether a newer one is on the remote, and the button that installs it. */
-export default function AboutSection() {
+/** Which Sloth this is, whether a newer one is on the remote, and the button — or the timer — that installs it. */
+export default function AboutSection({ draft, patch }: SectionProps) {
   const { query, check, update } = useVersion(true);
   const v = query.data;
   if (!v) return <p className="py-3 text-xs text-zinc-400">{query.isError ? `Version unavailable: ${String(query.error)}` : 'Loading…'}</p>;
@@ -62,6 +63,32 @@ export default function AboutSection() {
           </Button>
         </span>
       </Row>
+      <Row
+        label="Update automatically"
+        hint={
+          <>
+            Look at {where} on a timer and install what is there, without being asked — the same pull, install, build and restart as the
+            button above. The update waits for the tick in flight and holds the next one, so nothing is half-moved through a restart.
+            Running sessions are detached and keep going.
+            {draft.autoUpdate && v.dirty && (
+              <>
+                <br />
+                <span className="text-amber-400">
+                  This checkout has local changes, so <code>git pull --ff-only</code> would refuse: nothing is installed until they are gone.
+                </span>
+              </>
+            )}
+          </>
+        }
+        wide
+      >
+        <Toggle label="Update automatically" checked={draft.autoUpdate} onChange={(autoUpdate) => patch({ autoUpdate })} />
+      </Row>
+      {draft.autoUpdate && (
+        <Row label="Update poll" hint="Seconds between two looks at the remote. At least 300 — an update is a fetch, a build and a restart.">
+          <NumberInput min={300} value={draft.updateSeconds} onChange={(updateSeconds) => patch({ updateSeconds })} />
+        </Row>
+      )}
       {(u.output || u.error || update.error) && (
         <div className="space-y-1 py-3">
           {(u.error || update.error) && <p className="text-xs text-red-400">{u.error ?? String(update.error)}</p>}

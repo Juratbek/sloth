@@ -164,6 +164,15 @@ export interface SlothConfig {
   /** Start Sloth when this machine is logged into, through a macOS launch agent (`server/service.ts`). */
   autostart: boolean;
   /**
+   * Install Sloth's own updates without being asked: every `updateSeconds` the watcher looks at
+   * `origin/<branch>` and, when this checkout is behind it, runs the same pull-install-build-restart the
+   * About page's button runs (`server/update.ts`). A checkout with local changes is left alone — the pull
+   * is `--ff-only` and would refuse — and an update never starts inside a tick.
+   */
+  autoUpdate: boolean;
+  /** How often `autoUpdate` looks at the remote, in seconds. Ignored while auto-update is off. At least 300. */
+  updateSeconds: number;
+  /**
    * How long a finished implement session's app stays up behind a public link posted on its PR, so a
    * reviewer can try the change without checking it out (see `runner/preview.ts`). `0` turns previews off.
    */
@@ -249,6 +258,8 @@ export const CONFIG_DEFAULTS = {
   orchestrator: true,
   chrome: true,
   autostart: false,
+  autoUpdate: false,
+  updateSeconds: 3600,
   previewHours: 24,
   warmSlots: true,
   keepDays: 30,

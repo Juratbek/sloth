@@ -40,7 +40,7 @@ const SECTIONS: { key: Key; label: string; component: ComponentType<SectionProps
   { key: 'sessions', label: 'Sessions', component: Sessions, defaults: () => pick('maxActive', 'maxAlive', 'minFreeMemory', 'minIdleCpu', 'minIdleDisk', 'machineSeconds', 'warmSlots', 'budgetMinutes', 'waitHours', 'reviewRounds', 'maxRetries', 'keepDays') },
   { key: 'remote', label: 'Remote access', component: Remote, defaults: () => pick('tunnel', 'publicUrl') },
   { key: 'machine', label: 'Machine', component: MachineSection, defaults: () => pick('autostart') },
-  { key: 'about', label: 'About', component: AboutSection },
+  { key: 'about', label: 'About', component: AboutSection, defaults: () => pick('autoUpdate', 'updateSeconds') },
 ];
 
 const navItem = 'rounded-md px-3 py-1.5 text-left text-sm whitespace-nowrap';

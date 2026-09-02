@@ -1,17 +1,18 @@
 import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { SLOTH_ROOT } from './config';
+import { SLOTH_ROOT, cfg } from './config';
 import { broadcast } from './events';
 import { which } from './install';
 import { log } from './runner/log';
+import { serviceStatus } from './service';
 import type { UpdateStatus, VersionInfo } from './types';
 
 /**
  * Sloth's own version and its update: what commit this checkout runs, how far behind `origin/<branch>`
- * it is, and — from the settings page — pull, install, build and restart. The restart re-executes this
- * process with the same argv, cwd and environment, so the new server code loads; the detached sessions
- * are not touched, they only notice the monitor blink.
+ * it is, and — from the settings page, or on its own with `autoUpdate` on — pull, install, build and
+ * restart. The restart re-executes this process with the same argv, cwd and environment, so the new
+ * server code loads; the detached sessions are not touched, they only notice the monitor blink.
  */
 
 const TAIL = 40;
@@ -121,22 +122,53 @@ function step(name: UpdateStatus['step'], cmd: string, args: string[]): Promise<
  * Replaces this process with a fresh one: the same command line, cwd and environment, started detached
  * a second after this one exits so the port is free. Whatever wrapped this process (`pnpm start`,
  * `caffeinate`) returns; the sessions, detached themselves, keep running.
+ *
+ * Unless launchd owns this process. The launch agent is `KeepAlive`, so it starts Sloth again by itself
+ * the moment this one goes: spawning a replacement as well would leave two Sloths watching one board,
+ * each ticking it independently — duplicate sessions on a card, duplicate comments, duplicate moves.
+ * Exiting *is* the restart there. (`strictPort` in `vite.config.ts` is the second line of defence: a
+ * second instance fails to bind rather than quietly taking the next port.)
  */
 export function restart(): void {
   status.restarting = true;
   status.step = 'restart';
-  log('update: restarting Sloth');
+  const relaunches = serviceStatus().installed;
+  log(relaunches ? 'update: exiting — the launch agent starts Sloth again' : 'update: restarting Sloth');
   broadcast();
-  const child = spawn('/bin/sh', ['-c', 'sleep 1; exec "$0" "$@"', process.execPath, ...process.argv.slice(1)], {
-    cwd: process.cwd(),
-    detached: true,
-    stdio: ['ignore', 'inherit', 'inherit'],
-    env: process.env,
-  });
-  child.unref();
+  if (!relaunches) {
+    const child = spawn('/bin/sh', ['-c', 'sleep 1; exec "$0" "$@"', process.execPath, ...process.argv.slice(1)], {
+      cwd: process.cwd(),
+      detached: true,
+      stdio: ['ignore', 'inherit', 'inherit'],
+      env: process.env,
+    });
+    child.unref();
+  }
   // A moment for the answer and the SSE event to leave; the 'exit' handlers stop the loop and the tunnels.
   setTimeout(() => process.exit(0), 500);
 }
+
+async function runUpdate(): Promise<void> {
+  const branch = (local ?? (await readLocal())).branch ?? 'main';
+  const failure =
+    (await step('pull', 'git', ['pull', '--ff-only', REMOTE, branch])) ??
+    (await step('install', 'pnpm', ['install'])) ??
+    (await step('build', 'pnpm', ['build']));
+  local = await readLocal();
+  if (failure) {
+    status.running = false;
+    status.step = undefined;
+    status.error = failure;
+    log(`update: failed — ${failure}`);
+    broadcast();
+    return;
+  }
+  behind = 0;
+  log(`update: now at ${local.commit ?? '?'}`);
+  restart();
+}
+
+let inFlight: Promise<void> | undefined;
 
 /** Pull, install, build, restart — one at a time. False when one is already running. */
 export function update(): boolean {
@@ -146,24 +178,37 @@ export function update(): boolean {
   status.step = undefined;
   lines = [];
   log('update: started');
-  void (async () => {
-    const branch = (local ?? (await readLocal())).branch ?? 'main';
-    const failure =
-      (await step('pull', 'git', ['pull', '--ff-only', REMOTE, branch])) ??
-      (await step('install', 'pnpm', ['install'])) ??
-      (await step('build', 'pnpm', ['build']));
-    local = await readLocal();
-    if (failure) {
-      status.running = false;
-      status.step = undefined;
-      status.error = failure;
-      log(`update: failed — ${failure}`);
-      broadcast();
-      return;
-    }
-    behind = 0;
-    log(`update: now at ${local.commit ?? '?'}`);
-    restart();
-  })();
+  // Not awaited here: the API answers while this runs, so the settings page can stream the output.
+  // `autoUpdate` keeps the promise, because it must not let a tick start before the restart.
+  inFlight = runUpdate();
   return true;
+}
+
+/** Said once per reason, so an hourly look at a checkout that cannot update does not fill the log. */
+let skipped: string | undefined;
+const skip = (why: string): void => {
+  if (skipped !== why) log(`auto-update: ${why}`);
+  skipped = why;
+};
+
+/**
+ * One look at the remote for `autoUpdate`, and the update when there is one to install. Called by the
+ * watcher's own timer, which queues it behind the tick in flight and holds the next tick until it is
+ * over — a restart in the middle of moving a card is how a card ends up in two places.
+ *
+ * A checkout with local changes is left alone: `git pull --ff-only` would refuse, and there is nothing
+ * useful to do about that from here. The reason is logged once, not once an hour.
+ */
+export async function autoUpdate(): Promise<void> {
+  if (!cfg().autoUpdate || status.running || status.restarting) return;
+  await check();
+  if (checkError) return skip(`could not reach ${REMOTE} — ${checkError}`);
+  if (!behind) {
+    skipped = undefined;
+    return;
+  }
+  if (local?.dirty) return skip(`${behind} commit${behind === 1 ? '' : 's'} behind, but the checkout has local changes — update it by hand`);
+  skipped = undefined;
+  log(`auto-update: ${behind} commit${behind === 1 ? '' : 's'} behind ${REMOTE}/${local?.branch ?? 'main'} — updating`);
+  if (update()) await inFlight;
 }

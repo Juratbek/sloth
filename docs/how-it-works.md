@@ -114,6 +114,10 @@ Every comment Sloth writes starts with `**Sloth:**`.
   it, skipped or not, draft or not. A rejection sends the card back to *In Progress* still labelled, so the
   owner keeps it. Assignees do not matter to Sloth — an assigned card is worked like any other — and
   Sloth never assigns anyone.
+- **Sloth can update itself.** Settings → About → *Update automatically* makes the watcher look at
+  `origin/<branch>` every hour and install what is there — the same pull, install, build and restart as
+  the button beside it. It waits for the tick in flight and holds the next one, so nothing is half-moved
+  through the restart, and it leaves a checkout with local changes alone. Off by default.
 - **Sessions have a time budget** (60 minutes). A session that runs 5 minutes over is killed and
   its card goes to *Sloth needs help*. **Stop** in a running session's header does the same right away.
 - **At most 3 sessions work at once** (and 5 alive, counting the ones waiting for an answer).
