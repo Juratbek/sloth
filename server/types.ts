@@ -175,8 +175,11 @@ export interface MachineLoad {
   memoryFree: number;
   /** CPU idle over the window since the previous reading, percent. */
   cpuIdle: number;
-  /** The busiest disk's idle over the same window, percent — 100 minus what Task Manager calls *Disk*. */
-  diskIdle: number;
+  /**
+   * The busiest disk's idle over the same window, percent — 100 minus what Task Manager calls *Disk*.
+   * Absent on a platform with no busy-time counter to read it from (macOS), where nothing is held on it.
+   */
+  diskIdle?: number;
   at: number;
   /** Set while the reading holds new sessions back — the reason, as the log prints it. */
   hold?: string;

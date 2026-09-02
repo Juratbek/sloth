@@ -6,7 +6,7 @@ import type { BoardItem } from './board';
 import { comment } from './gh';
 import { limitExit } from './limits';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
-import { APPROVED_LABEL, MARKERS, markerFiles, statePath, unapprove } from './markers';
+import { APPROVED_LABEL, MARKERS, markerFiles, skipped, statePath, unapprove } from './markers';
 import { helpMentions, notify } from './notify';
 import { cleanup, cleanupRun, keepWarm } from './cleanup';
 import { exitLine, exitReport, exitsOf, forgetExits, recordExit } from './exits';
@@ -136,7 +136,9 @@ async function sweepDead(kind: Kind, target: number): Promise<void> {
 /**
  * Forgets dead sessions, notices usage-limit exits, kills and cleans up hung ones. An issue run that died
  * while still `working` finished nothing: how it ended is recorded before trigger 2 relaunches it and
- * `launch` wipes its state, so the comment that finally parks the card can say what each run got to.
+ * `launch` wipes its state, so the comment that finally parks the card can say what each run got to. One
+ * that reached `done` finished, so it clears `retries` — the count is of crashes in a row, and a card that
+ * comes back from a failing review is not one.
  * A review that died the same way posted no verdict, but `launchApproved` already marked its head as
  * reviewed — the marker goes, so trigger 4 gives the head the review it never got. A hung QA run is
  * killed with no verdict either, so its head marker goes the same way — `launchQa` counts the retry, and
@@ -161,7 +163,15 @@ export async function reap(): Promise<void> {
           await sweepDead(kind, target);
           // A run that finished on its own terms left its stack running for its slot — under the
           // warm-slots contract the session no longer kills its servers, so it moves to the slot here.
-        } else await keepWarm(kind, target);
+        } else {
+          // …and it ends the crash count, which is what `retries` is: "relaunched without finishing, N
+          // times in a row". A review that sends the card back to In Progress is not a crash, but trigger
+          // 2 relaunches it and counts it all the same — three honest review round-trips on one issue used
+          // to park the card saying the run "stopped without finishing 2 times in a row", with no exits to
+          // show for it. Only `done` counts as finished: `waiting` is a run that stopped to ask.
+          if (kind === 'issue' && stateOf(dir).state === 'done' && !isDry()) remove(path.join(dir, 'retries'));
+          await keepWarm(kind, target);
+        }
         continue;
       }
       log(`${name} stopped on a usage limit — pausing ${LIMIT_PAUSE / 60} min, card untouched`);
@@ -256,13 +266,14 @@ export async function reviews(board: BoardItem[]): Promise<void> {
  * left running is up behind one (how to sign in is on the PR, under the same link), or the PR to check out
  * when there is none — a human's PR, previews off, an app that could not be left up. Once per PR head
  * (`state/handed/<pr>-<sha>`), so a head that comes back after a push and passes again is announced again.
- * No Approved column configured → nothing to do.
+ * A `Sloth: skip` card is left alone — a human owns it and does not need telling. No Approved column
+ * configured → nothing to do.
  */
 export async function handover(board: BoardItem[]): Promise<void> {
   const c = cfg();
   const column = c.statusField.columns.approved;
   if (!column.id) return;
-  const issues = board.filter((i) => i.status === column.name && i.labels.includes(APPROVED_LABEL)).map((i) => i.number);
+  const issues = board.filter((i) => i.status === column.name && i.labels.includes(APPROVED_LABEL) && !skipped(i)).map((i) => i.number);
   for (const { issue, pr, sha } of await wiredPrs(issues)) {
     const marker = statePath('handed', `${pr}-${sha}`);
     if (fs.existsSync(marker) || !fs.existsSync(statePath(MARKERS.approved, `${pr}-${sha}`)) || dirAlive(approvedDir(pr))) continue;

@@ -60,6 +60,20 @@ function admit(req: IncomingMessage, res: ServerResponse, key: string): boolean 
   return false;
 }
 
+/**
+ * The headers to send upstream. `Host` becomes the app's own address, not the tunnel's: a Vite dev server
+ * (5.4.12 and up, and every Vite 6) refuses any Host outside `allowedHosts` with "Blocked request. This
+ * host is not allowed." — which is why Sloth's own `vite.config.ts` sets `allowedHosts: true`, and a
+ * session's project app gets no such treatment. The public name is passed on as `X-Forwarded-Host`, which
+ * that check does not read, so an app that builds absolute links still knows where it is being seen from.
+ */
+const forwardHeaders = (req: IncomingMessage, upstream: URL) => ({
+  ...req.headers,
+  host: upstream.host,
+  'x-forwarded-host': req.headers.host ?? '',
+  'x-forwarded-for': req.socket.remoteAddress ?? '',
+});
+
 function forward(req: IncomingMessage, res: ServerResponse, upstream: URL): void {
   const proxied = http.request(
     {
@@ -67,7 +81,7 @@ function forward(req: IncomingMessage, res: ServerResponse, upstream: URL): void
       port: upstream.port,
       path: req.url,
       method: req.method,
-      headers: { ...req.headers, 'x-forwarded-for': req.socket.remoteAddress ?? '' },
+      headers: forwardHeaders(req, upstream),
     },
     (up) => {
       res.writeHead(up.statusCode ?? 502, up.headers);
@@ -81,14 +95,22 @@ function forward(req: IncomingMessage, res: ServerResponse, upstream: URL): void
   req.pipe(proxied);
 }
 
-/** A websocket (Vite's HMR, a live reload) is the same handshake on a raw socket — replayed upstream as is. */
+/**
+ * A websocket (Vite's HMR, a live reload) is the same handshake on a raw socket — replayed upstream with
+ * only its `Host` rewritten, for the reason `forwardHeaders` gives: the dev server checks the handshake's
+ * Host too, and an HMR socket it refuses leaves the page loaded but never updating.
+ */
 function upgrade(req: IncomingMessage, socket: Duplex, head: Buffer, upstream: URL, key: string): void {
   if (!hasKey(req, key)) {
     socket.destroy();
     return;
   }
   const lines = [`${req.method} ${req.url} HTTP/1.1`];
-  for (let i = 0; i < req.rawHeaders.length; i += 2) lines.push(`${req.rawHeaders[i]}: ${req.rawHeaders[i + 1]}`);
+  for (let i = 0; i < req.rawHeaders.length; i += 2) {
+    const [name, value] = [req.rawHeaders[i], req.rawHeaders[i + 1]];
+    lines.push(name.toLowerCase() === 'host' ? `${name}: ${upstream.host}` : `${name}: ${value}`);
+  }
+  lines.push(`X-Forwarded-Host: ${req.headers.host ?? ''}`);
   const up = net.connect(Number(upstream.port), upstream.hostname, () => {
     up.write(`${lines.join('\r\n')}\r\n\r\n`);
     if (head?.length) up.write(head);

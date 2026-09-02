@@ -11,7 +11,16 @@ function upstream(): Promise<{ url: string; close: () => void }> {
     req.on('data', (c: Buffer) => chunks.push(c));
     req.on('end', () => {
       res.writeHead(200, { 'content-type': 'application/json', 'x-app': 'yes' });
-      res.end(JSON.stringify({ url: req.url, method: req.method, body: Buffer.concat(chunks).toString(), forwarded: !!req.headers['x-forwarded-for'] }));
+      res.end(
+        JSON.stringify({
+          url: req.url,
+          method: req.method,
+          body: Buffer.concat(chunks).toString(),
+          forwarded: !!req.headers['x-forwarded-for'],
+          host: req.headers.host,
+          forwardedHost: req.headers['x-forwarded-host'],
+        }),
+      );
     });
   });
   return new Promise((resolve) =>
@@ -19,6 +28,19 @@ function upstream(): Promise<{ url: string; close: () => void }> {
       resolve({ url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, close: () => server.close() }),
     ),
   );
+}
+
+/** One request with the headers as given, `Host` included — which `fetch` will not send. */
+function raw(path: string, headers: Record<string, string>): Promise<{ host: string; forwardedHost: string }> {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port: proxy.port, path, headers }, (res) => {
+      let body = '';
+      res.on('data', (c) => (body += c));
+      res.on('end', () => resolve(JSON.parse(body)));
+    });
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 const key = newKey();
@@ -64,7 +86,16 @@ describe('the preview guard', () => {
     });
     expect(res.status).toBe(200);
     expect(res.headers.get('x-app')).toBe('yes');
-    expect(await res.json()).toEqual({ url: '/api/items?page=2', method: 'POST', body: 'hello', forwarded: true });
+    expect(await res.json()).toMatchObject({ url: '/api/items?page=2', method: 'POST', body: 'hello', forwarded: true });
+  });
+
+  it('gives the app its own Host, so a Vite dev server does not answer "Blocked request"', async () => {
+    // `fetch` refuses to send a Host of its own — the tunnel's is exactly what has to be sent here.
+    const body = await raw('/', { cookie: `sloth_preview=${key}`, host: 'abc-def.trycloudflare.com' });
+    // Vite ≥5.4.12 refuses any Host outside `allowedHosts`; the public name goes on as X-Forwarded-Host,
+    // which that check does not read, so an app that builds absolute links still knows where it is seen from.
+    expect(body.host).toBe(new URL(app.url).host);
+    expect(body.forwardedHost).toBe('abc-def.trycloudflare.com');
   });
 
   it('answers 502 rather than hanging when the app is gone', async () => {

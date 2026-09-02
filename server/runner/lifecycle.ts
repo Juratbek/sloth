@@ -174,13 +174,16 @@ async function merge(pr: number, sha: string): Promise<void> {
  * pass (`state/approved/<pr>-<sha>` plus the label), no review still running, green or absent checks, a
  * clean merge and a PR that is no draft — so a push after the pass, a red check or a conflict all hold the
  * merge until the card has been through trigger 4 (or 7) again, and a draft holds it until someone marks
- * it ready.
+ * it ready. A `Sloth: skip` card is left alone like everywhere but trigger 4: its review still runs, but
+ * merging the PR of a card a human has taken over is not Sloth's to do.
  */
 export async function autoMerge(board: BoardItem[]): Promise<void> {
   const c = cfg();
   const column = c.statusField.columns.approved;
   if (!c.autoMerge || !column.id) return;
-  const issues = board.filter((i) => i.status === column.name && i.labels.includes(APPROVED_LABEL)).map((i) => i.number);
+  // Skipped cards included would be the one place Sloth acts on a card a human took over: trigger 4
+  // reviews them on purpose — the column is the signal there — and a pass labels and moves them here.
+  const issues = board.filter((i) => i.status === column.name && i.labels.includes(APPROVED_LABEL) && !skipped(i)).map((i) => i.number);
   for (const { pr, sha, checks, mergeable, draft } of await wiredPrs(issues)) {
     const head = `${pr}-${sha}`;
     if (!fs.existsSync(statePath(MARKERS.approved, head)) || dirAlive(approvedDir(pr))) continue;

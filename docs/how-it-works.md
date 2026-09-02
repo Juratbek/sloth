@@ -127,8 +127,9 @@ Every comment Sloth writes starts with `**Sloth:**`.
   replies among them. Extra work waits for the next tick — except a review of a card in *Code Review*,
   which starts anyway and takes a slot the builds then wait for; at most 3 of those start in one tick.
 - **A crashed session is restarted.** A card in *In Progress* with no session is relaunched, at
-  most twice in a row. After that it goes to *Sloth needs help*, and the comment says how each run
-  ended — the step it was on and what it reported on its way out (a session out of time says what
+  most twice in a row — a run that reaches the end of its work starts the count over, so a card that
+  comes back from a failing review as often as it takes is never given up on for that. After that it
+  goes to *Sloth needs help*, and the comment says how each run ended — the step it was on and what it reported on its way out (a session out of time says what
   it left undone) — so the reason is on the issue, not only in `run.log`.
 - **Claude usage limit reached?** Sloth waits 30 minutes and tries again. The card keeps its place.
 - **Pause** in the header stops Sloth from starting anything new. Running sessions finish, comments
