@@ -28,6 +28,14 @@ export interface TickOptions {
 const state: LoopStatus = { running: false, ticking: false };
 const timers: Partial<Record<Timed, NodeJS.Timeout>> = {};
 let chain: Promise<unknown> = Promise.resolve();
+/**
+ * Which set of timers is the current one. Every `schedule` carries the generation it belongs to and
+ * re-arms only while that is still it: saving the settings mid-tick calls `startLoop` again, and the
+ * tick left over from the old set would otherwise reach its `.finally`, see `running` back at true and
+ * arm a second chain of its own. Both then fire for ever — the board polled twice per `boardSeconds`,
+ * and twice as often again with every save made during a tick.
+ */
+let generation = 0;
 
 /**
  * One reading of the machine, and what it means for the sessions already running. Both the tick and the
@@ -133,14 +141,14 @@ function fire(kind: Timed): Promise<unknown> {
 }
 
 /** Re-arms itself after every run, so a slow tick delays the next one instead of stacking up. */
-function schedule(kind: Timed, delaySeconds: number): void {
+function schedule(kind: Timed, delaySeconds: number, gen: number = generation): void {
   const at = Date.now() + delaySeconds * 1000;
   if (kind === 'board') state.nextBoard = at;
   else if (kind === 'comments') state.nextComment = at;
   timers[kind] = setTimeout(() => {
-    if (!state.running) return;
+    if (!state.running || gen !== generation) return;
     void fire(kind).finally(() => {
-      if (state.running) schedule(kind, intervalOf(kind));
+      if (state.running && gen === generation) schedule(kind, intervalOf(kind), gen);
     });
   }, delaySeconds * 1000);
 }
@@ -169,6 +177,8 @@ export function startLoop(): void {
 export function stopLoop(): void {
   if (state.running) log('watcher stopped');
   state.running = false;
+  // Whatever these timers had in flight belongs to the set being torn down; nothing of it re-arms.
+  generation += 1;
   for (const key of TIMED) {
     clearTimeout(timers[key]);
     delete timers[key];

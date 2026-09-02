@@ -6,30 +6,27 @@ import { Button, inputStyle } from '../setup/ui';
 /**
  * Asks for the sudo password of the user Sloth runs as — the one thing Sloth cannot work out by
  * itself on a Linux box where `sudo -n` is refused. It is typed here, posted once and dropped: the
- * field is cleared before the request is even awaited, the mutation is reset when it settles, and the
- * server spends it on `/etc/sudoers.d/sloth` without writing it anywhere. Nothing else in the UI ever
- * sees it.
+ * field is cleared before the request is even awaited, the POST is a plain one so no cache keeps it
+ * (`useUnlockStack`), and the server spends it on `/etc/sudoers.d/sloth` without writing it anywhere.
+ * Nothing else in the UI ever sees it.
  */
 export default function SudoDialog({ root, ids, onClose }: { root?: string; ids: StackId[]; onClose: () => void }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string>();
-  const unlock = useUnlockStack(root);
+  const { unlock, isPending } = useUnlockStack(root);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!password || unlock.isPending) return;
+    if (!password || isPending) return;
     const value = password;
     setPassword('');
     setError(undefined);
     try {
-      const status = await unlock.mutateAsync({ password: value, ids });
+      const status = await unlock({ password: value, ids });
       if (status.installError) setError(status.installError);
       else onClose();
     } catch (err) {
       setError(String(err));
-    } finally {
-      // react-query holds the last variables until it is reset, and those are the password.
-      unlock.reset();
     }
   };
 
@@ -70,8 +67,8 @@ export default function SudoDialog({ root, ids, onClose }: { root?: string; ids:
         <div className="flex gap-2">
           <Button onClick={onClose}>Cancel</Button>
           <span className="ml-auto">
-            <Button type="submit" variant="primary" disabled={!password || unlock.isPending}>
-              {unlock.isPending ? 'Unlocking…' : 'Unlock and install'}
+            <Button type="submit" variant="primary" disabled={!password || isPending}>
+              {isPending ? 'Unlocking…' : 'Unlock and install'}
             </Button>
           </span>
         </div>

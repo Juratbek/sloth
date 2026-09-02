@@ -72,7 +72,9 @@ needs-help notifications carry on) and survives a restart.
   They survive a Sloth restart. `maxActive` may work at once, `maxAlive` including the ones waiting
   for an answer; a trigger with no free slot is retried next tick — except the review of a Code Review
   card (trigger 4), which starts regardless of the caps and counts against them, so the sessions that build
-  queue behind it, never the other way round. The machine sets a cap of its
+  queue behind it, never the other way round. A status reply (trigger 3) is a session like any other:
+  it counts, and it waits its turn when there is no slot — the `@sloth` comment is simply answered on a
+  later tick. The machine sets a cap of its
   own: with less than `minFreeMemory` percent of the memory available, `minIdleCpu` percent of the
   CPU idle or `minIdleDisk` percent of the busiest disk idle, nothing new starts either — and when the machine
   *stays* there with sessions running (a minute of readings, two at least), the lowest-priority run is **paused**
@@ -83,7 +85,9 @@ needs-help notifications carry on) and survives a restart.
   rest under them — then, within a column, the card's `priorityField` value, and among equals the newest run
   goes first. Its budget clock stands still meanwhile. Not on Windows, which has no SIGSTOP. A session past
   `budgetMinutes + 5` is killed, cleaned up, and its card parked; **stop** in a live session's header
-  does the same on demand (a stopped review is not repeated for that PR head), and **end** on a parked
+  does the same on demand. A review that is stopped or killed this way is not repeated for that PR head —
+  nothing would ever review it again, so the issue behind the PR is parked rather than left in Code Review
+  with no verdict and nobody on it. **End** on a parked
   session whose process is gone cleans it up and takes it off the needs-help list — the card stays put. A Claude usage
   limit pauses the watcher for 30 minutes without costing the card its place. A live session's row and
   header show what it is taking of the machine right now — CPU, memory and, except on macOS, the disk it

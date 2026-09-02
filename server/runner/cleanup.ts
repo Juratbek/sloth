@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
 import { run } from './gh';
-import { readFile, remove } from './log';
-import { dirOf, worktreeName, type Kind } from './session-dirs';
+import { log, readFile, remove } from './log';
+import { dirOf, predatesBoot, worktreeName, type Kind } from './session-dirs';
 import { releaseSlot, slotOf } from './slots';
 import { handOver } from './warm';
 
@@ -24,6 +24,20 @@ export const cleanup = (issue: number, tainted = false): Promise<void> => cleanu
 const previewed = (dir: string) => fs.existsSync(path.join(dir, 'preview.json')) || fs.existsSync(path.join(dir, 'preview-state.json'));
 
 /**
+ * The pids a session recorded in one of its pid files — one per line, since a project skill may have
+ * started several servers. `stale` is a file written before the last boot: the machine went down with a
+ * preview up, `dev.pid` survived it, and the numbers in it now belong to whatever the kernel handed them
+ * to since. Killing those is killing a stranger — `process.kill(-pid, 'SIGTERM')` takes a whole process
+ * group — so a stale file names nothing, and its servers are gone anyway.
+ */
+function pidsOf(file: string): { pids: number[]; stale: boolean } {
+  const body = readFile(file);
+  if (body === undefined) return { pids: [], stale: false };
+  if (predatesBoot(file)) return { pids: [], stale: true };
+  return { pids: body.split('\n').map((line) => Number(line.trim())).filter(Boolean), stale: false };
+}
+
+/**
  * The same for any run that boots the app — an implement run, or the QA sweep's test of a card.
  * `tainted` marks a run that was killed rather than ended (`warm.ts`): its stack still warms the slot,
  * but without its head, so a retry reseeds the database instead of trusting what the kill interrupted.
@@ -34,10 +48,9 @@ export async function cleanupRun(kind: Kind, target: number, tainted = false): P
   if (!(slot && (await handOver(kind, target, slot, tainted)))) {
     for (const name of ['dev.pid', 'redis.pid']) {
       const file = path.join(dir, name);
-      // One pid per line — a project skill may have started several servers.
-      for (const line of (readFile(file) ?? '').split('\n')) {
-        const pid = Number(line.trim());
-        if (!pid) continue;
+      const { pids, stale } = pidsOf(file);
+      if (stale) log(`${kind}-${target}: ${name} was written before the last boot — its pids are other processes now and are left alone`);
+      for (const pid of pids) {
         // A server started as its own process group (a `set -m` job, `setsid`) takes its children with
         // it — the dev-server wrappers a project starts fork the real listeners. One that was paused for
         // the machine's sake is stopped cold and has to be woken first, or the SIGTERM waits with it.
@@ -84,12 +97,14 @@ export async function keepWarm(kind: Kind, target: number): Promise<void> {
   if (slot && (await handOver(kind, target, slot))) await releaseSlot(kind, target);
 }
 
-/** Whether any process the session recorded in `dev.pid` still runs; a run that recorded none counts as up. */
+/**
+ * Whether any process the session recorded in `dev.pid` still runs; a run that recorded none counts as
+ * up. A file that predates the boot counts as down however alive its numbers look — the preview behind
+ * it did not survive the restart, and the recycled pids answering `kill(pid, 0)` are not its servers.
+ */
 export function serversUp(issue: number): boolean {
-  const pids = (readFile(path.join(dirOf('issue', issue), 'dev.pid')) ?? '')
-    .split('\n')
-    .map((l) => Number(l.trim()))
-    .filter(Boolean);
+  const { pids, stale } = pidsOf(path.join(dirOf('issue', issue), 'dev.pid'));
+  if (stale) return false;
   if (!pids.length) return true;
   return pids.some((pid) => {
     try {

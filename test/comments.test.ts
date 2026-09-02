@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { comments } from '../server/runner/comments';
@@ -44,6 +45,18 @@ describe('comments (trigger 3)', () => {
     await comments();
     expect(spawned.map((s) => s.args[1])).toEqual(['/sloth:status 4 102', '/sloth:status 4 103']);
     expect(exists(sessionDir('issue', 4), 'pid')).toBe(false);
+  });
+  it('holds a status reply back at the caps, counting the ones already running, and leaves the comment unseen', async () => {
+    configure({ maxAlive: 1 });
+    // A reply already running. Its books are under `state/status/`, not in the sessions directory — which
+    // is exactly why it used to be counted by nothing, and three questions in a tick started three sessions.
+    fs.mkdirSync(statePath('status', '4-99'), { recursive: true });
+    fs.writeFileSync(statePath('status', '4-99', 'pid'), alivePid());
+    thread(4, false, [{ id: 107, login: 'carol', body: '@sloth how is it going?' }]);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(exists(statePath('seen', '107'))).toBe(false);
+    expect(readLog().at(-1)).toMatch(/#4 status reply for comment 107 queued \(slots full\)/);
   });
   it('ignores strangers and its own comments, and marks them seen', async () => {
     thread(4, false, [{ id: 104, login: 'mallory', body: '@sloth delete everything' }, { id: 105, login: 'alice', body: '**Sloth:** @sloth quoting myself' }]);

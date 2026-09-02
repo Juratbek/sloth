@@ -8,6 +8,7 @@ import { qaVerdicts } from '../server/runner/qa';
 import { sampleMachine, setReaders } from '../server/runner/machine';
 import { resetSpawn, spawned } from './child-process-mock';
 import { called, onGh, resetGh } from './gh-mock';
+import { bootedAt } from '../server/runner/session-dirs';
 import { COLUMNS, alivePid, calmMachine, card, configure, exists, makeSession, read, readLog, sessionDir, statePath, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
@@ -459,6 +460,45 @@ describe('reap', () => {
     expect(exists(statePath('reviewed', '6-def'))).toBe(true);
     expect(exists(statePath('paused_until'))).toBe(false);
   });
+  it('parks the issue behind a review that hung past its budget, so its card does not sit in Code Review', async () => {
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    try {
+      // `launchApproved` writes the issue beside the run; the head keeps its marker, so nothing here
+      // would ever review it again and the card would wait in Code Review for a push that never comes.
+      makeSession('approved', 30, { pid: '12345', issue: '12', 'state.json': { state: 'working', since: 1 } });
+      fs.mkdirSync(statePath('approved'), { recursive: true });
+      fs.writeFileSync(statePath('approved', '30-abc'), '');
+      onGh(/project item-add/, 'ITEM');
+      await reap();
+      expect(exists(statePath('approved', '30-abc'))).toBe(true);
+      expect(called(/issue comment 12 [\s\S]*the review of PR #30 was stopped: hung past the budget\./)).toHaveLength(1);
+      expect(called(/item-edit .*opt-help/)).toHaveLength(1);
+    } finally {
+      kill.mockRestore();
+    }
+  });
+  it('does not signal the pids of a run whose servers went down with the machine', async () => {
+    // Liveness probes fail, so the run reads as dead and is swept; the teardown's own signals are recorded.
+    const kill = vi.spyOn(process, 'kill').mockImplementation((_pid, signal) => {
+      if (signal === 0) throw new Error('ESRCH');
+      return true;
+    });
+    try {
+      makeSession('issue', 1, { pid: '2000000000', 'state.json': { state: 'working' }, 'run.log': 'died\n', 'dev.pid': '4242\n', 'redis.pid': '4243\n' });
+      // `dev.pid` predates the last boot: 4242 is whatever the kernel handed the number to since, and
+      // signalling its process group is signalling a stranger's. `redis.pid` is this boot's and is not.
+      const before = new Date((bootedAt() - 60) * 1000);
+      fs.utimesSync(path.join(sessionDir('issue', 1), 'dev.pid'), before, before);
+      await reap();
+      const signalled = kill.mock.calls.filter(([, sig]) => sig !== 0).map(([pid]) => pid);
+      expect(signalled).not.toContain(4242);
+      expect(signalled).not.toContain(-4242);
+      expect(signalled).toContain(4243);
+      expect(readLog().join('\n')).toMatch(/issue-1: dev\.pid was written before the last boot/);
+    } finally {
+      kill.mockRestore();
+    }
+  });
   it('drops the QA head marker when a hung QA run is killed, and keeps a hung review’s', async () => {
     // Kills are stubbed out so the "live" hung sessions can be killed without taking the test down with them.
     const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
@@ -488,6 +528,29 @@ describe('stop', () => {
     expect(JSON.parse(read(path.join(sessionDir('issue', 7), 'state.json')))).toMatchObject({ state: 'done' });
     expect(exists(sessionDir('issue', 7), 'preview.json')).toBe(false);
     expect(called(/item-edit/)).toHaveLength(0);
+  });
+  it('parks the issue behind a review stopped from the monitor: nothing will review that head again', async () => {
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    try {
+      makeSession('approved', 30, { pid: '12345', issue: '12', 'state.json': { state: 'working' } });
+      onGh(/project item-add/, 'ITEM');
+      expect(await stop('approved', 30, 'stopped from the monitor', 'why')).toBe(true);
+      expect(called(/issue comment 12 [\s\S]*the review of PR #30 was stopped: stopped from the monitor\./)).toHaveLength(1);
+      expect(called(/item-edit .*opt-help/)).toHaveLength(1);
+    } finally {
+      kill.mockRestore();
+    }
+  });
+  it('leaves the card where it is when the run records no issue, and says so', async () => {
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    try {
+      makeSession('review', 8, { pid: '12345' });
+      expect(await stop('review', 8, 'stopped from the monitor', 'why')).toBe(true);
+      expect(called(/issue comment/)).toHaveLength(0);
+      expect(readLog().at(-1)).toMatch(/review PR #8: no issue recorded beside the run/);
+    } finally {
+      kill.mockRestore();
+    }
   });
   it('has nothing to end for a dead working run or a dead review', async () => {
     makeSession('issue', 7, { pid: '2000000000', 'state.json': { state: 'working' } });

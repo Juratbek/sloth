@@ -125,7 +125,8 @@ function pruneMarkers(cutoff: number): void {
     } catch {
       continue;
     }
-    const old = names.filter((name) => newest(statePath(kind, name)) <= cutoff);
+    // A status reply books its pid in its own marker directory, so an old-looking one may still be running.
+    const old = names.filter((name) => newest(statePath(kind, name)) <= cutoff && !(kind === 'status' && dirAlive(statePath(kind, name))));
     if (!old.length) continue;
     if (isDry()) {
       log(`dry-run: would prune ${old.length} ${kind} marker(s)`);

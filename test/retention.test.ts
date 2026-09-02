@@ -10,10 +10,17 @@ import { alivePid, configure, exists, makeSession, readLog, sessionDir, statePat
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 
 const DAY = 24 * 3600;
-/** Backdates everything under a path by `days`, so it looks like a run nobody has touched since. */
+/**
+ * Backdates everything under a path by `days`, so it looks like a run nobody has touched since — except
+ * the pid file, which is left where it is. A pid number only means anything within one boot, so a pid
+ * file older than the machine's uptime names a process that is long gone (`predatesBoot`); backdating it
+ * would make a run that is meant to be alive here read as dead, which is a state no real run can be in.
+ */
 function age(target: string, days: number): void {
   const when = new Date(Date.now() - days * DAY * 1000);
-  if (fs.statSync(target).isDirectory()) for (const name of fs.readdirSync(target)) age(path.join(target, name), days);
+  if (fs.statSync(target).isDirectory()) {
+    for (const name of fs.readdirSync(target)) if (name !== 'pid') age(path.join(target, name), days);
+  }
   fs.utimesSync(target, when, when);
 }
 
