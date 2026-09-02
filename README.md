@@ -120,6 +120,8 @@ needs-help notifications carry on) and survives a restart.
   the app it tested running — its own database, seeded, nothing shared — and Sloth puts a tunnel in front
   of it and posts the link on the PR, with how to sign in; once the PR passes its review the link is posted
   on the issue too, for whoever tests the card in Approved — in a browser, without checking anything out.
+  A preview counts as up only once that comment has landed: a `gh` call GitHub refused is tried again on
+  the next tick, rather than leaving the PR with no link while the monitor says there is one.
   The environment comes down after `previewHours`, when the PR closes,
   when its servers die, when a new session starts on the issue, or with **stop** next to the link in the
   session's header; a Sloth restart re-opens the tunnel and rewrites the comment with the new address.
@@ -291,6 +293,9 @@ proxy or tunnel, leave those forwarding headers in place — a proxy that strips
 Host to `localhost` would make external requests look local. Note too that `pnpm start` runs Vite's
 preview server; for a hardened deployment put Sloth behind a proxy that terminates TLS and forwards the
 headers above.
+
+A tunnel that drops is started again, with a backoff that doubles to a minute and resets the moment an
+address is printed — however many times in a row it drops, and without needing Sloth restarted.
 
 A quick tunnel gets a new address on every start — the QR follows it. For a stable address run your
 own tunnel (a named `cloudflared` tunnel on your domain, `jprq`, `ngrok`) and set `publicUrl`, or

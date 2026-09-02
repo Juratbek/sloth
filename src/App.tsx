@@ -13,6 +13,7 @@ import { parseRoute, pathFor, type Page } from './lib/routes';
 import Settings from './settings/Settings';
 import Wizard from './setup/Wizard';
 import { useConfig } from './setup/use-setup';
+import { Button } from './setup/ui';
 
 export default function App() {
   useLiveUpdates();
@@ -39,8 +40,20 @@ export default function App() {
   };
 
   if (local && config.isPending) return <div className="p-6 text-zinc-400">Loading…</div>;
+  // A read that failed is not "no config yet". Both left `data` undefined, so a transient failure of
+  // GET /api/setup/config showed the get-started wizard to a configured user — and Save there writes a
+  // config assembled from wizard defaults over the real ~/.sloth/config.json. `useConfig` answers null,
+  // and only null, when the file is genuinely missing; anything else is said out loud and retried.
+  if (local && config.isError)
+    return (
+      <div className="space-y-3 p-6">
+        <p className="text-red-400">Could not read the configuration: {String(config.error)}</p>
+        <p className="text-sm text-zinc-400">Sloth is not showing the get-started wizard, because that would overwrite the configuration it cannot read.</p>
+        <Button onClick={() => void config.refetch()}>Try again</Button>
+      </div>
+    );
   // No config file yet ⇒ the get-started wizard is the whole app, whatever the URL says.
-  if (local && !config.data) return <Wizard existing={null} />;
+  if (local && config.data === null) return <Wizard existing={null} />;
   if (page === 'wizard') return <Wizard existing={config.data!} onClose={() => go('settings')} />;
   if (page === 'settings')
     return (

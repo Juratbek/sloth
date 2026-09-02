@@ -29,6 +29,8 @@ interface Live {
   child: ChildProcess;
   url?: string;
   proxy?: Proxy;
+  /** The comment carrying this address landed on the PR. Until it has, the preview is nobody's to open. */
+  announced?: boolean;
 }
 
 const live = new Map<number, Live>();
@@ -53,13 +55,21 @@ export function previewLink(issue: number): string | undefined {
   return s?.url ? linkOf(s) : undefined;
 }
 
+/**
+ * Puts the link on the PR and records the preview as up. A comment GitHub refused leaves both undone —
+ * the address is not written to the state file and nothing is logged as up — because the alternative is
+ * what used to happen: one transient `gh` failure and the PR carried no link at all for the whole of
+ * `previewHours` while the log and the monitor said it was there. `previews` tries again every tick.
+ */
 async function announce(issue: number, url: string): Promise<void> {
   const s = previewState(issue);
   const p = readPreviewFile(issue);
   if (!s || !p) return;
   s.url = url;
-  await post(issue, s, body(s, p));
-  if (live.get(issue)?.url !== url) return; // stopped while the comment was on its way
+  if (!(await post(issue, s, body(s, p)))) return;
+  const entry = live.get(issue);
+  if (entry?.url !== url) return; // stopped while the comment was on its way
+  entry.announced = true;
   write(stateFile(issue), JSON.stringify(s));
   log(`preview #${issue} up at ${url} until ${when(s.expiresAt)}${s.pr ? ` (PR #${s.pr})` : ''}`);
   broadcast();
@@ -148,6 +158,11 @@ export async function previews(): Promise<void> {
         if (!s.key) write(stateFile(issue), JSON.stringify({ ...s, key: (s.key = newKey()) }));
         await openTunnel(issue, upstream, s.key);
       }
+    } else {
+      // The tunnel has an address but the comment carrying it did not land: tried again here, every
+      // tick, until it does. A preview nobody was told about is a preview nobody has.
+      const entry = live.get(issue)!;
+      if (entry.url && !entry.announced) await announce(issue, entry.url);
     }
   }
 }
