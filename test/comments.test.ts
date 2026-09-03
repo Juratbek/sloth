@@ -17,6 +17,14 @@ const thread = (number: number, isPr: boolean, comments: { id: number; login: st
   onGh(/api -X GET search\/issues/, ({ line }) => (line.includes('"@sloth"') ? `${number} ${isPr}` : undefined));
   onGh(new RegExp(`api repos/acme/widgets/issues/${number}/comments`), comments.map(b64).join('\n'));
 };
+type ReviewComment = { id: number; login: string; body: string; path?: string; line?: number };
+/** A PR touched in the window, with these comments on lines of its diff — what the mention search never indexes. */
+const reviewThread = (pr: number, comments: ReviewComment[]) => {
+  onGh(/api -X GET search\/issues/, ({ line }) => (line.includes('is:pr updated:') ? `${pr} true` : undefined));
+  onGh(new RegExp(`api repos/acme/widgets/pulls/${pr}/comments`), comments.map((c) => b64({ review: true, path: 'src/a.ts', line: 7, ...c })).join('\n'));
+};
+const wired = (pr: number, issue: number) =>
+  onGh(new RegExp(`api graphql .*pullRequest\\(number: ${pr}\\)`), { data: { repository: { pullRequest: { headRefName: `sloth/issue-${issue}-x`, closingIssuesReferences: { nodes: [] } } } } });
 
 beforeEach(() => {
   configure();
@@ -153,5 +161,62 @@ describe('comments (trigger 3)', () => {
     await comments();
     expect(called(/api repos\/acme\/widgets\/issues\/21\/comments -f body=\*\*Sloth:\*\* This PR is not linked/)).toHaveLength(1);
     expect(spawned).toHaveLength(0);
+  });
+
+  describe('a comment on a line of the PR’s diff', () => {
+    // The mention search reads conversations only: a `@sloth` written on a line of the diff never
+    // shows up in it, so Sloth left the question unanswered and without so much as a 👀.
+    it('reaches the live session’s inbox, saying which line it was written on, and gets its 👀 in the review thread', async () => {
+      wired(20, 4);
+      makeSession('issue', 4, { pid: alivePid() });
+      reviewThread(20, [{ id: 300, login: 'carol', body: '@sloth why do we have both fields?', path: 'schema.prisma', line: 50 }]);
+      await comments();
+      expect(read(path.join(sessionDir('issue', 4), 'inbox', 'review-300.md'))).toBe(
+        'author: carol\nrole: tester\ncomment: 300\npr: 20\nthread: review\npath: schema.prisma\nline: 50\n\n@sloth why do we have both fields?\n',
+      );
+      expect(called(/reactions/).map((c) => c.args[1])).toEqual(['repos/acme/widgets/pulls/comments/300/reactions']);
+      expect(exists(statePath('seen', 'review-300'))).toBe(true);
+    });
+    it('answers a question there with a status reply that knows the thread', async () => {
+      wired(20, 4);
+      reviewThread(20, [{ id: 301, login: 'alice', body: '@sloth is this field still needed?' }]);
+      await comments();
+      expect(spawned.map((s) => s.args[1])).toEqual(['/sloth:status 4 301']);
+      expect(spawned[0].options.env.SLOTH_PR).toBe('20');
+      expect(spawned[0].options.env.SLOTH_REVIEW_COMMENT).toBe('301');
+      expect(exists(statePath('status', '4-review-301'))).toBe(true);
+    });
+    it('starts a session on a developer’s order written there', async () => {
+      wired(20, 4);
+      reviewThread(20, [{ id: 302, login: 'bob', body: '@sloth drop the second field' }]);
+      await comments();
+      expect(spawned[0].args[1]).toBe('/sloth:implement 4 Order from bob (developer, PR #20 review comment 302): @sloth drop the second field');
+    });
+    it('relaunches a parked card on an answer written there — trigger 6 reads the conversation only', async () => {
+      wired(20, 5);
+      makeSession('issue', 5, { blocked: '1', retries: '2' });
+      reviewThread(20, [{ id: 303, login: 'carol', body: '@sloth keep both, the history is audited' }]);
+      await comments();
+      expect(spawned[0].args[1]).toMatch(/^\/sloth:implement 5 Answer from carol \(tester\) in a review thread on PR #20 \(review comment 303\)/);
+      expect(exists(sessionDir('issue', 5), 'retries')).toBe(false);
+      expect(exists(statePath('seen', 'review-303'))).toBe(true);
+    });
+    it('reads both the conversation and the review threads of a PR that has a mention in each', async () => {
+      wired(20, 4);
+      makeSession('issue', 4, { pid: alivePid() });
+      thread(20, true, [{ id: 110, login: 'bob', body: '@sloth in the conversation' }]);
+      reviewThread(20, [{ id: 304, login: 'bob', body: '@sloth on a line' }]);
+      await comments();
+      expect(fs.readdirSync(path.join(sessionDir('issue', 4), 'inbox')).sort()).toEqual(['110.md', 'review-304.md']);
+      expect(called(/api graphql/)).toHaveLength(1);
+    });
+    it('tells the author in the thread when the PR is wired to no issue, and ignores a stranger there', async () => {
+      onGh(/api graphql .*pullRequest\(number: 21\)/, { data: { repository: { pullRequest: { headRefName: 'feat', closingIssuesReferences: { nodes: [] } } } } });
+      reviewThread(21, [{ id: 305, login: 'bob', body: '@sloth review this' }, { id: 306, login: 'mallory', body: '@sloth do it' }]);
+      await comments();
+      expect(called(/api repos\/acme\/widgets\/pulls\/21\/comments\/305\/replies -f body=\*\*Sloth:\*\* This PR is not linked/)).toHaveLength(1);
+      expect(called(/reactions/)).toHaveLength(1);
+      expect(exists(statePath('seen', 'review-306'))).toBe(true);
+    });
   });
 });

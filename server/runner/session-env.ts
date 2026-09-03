@@ -24,6 +24,8 @@ const PATH_EXTRA = [...EXTRA_DIRS, path.join(os.homedir(), '.local/bin')];
 export interface Target {
   issue?: number;
   pr?: number;
+  /** A status reply to a comment on a line of the PR's diff: the answer goes into that review thread. */
+  reviewComment?: number;
 }
 
 /** What differs between the kinds of run: the budget, and the worktree slot the run leased (a review has none). */
@@ -60,6 +62,7 @@ export function sessionEnv(dir: string, target: Target, model: string, chrome: b
     SLOTH_ASSETS_BRANCH: ASSETS_BRANCH,
     ...(target.issue ? { SLOTH_ISSUE: String(target.issue) } : {}),
     ...(target.pr ? { SLOTH_PR: String(target.pr) } : {}),
+    ...(target.reviewComment ? { SLOTH_REVIEW_COMMENT: String(target.reviewComment) } : {}),
     SLOTH_REPO: c.repo,
     SLOTH_PROJECT_ID: c.project.id,
     SLOTH_PROJECT_NUMBER: String(c.project.number),

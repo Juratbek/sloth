@@ -67,6 +67,6 @@ export async function comment(repo: string, issue: number, body: string): Promis
   return (await dispatch('gh', ['issue', 'comment', String(issue), '--repo', repo, '--body', body])).ok;
 }
 
-export async function react(repo: string, commentId: number, content: string): Promise<boolean> {
-  return (await dispatch('gh', ['api', `repos/${repo}/issues/comments/${commentId}/reactions`, '-f', `content=${content}`, '--jq', '.id'])).ok;
+export async function react(repo: string, commentId: number, content: string, review = false): Promise<boolean> {
+  return (await dispatch('gh', ['api', `repos/${repo}/${review ? 'pulls' : 'issues'}/comments/${commentId}/reactions`, '-f', `content=${content}`, '--jq', '.id'])).ok;
 }

@@ -84,7 +84,8 @@ one is on to begin with, so a Sloth that was set up before this keeps saying exa
 ## Talking to Sloth
 
 Write `@sloth` in a comment on the issue, or on the pull request that closes it (`Closes #n`, or a
-`sloth/issue-n-…` branch) — a PR comment counts as said on its issue, and Sloth answers on the PR. A PR
+`sloth/issue-n-…` branch) — in the PR's conversation or on a line of its diff. A PR comment counts as
+said on its issue, and Sloth answers where it was asked: on the PR, or in that review thread. A PR
 linked to no issue gets a one-line reply saying so. Sloth listens to the team from the wizard's *Team*
 step — one **admin**, any number of **developers** and **testers** — and ignores everyone else: no
 reply, and their comments never count as answers.

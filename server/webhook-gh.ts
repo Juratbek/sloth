@@ -17,8 +17,11 @@ import { gh, run } from './runner/gh';
  */
 export const HOOK_PATH = '/api/hooks/github';
 
-/** All Sloth asks to hear about: an `@sloth` mention is a comment on an issue or on a PR, and nothing else. */
-const EVENTS = ['issue_comment'];
+/**
+ * All Sloth asks to hear about: an `@sloth` mention is a comment on an issue or on a PR — in its
+ * conversation (`issue_comment`) or on a line of its diff (`pull_request_review_comment`) — and nothing else.
+ */
+export const EVENTS = ['issue_comment', 'pull_request_review_comment'];
 
 /** One repository webhook, with the two fields Sloth looks at. */
 export interface RepoHook {

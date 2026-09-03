@@ -50,11 +50,16 @@ function rawBody(req: IncomingMessage): Promise<Buffer> {
   });
 }
 
+/** `issue_comment` names its thread `issue` (a PR too); `pull_request_review_comment` names it `pull_request`. */
 interface CommentEvent {
   action?: string;
   issue?: { number?: number };
+  pull_request?: { number?: number };
   comment?: { body?: string; id?: number };
 }
+
+/** The two comment events Sloth subscribes to (`webhook-gh.ts`); everything else GitHub might send is answered and dropped. */
+const COMMENT_EVENTS = new Set(['issue_comment', 'pull_request_review_comment']);
 
 const mentions = (body: string): boolean => new RegExp(cfg().mention.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(body);
 
@@ -71,7 +76,7 @@ async function deliver(req: IncomingMessage, res: ServerResponse): Promise<void>
     log('webhook: GitHub pinged — deliveries are wired up');
     return end(res, 204);
   }
-  if (event !== 'issue_comment') return end(res, 204);
+  if (!event || !COMMENT_EVENTS.has(event)) return end(res, 204);
   let payload: CommentEvent;
   try {
     payload = JSON.parse(body.toString('utf8')) as CommentEvent;
@@ -83,7 +88,9 @@ async function deliver(req: IncomingMessage, res: ServerResponse): Promise<void>
   recordDelivery();
   // Answered before anything is done about it: GitHub is timing us, and the tick is not ours to wait on.
   end(res, 202);
-  log(`webhook: @sloth on #${payload.issue?.number ?? '?'} (comment ${payload.comment?.id ?? '?'}) — reading comments now`);
+  const thread = payload.issue?.number ?? payload.pull_request?.number ?? '?';
+  const kind = event === 'issue_comment' ? 'comment' : 'review comment';
+  log(`webhook: @sloth on #${thread} (${kind} ${payload.comment?.id ?? '?'}) — reading comments now`);
   void tick({ comments: true });
 }
 

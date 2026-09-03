@@ -64,6 +64,7 @@ The server sets these on every session; the commands read them and never hard-co
 | Variable | Meaning |
 |---|---|
 | `SLOTH_SESSION_DIR` | This run's directory — `state.json`, `inbox/`, pids, markers |
+| `SLOTH_REVIEW_COMMENT` | A status reply only: the question was a comment on a line of `$SLOTH_PR`'s diff, with this id; the answer goes into that review thread |
 | `SLOTH_ISSUE` / `SLOTH_PR` | The target issue (implement, status) or PR (review) |
 | `SLOTH_REPO` | `owner/repo` |
 | `SLOTH_PROJECT_ID`, `SLOTH_PROJECT_NUMBER`, `SLOTH_PROJECT_OWNER` | The board |
@@ -109,7 +110,7 @@ Inside `$SLOTH_SESSION_DIR`:
 | File | Content |
 |---|---|
 | `state.json` | `{state:"working"\|"waiting"\|"done", since, step, note, branch, pr, servers}` — updated at every step change |
-| `inbox/<commentId>.md` | Written by the **server** — `author:`, `role:` (`admin` / `developer` / `tester`) and `comment:` header lines, then the body; read, acted on, then deleted by the session |
+| `inbox/<commentId>.md` | Written by the **server** — `author:`, `role:` (`admin` / `developer` / `tester`) and `comment:` header lines, `pr:` when written on the PR and `thread: review` + `path:` + `line:` when written on a line of its diff (then the file is `review-<commentId>.md`), then the body; read, acted on, then deleted by the session |
 | `blocked` | Touched when the run is parked and must not be retried; removed on resume |
 | `asked_at` | Epoch seconds of the question comment |
 | `dev.pid`, `redis.pid`, `demo.db` | Pids / database name of anything the session started, for the server's cleanup |

@@ -9,8 +9,10 @@ allowed-tools: Bash, Read, Write, Grep, Glob, Skill
 `$ARGUMENTS` is `<ISSUE> <COMMENT_ID>`: someone mentioned `$SLOTH_MENTION` in comment `COMMENT_ID` — on
 issue `ISSUE`, or, when `$SLOTH_PR` is set, on that PR (which closes the issue) — and **no Sloth session is
 running** for the issue; the server only calls this command in that case. Answer in **one** comment on the
-thread the question was asked on: the PR when `$SLOTH_PR` is set, else the issue. Never change code, never
-move a card, never open or edit a PR.
+thread the question was asked on: the PR when `$SLOTH_PR` is set, else the issue. When
+`$SLOTH_REVIEW_COMMENT` is set too, the question was written on a **line of the PR's diff** (a review
+comment, numbered apart from the conversation's): read it and answer it in that review thread, not in
+the conversation. Never change code, never move a card, never open or edit a PR.
 
 Comment conventions come from the **`session`** skill; the board queries from the **`board`** skill.
 
@@ -21,7 +23,14 @@ ISSUE=${SLOTH_ISSUE:-<from $ARGUMENTS>}; OWNER=${SLOTH_REPO%%/*}; NAME=${SLOTH_R
 THREAD=${SLOTH_PR:-$ISSUE}     # where the question was asked and where the answer goes
 
 gh issue view "$ISSUE" --repo "$SLOTH_REPO" --json title,state,labels,assignees,url
-gh api "repos/$SLOTH_REPO/issues/comments/<COMMENT_ID>" --jq '{author: .user.login, body: .body}'
+if [ -n "$SLOTH_REVIEW_COMMENT" ]; then
+  # the question, the line it sits on, and the rest of its thread
+  gh api "repos/$SLOTH_REPO/pulls/comments/$SLOTH_REVIEW_COMMENT" --jq '{author: .user.login, body: .body, path: .path, line: (.line // .original_line), diff_hunk: .diff_hunk}'
+  gh api "repos/$SLOTH_REPO/pulls/$SLOTH_PR/comments" --paginate \
+    --jq ".[] | select(.id == $SLOTH_REVIEW_COMMENT or .in_reply_to_id == $SLOTH_REVIEW_COMMENT) | \"\\(.user.login) (\\(.created_at)):\\n\\(.body)\\n---\""
+else
+  gh api "repos/$SLOTH_REPO/issues/comments/<COMMENT_ID>" --jq '{author: .user.login, body: .body}'
+fi
 gh issue view "$ISSUE" --repo "$SLOTH_REPO" --json comments \
   --jq '.comments[-8:][] | "\(.author.login) (\(.createdAt)):\n\(.body)\n---"'
 # asked on the PR: its own conversation too
@@ -50,7 +59,8 @@ guessing what happened.
 ## Reply
 
 Post one comment on `$THREAD`: `gh api "repos/$SLOTH_REPO/issues/$THREAD/comments" -F body=@<file>` (the
-endpoint takes an issue or a PR number alike).
+endpoint takes an issue or a PR number alike). A question asked on a line of the diff is answered on
+that line instead: `gh api "repos/$SLOTH_REPO/pulls/$SLOTH_PR/comments/$SLOTH_REVIEW_COMMENT/replies" -F body=@<file>`.
 
 - First line: `$SLOTH_BOT_PREFIX` — Sloth writes with a human's account, so every comment identifies itself.
 - Then 1–4 lines, only what was asked — the reader asks again for anything more. Pick from:

@@ -182,7 +182,10 @@ describe('the machine timer', () => {
     let searches = 0;
     let release!: () => void;
     const held = new Promise<void>((r) => (release = r));
-    onGh(/search\/issues/, async () => {
+    // Only the mention search is counted: the review-thread search that follows it in the same tick
+    // would double every number here without saying anything about the timer.
+    onGh(/search\/issues/, async ({ line }) => {
+      if (!line.includes('in:comments')) return '';
       searches++;
       await held;
       return '';

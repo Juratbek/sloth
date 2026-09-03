@@ -52,8 +52,10 @@ export async function comment(repo: string, issue: number, body: string): Promis
  * landed before any reply does. GitHub answers the same reaction twice with the one already there, so a
  * comment looked at again on a later tick (a held order, a queued reply) gets no second pair of eyes.
  */
-export async function react(repo: string, commentId: number, content: 'eyes'): Promise<boolean> {
-  const r = await gh(['api', `repos/${repo}/issues/comments/${commentId}/reactions`, '-f', `content=${content}`, '--jq', '.id']);
+export async function react(repo: string, commentId: number, content: 'eyes', review = false): Promise<boolean> {
+  // A comment on a line of a PR's diff lives under `pulls/comments`, numbered apart from the conversation's.
+  const kind = review ? 'pulls' : 'issues';
+  const r = await gh(['api', `repos/${repo}/${kind}/comments/${commentId}/reactions`, '-f', `content=${content}`, '--jq', '.id']);
   if (!r.ok) log(`comment ${commentId}: reaction failed: ${r.err.split('\n')[0]}`);
   return r.ok;
 }
