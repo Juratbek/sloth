@@ -123,7 +123,8 @@ Every comment Sloth writes starts with `**Sloth:**`.
   configuration and half of another's.
 - **Sessions have a time budget** (60 minutes), measured from when Sloth started the run — a session
   reports the step it is on and moves that mark with every step, so it is not what the budget goes by.
-  A session that runs 5 minutes over is killed and its card goes to *Sloth needs help*. **Stop** in a running session's header does the same right away.
+  The time a session spends parked waiting for an answer does not count, and after the answer it has 30
+  minutes at least. A session that runs 5 minutes over is killed and its card goes to *Sloth needs help*. **Stop** in a running session's header does the same right away.
   A review killed or stopped this way posted no verdict and its head will not be reviewed again, so the
   issue behind the PR goes to *Sloth needs help* too instead of waiting in *Code Review* for ever.
 - **At most 3 sessions work at once** (and 5 alive, counting the ones waiting for an answer), status

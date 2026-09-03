@@ -13,6 +13,7 @@ import { helpMentions, notify } from './notify';
 import { forgetPause, pausedSeconds, resumeRun } from './pressure';
 import { dirAlive, dirOf, issueDir, launchedAt, pidAlive, pidOf, runDirs, stateOf } from './session-dirs';
 import type { Kind } from './session-dirs';
+import { ANSWER_MINUTES, answeredAt, forgetWaiting, trackWaiting, waitedSeconds } from './waiting';
 
 /**
  * A run's life after it has started: parking the card a run could not finish, stopping a run on demand,
@@ -174,6 +175,7 @@ export async function reap(): Promise<void> {
     if (!dirAlive(dir)) {
       remove(pidFile);
       forgetPause(dir);
+      forgetWaiting(dir);
       const limit = usageLimit(dir);
       if (!limit) {
         if ((stateOf(dir).state ?? 'working') === 'working' && !(await verdictPosted(kind, target, dir))) {
@@ -208,9 +210,13 @@ export async function reap(): Promise<void> {
       await sweepDead(kind, target);
       continue;
     }
+    trackWaiting(dir);
     const budget = (kind === 'qa' ? cfg().qa.budgetMinutes : cfg().budgetMinutes) * 60;
-    // The time a run spent paused for the machine is not its own: the budget clock stands still meanwhile.
-    if ((stateOf(dir).state ?? 'working') !== 'working' || nowSec() - launchedAt(dir) - pausedSeconds(dir) <= budget + KILL_GRACE) continue;
+    // The time a run spent paused for the machine, or parked waiting for an answer, is not its own: the
+    // budget clock stands still meanwhile. And a run that got its answer keeps the skill's promise — the
+    // session gives itself `max(remaining, 30 min)` then, so the server allows no less.
+    const deadline = Math.max(launchedAt(dir) + pausedSeconds(dir) + waitedSeconds(dir) + budget, answeredAt(dir) + ANSWER_MINUTES * 60);
+    if ((stateOf(dir).state ?? 'working') !== 'working' || nowSec() <= deadline + KILL_GRACE) continue;
     const stopped = await stop(kind, target, 'hung past the budget', 'the run for this issue hung past its time budget and was stopped by Sloth.');
     // A hang is not a verdict: the head's marker goes so the sweep tests the card again, `retries` allowing.
     if (stopped && kind === 'qa' && !isDry()) {
