@@ -37,7 +37,8 @@ The short version; the tick-by-tick account is in [docs/how-it-works.md](docs/ho
 | 8 | A PR that passed its review is green and merges cleanly | Merges it with the `autoMerge` method — as soon as that is true, so nobody tests it in Approved first. Off by default: merging stays a human's call until you ask for it |
 | 9 | It is `qa.at` o'clock and the QA column holds cards | **The QA sweep**: every card there — a merged fix, deployed to `qa.branch` — gets `/sloth:qa <n>` on `models.qa`, a session of its own that checks the branch out at its current head, boots the app and tests the fix in the browser as the user it concerns. The findings go on the issue with screenshots; a pass moves the card to Done, a fail to In Progress (row 2 then starts an implement run on the findings), an inconclusive test leaves it for a human. Once per card per head, so a passed card is not tested again until the branch moves. A card whose tests keep dying before they reach a verdict (`maxRetries + 1` of them on one head) is **blocked** instead — see *Blocked cards*. Off until a QA column is chosen — then daily at `qa.at`, 20:00 unless changed; **sweep now** on the home panel runs one regardless |
 
-The board is read every 5 minutes, comments every 2; **Tick now** runs both at once. **Pause**
+The board is read every 5 minutes, comments every 2 — every 30 seconds while the GitHub webhook is not
+delivering them (see *The comment webhook*); **Tick now** runs both at once. **Pause**
 stops Sloth from starting anything new (running sessions, inbox deliveries, status replies and
 needs-help notifications carry on) and survives a restart.
 
@@ -197,7 +198,8 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `minFreeMemory` / `minIdleCpu` / `minIdleDisk` | `10` / `5` / `10` | No new session while less of the machine's memory is available / of its CPU is idle / of its busiest disk is idle (percent, the last one being 100 minus Task Manager's *Disk*), and the lowest-priority running session is paused while it stays that way; `0` turns a check off. `minIdleDisk` does nothing on macOS, which exposes no busy-time counter to read it from — see *Machine limits* |
 | `budgetMinutes` / `waitHours` | `60` / `2` | A session's time budget; how long a parked session waits for an answer |
 | `reviewRounds` / `maxRetries` | `4` / `2` | Reviewer-agent rounds before asking for help; trigger-2 relaunches before parking. `maxRetries` also caps the runs of one head that end without a verdict — a QA test (trigger 9) and a review (trigger 4) alike; past it the card goes to a human instead of being tried again |
-| `boardSeconds` / `commentSeconds` | `300` / `120` | Poll intervals |
+| `boardSeconds` / `commentSeconds` | `300` / `120` | Poll intervals. `commentSeconds` is the comments poll while the webhook is delivering mentions — the safety net under it |
+| `fallbackCommentSeconds` | `30` | The comments poll while the webhook is **not** live: no public address, a tunnel that moved, a `gh` token that may not write webhooks. Then polling is the only way a mention is read at all, so it runs shorter. At least 10 (Settings → *General*, beside the webhook's status) |
 | `machineSeconds` | `15` | Seconds between two readings of memory, CPU and disk. The three limits above and the pausing of a running session can only act on a reading Sloth has, and a session that boots an app, a build and a browser at once can exhaust the memory between two board polls |
 | `models` | `opus` each, `final: fable`, `orchestrator: fable` | Which model each agent runs on (Settings → *Models*): `implement` (triggers 1–3; with `orchestrator` on, the implementor subagent), `orchestrator` (the implement session when `orchestrator` is on), `tester` (the headless-Chrome subagent that screenshots the change — the QA sweep's browser runs on it too), `reviewer` (the in-session review loop), `final` (trigger 4 — the review every Code Review card gets), `status` (mention replies), `qa` (trigger 9 — the session that tests one QA card). An older config's `model` / `approvedModel` still load; its `review` key is ignored. A value is a Claude Code alias, a model id, or a model from another provider (see *Model providers*) |
 | `qa` | `{branch: "", at: "20:00", budgetMinutes: 60}` | The daily QA sweep (trigger 9, Settings → *QA sweep*): `at` is the local time of day it starts (`HH:MM`; empty turns it off), `branch` the branch the merged fixes are deployed from and tested on (empty: the default branch), `budgetMinutes` one QA session's own budget. The column it sweeps is the *QA* role in `statusField.columns` — opt-in, chosen in Settings → *Board*; nothing runs without it |
@@ -283,6 +285,10 @@ behind), `POST /api/update/check` (fetches), `POST /api/update/run` (pull, insta
 `/api/setup/`, `/api/remote` and `/api/update` answers only from the machine Sloth runs on — a phone reads and
 ticks, it never reconfigures or updates.
 
+`GET /api/webhook` (the comment webhook's state and which poll it puts in force) and `POST /api/webhook/retry`
+(configure it again now) sit behind the same guard as the rest. `POST /api/hooks/github` is the one route that does
+not: it is GitHub's delivery address, and it is authenticated by the signature over its body instead — see below.
+
 ## Remote access
 
 The **▦** button in the header shows a QR code; scanning it opens this Sloth on your phone, from
@@ -318,6 +324,34 @@ A quick tunnel gets a new address on every start — the QR follows it. For a st
 own tunnel (a named `cloudflared` tunnel on your domain, `jprq`, `ngrok`) and set `publicUrl`, or
 put its command in `tunnel` so Sloth starts it — `"tunnel": ["jprq", "http", "{port}"]`, say. Previews always run the
 `tunnel` command, one child per preview, whatever `publicUrl` says — that only names the UI.
+
+### The comment webhook
+
+Nobody sets this up. While Sloth has a public address — the tunnel above, or `publicUrl` — it points the
+**repository's webhook** at its own `/api/hooks/github` and keeps it pointed there: it looks for a hook
+whose URL ends in that path, whatever host it names, and creates or repoints it. A quick tunnel gets a
+new host on every start, which is exactly the case a webhook configured by hand quietly stops delivering
+on. The shared secret is 32 random bytes in `state/webhook-secret`, minted once and never in an argv;
+the hook asks for `issue_comment` and nothing else.
+
+A delivery is taken only when `X-Hub-Signature-256` matches an HMAC over the exact bytes that arrived —
+anything else is a 401, and the route decides nothing beyond "someone wrote a mention": it answers GitHub
+at once and starts a comments tick, and [trigger 3](#how-it-works) does the de-duplication, the roles and
+the pause exactly as it does on the poll. GitHub's `ping` is answered too, so the hook goes green on its side.
+
+**Polling never stops.** A webhook is a promise from someone else's machine — a delivery is dropped, the
+tunnel is down when a comment is written, a human deletes the hook — so the comments tick stays on
+`commentSeconds` (120s) underneath it. When the hook is *not* live, the tick drops to
+`fallbackCommentSeconds` (30s): the two intervals are Settings → *General*, next to the hook's status.
+"Live" means configured **and** pointing at the address Sloth is reachable at right now, so a tunnel that
+came back on a new host counts as down until it has been repointed.
+
+Settings → *General* → **GitHub webhook** shows *Active* with the address, or *Off* / *Failed* with the
+reason — no public address, the tunnel is down, the address changed, or whatever `gh` said — the last
+delivery, and **Retry webhook setup**, which configures it again then and there. The token needs the
+`repo` scope (fine-grained: *Webhooks: write*); without it GitHub answers `HTTP 404` on the hooks
+endpoint, which the page reports as the missing scope it is. Sloth never deletes the hook: a tunnel that
+stops leaves it in place, inactive on Sloth's side, and the next address repoints it.
 
 ### Run at login
 
@@ -364,6 +398,13 @@ Sloth runs `claude … --dangerously-skip-permissions` in `runnerRoot` with **yo
 - For a stronger boundary, run Sloth (or at least the sessions) in a VM or container with a **scoped**
   `GITHUB_TOKEN` rather than your personal `gh` login, so a prompt-injected run cannot reach beyond the
   one repo.
+
+The webhook's delivery route (`POST /api/hooks/github`) is the one path the remote-access guard does not
+cover — GitHub arrives with no cookie. It is authenticated by an HMAC over the raw body against a secret
+only GitHub and this machine hold, compared in constant time, and it does nothing with what it is sent
+beyond starting the same comments tick the poll starts: an unsigned or wrongly signed delivery is a 401,
+and a signed one still cannot name an issue, an author or a command. Rotating it is deleting
+`state/webhook-secret` and pressing **Retry webhook setup**.
 
 The remote-access guard (above) protects the monitor; it does not sandbox the sessions. A **preview link**
 is guarded by its key, not by who you are: whoever holds the link uses the app with the sign-in notes in

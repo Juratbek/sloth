@@ -18,6 +18,8 @@ import { agentDetail, overview, sessionDetail, watcherOf } from './sessions';
 import { ensureSkipLabel } from './runner/markers';
 import { ensureStack } from './stack';
 import { usageSeries } from './usage';
+import { ensureWebhook, startWebhook, webhookInfo } from './webhook';
+import { webhookMiddleware } from './webhook-route';
 
 /**
  * Answers a handler that threw. Nothing can be said once the response has begun — an SSE stream, a body
@@ -108,6 +110,16 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
         broadcast();
         body = { ok: true, stopped };
       }
+    } else if (p === '/api/webhook/retry' && req.method === 'POST') {
+      // Configures the repository's hook again, now: the address has changed, the token was fixed, the
+      // hook was deleted by hand. Not on the tick chain — it touches no session state, and a button that
+      // waits out a five-minute tick reads as a broken one.
+      await ensureWebhook();
+      body = webhookInfo();
+    } else if (p === '/api/webhook') {
+      // What the settings page shows: the hook's state, why it is not delivering, and which of the two
+      // comment polls that puts in force.
+      body = webhookInfo();
     } else if (p === '/api/health/check' && req.method === 'POST') {
       // Whatever the ten-minute interval says: someone has just fixed something and wants to see it.
       body = await refreshHealth();
@@ -175,6 +187,8 @@ export function monitorApi(): Plugin {
     void ensureSkipLabel();
     // Can this machine do the work at all? Asked once here and every ten minutes from the board tick.
     startHealth();
+    // The repository's webhook, pointed at this Sloth as soon as it has an address to be pointed at.
+    startWebhook();
     const http = server.httpServer;
     // The tunnel needs the port actually bound — Vite moves to the next one when the configured port is taken.
     const tunnel = () => {
@@ -190,6 +204,9 @@ export function monitorApi(): Plugin {
     };
     http?.on('close', stop);
     process.once('exit', stop);
+    // Ahead of the guard, and only this one route: GitHub's deliveries carry no cookie and no sign-in
+    // code, and are authenticated by the signature over their body instead (`webhook-route.ts`).
+    server.middlewares.use(webhookMiddleware);
     server.middlewares.use(guard);
     server.middlewares.use(apiMiddleware);
   };

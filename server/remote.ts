@@ -165,6 +165,27 @@ let wanted = false;
 let delay = FIRST_RETRY_MS;
 let port = 0;
 let status: RemoteStatus = {};
+const watchers = new Set<(status: RemoteStatus) => void>();
+
+/**
+ * Told whenever the address Sloth is reachable at changes — printed, lost, or replaced. `webhook.ts`
+ * listens: the repository's hook has to be repointed at the new address, and a quick tunnel gets a new
+ * one every time it is started, so an address that arrives is the only reliable moment to do it.
+ */
+export const onRemoteChange = (fn: (status: RemoteStatus) => void): void => {
+  watchers.add(fn);
+};
+
+/** One reading out to the listeners, each on its own: a listener that throws must not stop the next. */
+function announce(): void {
+  for (const fn of watchers) {
+    try {
+      fn({ ...status });
+    } catch (e) {
+      log(`remote listener failed: ${(e instanceof Error ? e.message : String(e)).split('\n')[0]}`);
+    }
+  }
+}
 
 /**
  * One launch that came to nothing, and the next attempt. Every failure schedules one — the backoff
@@ -178,6 +199,7 @@ function fail(argv: string[], error: string) {
   if (status.error !== error) log(`remote: ${error}`);
   status = { error };
   broadcast();
+  announce();
   if (!wanted) return;
   clearTimeout(retry);
   retry = setTimeout(() => launch(argv), delay);
@@ -212,6 +234,7 @@ function launch(argv: string[]) {
     delay = FIRST_RETRY_MS;
     log(`remote: reachable at ${m[0]}`);
     broadcast();
+    announce();
   };
   proc.stdout?.on('data', seen);
   proc.stderr?.on('data', seen);
@@ -231,6 +254,7 @@ export function startTunnel(listening = port): void {
   wanted = true;
   if (c.publicUrl) {
     status = { url: c.publicUrl };
+    announce();
     return;
   }
   launch(c.tunnel.map((a) => a.replace('{port}', String(port))));
@@ -243,6 +267,7 @@ export function stopTunnel(): void {
   child = undefined;
   status = {};
   delay = FIRST_RETRY_MS;
+  announce();
 }
 
 export const remoteStatus = (): RemoteStatus => ({ ...status });

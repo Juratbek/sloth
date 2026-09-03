@@ -28,6 +28,8 @@ export const queryKeys = {
   health: ['health'] as const,
   /** The phone tunnel: the tool, its install and the link. */
   remote: ['remote'] as const,
+  /** The repository webhook that delivers `@sloth` comments, and which comment poll it puts in force. */
+  webhook: ['webhook'] as const,
   /** Prefix over the stack as judged against any checkout. */
   allStack: ['stack'] as const,
   /** The stack as judged against a checkout; the configured one when `root` is absent. */

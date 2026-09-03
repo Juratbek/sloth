@@ -12,6 +12,8 @@ export interface Call {
   cmd: string;
   args: string[];
   line: string;
+  /** What was written to the child's stdin — a `gh api --input -` payload, a password. */
+  stdin?: string;
 }
 type Reply = Ran | string | object | undefined;
 type Handler = (call: Call) => Reply | Promise<Reply>;
@@ -35,8 +37,8 @@ export function resetGh(): void {
 export const linesOf = () => calls.map((c) => c.line);
 export const called = (pattern: RegExp) => calls.filter((c) => pattern.test(c.line));
 
-async function dispatch(cmd: string, args: string[]): Promise<Ran> {
-  const call = { cmd, args, line: [cmd, ...args].join(' ') };
+async function dispatch(cmd: string, args: string[], stdin?: string): Promise<Ran> {
+  const call: Call = { cmd, args, line: [cmd, ...args].join(' '), stdin };
   calls.push(call);
   for (const { pattern, handler } of handlers) {
     if (!pattern.test(call.line)) continue;
@@ -49,7 +51,7 @@ async function dispatch(cmd: string, args: string[]): Promise<Ran> {
   return { ok: true, out: '', err: '' };
 }
 
-export const run = (cmd: string, args: string[]) => dispatch(cmd, args);
+export const run = (cmd: string, args: string[], options: { stdin?: string } = {}) => dispatch(cmd, args, options.stdin);
 export const gh = (args: string[]) => dispatch('gh', args);
 
 export async function graphql(query: string, variables: string[] = []): Promise<any> {

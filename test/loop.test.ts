@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loopStatus, serial, startLoop, stopLoop, tick } from '../server/runner/loop';
+import { loopStatus, rearm, serial, startLoop, stopLoop, tick } from '../server/runner/loop';
 import { handleSetup } from '../server/setup';
 import { cfg } from '../server/config';
 import { snapshot } from '../server/runner/board-snapshot';
@@ -173,10 +173,37 @@ describe('the machine timer', () => {
     expect(boards).toBe(3);
   });
 
+  it('arms one comments timer when the webhook comes up mid-tick, not two', async () => {
+    vi.useFakeTimers();
+    // Both intervals are the same here, so a doubled timer shows up as a doubled search and not as a
+    // changed schedule — the interval switching itself is `test/webhook.test.ts`.
+    configure({ boardSeconds: 3600, commentSeconds: 100, fallbackCommentSeconds: 100, machineSeconds: 3600 });
+    calmMachine();
+    let searches = 0;
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    onGh(/search\/issues/, async () => {
+      searches++;
+      await held;
+      return '';
+    });
+    startLoop();
+    // The first comments tick, 20 s in, is still inside the mention search when the webhook goes live and
+    // the timer is re-armed against the other interval. Its `.finally` belongs to the arming that is gone.
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(searches).toBe(1);
+    rearm('comments');
+    release();
+    await vi.advanceTimersByTimeAsync(101_000);
+    expect(searches).toBe(2);
+    await vi.advanceTimersByTimeAsync(101_000);
+    expect(searches).toBe(3);
+  });
+
   it('says how often it reads the machine when it starts watching', () => {
     configure({ machineSeconds: 10 });
     calmMachine();
     startLoop();
-    expect(readLog().join('\n')).toMatch(/board 300s \/ comments 120s \/ machine 10s/);
+    expect(readLog().join('\n')).toMatch(/board 300s \/ comments 120s \(30s without the webhook\) \/ machine 10s/);
   });
 });

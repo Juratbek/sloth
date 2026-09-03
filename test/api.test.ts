@@ -124,6 +124,16 @@ describe('the API middleware', () => {
     expect(await hours('?days=3')).toBe(3 * 24);
   });
 
+  it('serves the webhook status, and configures the hook again when asked to', async () => {
+    // Read by any signed-in page (the phone included) and retried from the settings page; neither is a
+    // wizard endpoint, so neither is held back to the machine Sloth runs on.
+    const status = (await (await fetch(`${base}/api/webhook`)).json()) as { state: string; live: boolean; effectiveCommentSeconds: number };
+    expect(status).toMatchObject({ state: 'off', live: false, effectiveCommentSeconds: 30 });
+    const retried = (await (await fetch(`${base}/api/webhook/retry`, { method: 'POST' })).json()) as { state: string; reason?: string };
+    // Nothing is reachable from outside in a test, so the retry can only answer what stands in the way.
+    expect(retried).toMatchObject({ state: 'off', reason: expect.stringMatching(/no public URL/) });
+  });
+
   it('passes a request the API does not own to the next middleware', async () => {
     const res = await fetch(`${base}/index.html`);
     expect(res.status).toBe(404);

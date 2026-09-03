@@ -43,6 +43,35 @@ export interface StackStatus {
   /** Why the install just asked for did not start. */
   installError?: string;
 }
+/**
+ * The repository webhook Sloth configures for itself (`server/webhook.ts`), so an `@sloth` comment is
+ * read the moment it is written instead of at the next poll. `off` is nothing configured — no public
+ * address, or a tunnel that is down; `failed` names what GitHub or `gh` said.
+ */
+export interface WebhookStatus {
+  state: 'off' | 'active' | 'failed';
+  /** The address GitHub was given — `<public URL>/api/hooks/github`. */
+  url?: string;
+  hookId?: number;
+  /** Why it is not delivering; absent while it is. */
+  reason?: string;
+  /** When the state above was last decided. */
+  at?: number;
+  /** The last `ping` GitHub sent, and the last mention that started a comments tick. */
+  lastPing?: number;
+  lastDelivery?: number;
+}
+
+/** The status as the settings page reads it: whether it is really live, and which poll that puts in force. */
+export interface WebhookInfo extends WebhookStatus {
+  /** Configured *and* pointing at the address Sloth is reachable at right now. */
+  live: boolean;
+  commentSeconds: number;
+  fallbackCommentSeconds: number;
+  /** The interval the comments timer is actually running at — the fallback whenever the webhook is not live. */
+  effectiveCommentSeconds: number;
+}
+
 /** The QR code's payload — the address with the secret that signs a phone in — and what stands in its way. */
 export interface RemoteLink extends RemoteStatus {
   link?: string;
