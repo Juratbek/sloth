@@ -17,6 +17,7 @@ const EVENTS: { event: WebhookEvent; label: string; hint: string }[] = [
   { event: 'blocked', label: 'Card blocked', hint: 'Sloth gave up on a card — its QA tests kept dying before they reached a verdict. Nothing starts on it again until someone unblocks it from the monitor.' },
   { event: 'stopped', label: 'Run stopped', hint: 'A session was stopped — past its budget, from the monitor, or relaunched too many times.' },
   { event: 'usageLimit', label: 'Usage limit', hint: 'A Claude usage limit stopped a session and paused the watcher for 30 minutes.' },
+  { event: 'hoursTampered', label: 'Hours ledger tampered', hint: 'The hours ledger no longer checks out — a line was changed or removed, or its copy on the assets branch differs.' },
 ];
 
 export default function NotificationsSection({ draft, patch }: SectionProps) {

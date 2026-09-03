@@ -17,6 +17,7 @@ import { qaSweep, qaVerdicts } from './qa';
 import { prune } from './retention';
 import { answered } from './answers';
 import { pausedUntil, reap } from './run-control';
+import { checkCopy } from './hours-copy';
 import { handover, pickup, retryStranded, reviews } from './triggers';
 import { healthTick } from '../health';
 import { isWebhookLive, onWebhookChange } from '../webhook';
@@ -117,6 +118,8 @@ async function tickSteps({ board = false, comments: wantComments = false }: Tick
     await step('reap', reap);
     // Previews are finished work, not new work: they run even while paused.
     await step('previews', previews);
+    // The hours ledger's copy on the assets branch: pushed when a run was booked, compared once an hour.
+    await step('hours', checkCopy);
     await step('columns', refreshColumns);
     const paused = pausedUntil();
     if (nowSec() < paused) {
