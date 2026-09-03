@@ -228,3 +228,5 @@ export type { ModelChoice } from './models';
 export type { BlockedCard, BoardCard, BoardColumn, BoardView } from './board-types';
 /** The spend series behind the usage chart (`usage-types.ts`). */
 export type { ModelCost, UsageBucket, UsageSeries } from './usage-types';
+/** The hours ledger and its monthly report (`hours-types.ts`). */
+export type { HoursEnding, HoursEntry, HoursExcluded, HoursIntegrity, HoursIssue, HoursKind, HoursLive, HoursMonth, HoursReport } from './hours-types';
