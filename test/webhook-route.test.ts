@@ -54,6 +54,8 @@ beforeEach(() => {
 });
 
 const comment = (body: string, action = 'created') => JSON.stringify({ action, issue: { number: 4 }, comment: { id: 100, body } });
+/** A comment on a line of a PR's diff: GitHub names the thread `pull_request`, not `issue`. */
+const reviewComment = (body: string, action = 'created') => JSON.stringify({ action, pull_request: { number: 20 }, comment: { id: 300, body } });
 const sign = (body: string) => `sha256=${crypto.createHmac('sha256', webhookSecret()).update(body).digest('hex')}`;
 
 /** One delivery, signed unless `null` says to send it unsigned. `headers` stands in for what a proxy would add. */
@@ -82,6 +84,14 @@ describe('the GitHub delivery route', () => {
     expect(h.ticks).toEqual([{ comments: true }]);
     expect(webhookStatus().lastDelivery).toBeGreaterThan(0);
     expect(readLog().join('\n')).toMatch(/webhook: @sloth on #4 \(comment 100\)/);
+  });
+
+  it('reads the comments now when the mention was written on a line of a PR’s diff', async () => {
+    const res = await post(reviewComment('@sloth why both fields?'), 'pull_request_review_comment');
+    expect(res.status).toBe(202);
+    await settle();
+    expect(h.ticks).toEqual([{ comments: true }]);
+    expect(readLog().join('\n')).toMatch(/webhook: @sloth on #20 \(review comment 300\)/);
   });
 
   it('answers a delivery even though it carries no cookie — the guard would refuse it', async () => {
@@ -113,6 +123,7 @@ describe('the GitHub delivery route', () => {
     for (const [body, event] of [
       [comment('looks good to me'), 'issue_comment'],
       [comment('@sloth do it', 'edited'), 'issue_comment'],
+      [reviewComment('@sloth do it', 'edited'), 'pull_request_review_comment'],
       [comment('@sloth do it'), 'push'],
       ['not json at all', 'issue_comment'],
     ] as const) {

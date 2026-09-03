@@ -92,10 +92,14 @@ Other files the server understands, all inside `$SLOTH_SESSION_DIR`:
 
 The server drops each `$SLOTH_MENTION` comment from someone with a role into
 `$SLOTH_SESSION_DIR/inbox/<commentId>.md`: `author:`, `role:` (`admin` | `developer` | `tester`) and
-`comment:` header lines — plus `pr: <number>` when it was written on the issue's PR instead of the issue —
-then the body. **Check the inbox at every step boundary** (`ls "$SLOTH_SESSION_DIR/inbox"`) and every
-minute while waiting. Handle a file, then delete it. A comment from a PR is handled exactly like one from
-the issue; only the reply goes where it was written (`gh pr comment <pr>` instead of `gh issue comment`).
+`comment:` header lines — plus `pr: <number>` when it was written on the issue's PR instead of the issue,
+and `thread: review` with `path:` and `line:` when it was written on a line of that PR's diff — then the
+body. **Check the inbox at every step boundary** (`ls "$SLOTH_SESSION_DIR/inbox"`) and every minute while
+waiting. Handle a file, then delete it. A comment from a PR is handled exactly like one from the issue;
+only the reply goes where it was written: `gh pr comment <pr>` instead of `gh issue comment`, and for a
+`thread: review` comment a reply in that very thread —
+`gh api "repos/$SLOTH_REPO/pulls/<pr>/comments/<commentId>/replies" -f body=...` — after reading the
+line it points at (`gh api "repos/$SLOTH_REPO/pulls/comments/<commentId>" --jq .diff_hunk`).
 
 - `role: admin`, unless the body ends with `?` — an **order** without limits. Follow it, even when it
   changes the scope ("address the review comments" → do that; "stop" → clean up and report; "move it to

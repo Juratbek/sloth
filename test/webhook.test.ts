@@ -43,7 +43,7 @@ describe('ensureWebhook', () => {
     const status = await ensureWebhook();
     expect(status).toMatchObject({ state: 'active', url: URL_HERE, hookId: 42 });
     const body = bodyOf(/-X POST/);
-    expect(body.events).toEqual(['issue_comment']);
+    expect(body.events).toEqual(['issue_comment', 'pull_request_review_comment']);
     expect(body.config).toMatchObject({ url: URL_HERE, content_type: 'json', secret: webhookSecret() });
     // The secret travels down stdin; anything in argv is readable in `ps` by everyone on this machine.
     expect(calls.every((c) => !c.line.includes(webhookSecret()))).toBe(true);

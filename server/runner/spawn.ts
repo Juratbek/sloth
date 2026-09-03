@@ -252,8 +252,8 @@ export async function launchQa(issue: number, sha: string, branch: string): Prom
  * "nothing new starts either". False when it is held, so the comment is left unseen and answered on a
  * later tick instead of dropped.
  */
-export function statusReply(issue: number, commentId: string, pr?: number): boolean {
-  const on = pr ? `PR #${pr}` : `#${issue}`;
+export function statusReply(issue: number, commentId: string, pr?: number, review = false): boolean {
+  const on = pr ? `PR #${pr}${review ? ' (review thread)' : ''}` : `#${issue}`;
   const why = held();
   if (why) {
     log(`#${issue} status reply for comment ${commentId} queued (${why})`);
@@ -264,6 +264,8 @@ export function statusReply(issue: number, commentId: string, pr?: number): bool
     return true;
   }
   log(`#${issue} status reply for comment ${commentId} on ${on}`);
-  start(statusDir(issue, commentId), issueDir(issue), `/sloth:status ${issue} ${commentId}`, { issue, pr }, path.join(cfg().stateDir, 'status.log'), { model: cfg().models.status });
+  // Review comments are numbered apart from the conversation's, so their books get their own name.
+  const target: Target = { issue, pr, ...(review ? { reviewComment: Number(commentId) } : {}) };
+  start(statusDir(issue, review ? `review-${commentId}` : commentId), issueDir(issue), `/sloth:status ${issue} ${commentId}`, target, path.join(cfg().stateDir, 'status.log'), { model: cfg().models.status });
   return true;
 }
