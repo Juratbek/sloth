@@ -179,7 +179,9 @@ Sloth's, the reviewer loop will not pass, or time is running out.
    `$SLOTH_BOT_PREFIX thanks — continuing`, recompute the budget (above), `SINCE=$(date +%s)`,
    `set_state working …`, bring the environment back up if you stopped it, and continue from where you
    stopped. Still a gap → ask again the same way.
-6. **`SLOTH_WAIT_HOURS` with no answer** — leave the card parked, tear down, `set_state done Q …`, report.
+6. **`SLOTH_WAIT_HOURS` with no answer** — leave the card parked, tear down, `set_state done Q "no answer in
+    h"`, report. Step `Q` on `done` is how the server knows the run ended **out of response**
+   rather than finished: keep it `Q` here, and never `Q` on a `done` that finished the work.
    The server keeps watching the parked card: a later human comment in the thread starts a new session
    on the issue, which re-reads the thread and continues.
 

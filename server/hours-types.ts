@@ -6,14 +6,16 @@
  */
 
 /**
- * How a run ended, as the ledger records it. The first three are work the run finished: it reached
- * `done`, it stopped to ask a human (`waiting`), or a review / QA run posted its verdict on the PR. The
- * rest are failures nobody should pay for: it died while still `working`, Sloth killed it for hanging past
- * its budget, a Claude usage limit stopped it, a human stopped it from the monitor, or the machine
- * rebooted under it.
+ * How a run ended, as the ledger records it. The first four are work the run finished: it reached `done`,
+ * it stopped to ask a human (`waiting`), it asked and gave up when `waitHours` passed with no answer
+ * (`noResponse` — "out of response": the card stays parked, the work up to the question was done), or a
+ * review / QA run posted its verdict on the PR. The rest are failures: it died while still `working`,
+ * Sloth killed it for hanging past its budget, a Claude usage limit stopped it, a human stopped it from
+ * the monitor, or the machine rebooted under it. A failed run is not billed on its own — but when a later
+ * run takes the card up, its hours are **continued**: shown apart, charged at half rate (`hours.ts`).
  */
-export type HoursEnding = 'done' | 'waiting' | 'verdict' | 'died' | 'budget' | 'usageLimit' | 'stopped' | 'rebooted';
-export const BILLABLE_ENDINGS: readonly HoursEnding[] = ['done', 'waiting', 'verdict'];
+export type HoursEnding = 'done' | 'waiting' | 'noResponse' | 'verdict' | 'died' | 'budget' | 'usageLimit' | 'stopped' | 'rebooted';
+export const BILLABLE_ENDINGS: readonly HoursEnding[] = ['done', 'waiting', 'noResponse', 'verdict'];
 export const billable = (ending: HoursEnding): boolean => BILLABLE_ENDINGS.includes(ending);
 
 /** The run kinds the ledger books — every kind that works a board card; a status reply is not a run. */
@@ -30,7 +32,8 @@ export interface HoursEntry {
   sessionId?: string;
   /**
    * Epoch seconds: launched, ended, and how long in between it stood paused for the machine, or parked
-   * in needs-help waiting for an answer (`runner/waiting.ts`) — neither is time the run worked.
+   * in needs-help waiting for an answer (`runner/waiting.ts`) — neither is time the run worked. A run that
+   * marked itself `done` or `waiting` ended when it said so (`since` in its state), not when the tick noticed.
    */
   startedAt: number;
   endedAt: number;
@@ -44,17 +47,24 @@ export interface HoursEntry {
   hash: string;
 }
 
-/** A card's hours in the month shown, billable runs only; `excludedSeconds` is what its failed runs took. */
+/**
+ * A card's hours in the month shown: `seconds` and `runs` are its billable runs; `continuedSeconds` its
+ * failed runs a later run took up (half rate); `excludedSeconds` its failed runs nobody took up (not billed).
+ */
 export interface HoursIssue {
   issue: number;
   title?: string;
   seconds: number;
   runs: number;
   byKind: Partial<Record<HoursKind, number>>;
+  continuedSeconds: number;
   excludedSeconds: number;
   lastAt: number;
 }
-/** A failed run in the month shown, with the reason it is not billed. */
+/**
+ * A failed run in the month shown, with how it ended. `continued` when a later run on the same card took
+ * the work up — those hours are charged at half rate; otherwise they are not billed at all.
+ */
 export interface HoursExcluded {
   n: number;
   kind: HoursKind;
@@ -63,12 +73,14 @@ export interface HoursExcluded {
   seconds: number;
   ending: HoursEnding;
   endedAt: number;
+  continued: boolean;
 }
 /** One month's totals — the month picker's list. */
 export interface HoursMonth {
   /** `YYYY-MM`, UTC. */
   month: string;
   billableSeconds: number;
+  continuedSeconds: number;
   excludedSeconds: number;
   runs: number;
 }
@@ -99,13 +111,17 @@ export interface HoursReport {
   month: string;
   months: HoursMonth[];
   billableSeconds: number;
+  /** Failed runs a later run took up, charged at half rate. */
+  continuedSeconds: number;
+  /** Failed runs nobody took up, not billed. */
   excludedSeconds: number;
   runs: number;
   issues: HoursIssue[];
   excluded: HoursExcluded[];
   live: HoursLive[];
-  /** Billable seconds over the whole ledger. */
+  /** Billable seconds over the whole ledger, and continued (half-rate) seconds likewise. */
   totalSeconds: number;
+  totalContinuedSeconds: number;
   /** When the ledger began — the first entry's end; absent while it is empty. */
   since?: number;
   integrity: HoursIntegrity;

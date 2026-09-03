@@ -181,10 +181,11 @@ export async function reap(): Promise<void> {
     const name = `${kind}-${target}`;
     if (!dirAlive(dir)) {
       const limit = usageLimit(dir);
-      const state = stateOf(dir).state ?? 'working';
-      // The run's hours are booked before its files go: how it ended decides whether they are billed.
+      const { state = 'working', step } = stateOf(dir);
+      // The run's hours are booked before its files go: how it ended decides whether they are billed. A
+      // run `done` at the question step (`Q`) asked and gave up when `waitHours` passed with no answer.
       const finished = state !== 'working' || (!limit && (await verdictPosted(kind, target, dir)));
-      const ending: HoursEnding = limit ? 'usageLimit' : state === 'done' ? 'done' : state !== 'working' ? 'waiting' : finished ? 'verdict' : predatesBoot(pidFile) ? 'rebooted' : 'died';
+      const ending: HoursEnding = limit ? 'usageLimit' : state === 'done' ? (step === 'Q' ? 'noResponse' : 'done') : state !== 'working' ? 'waiting' : finished ? 'verdict' : predatesBoot(pidFile) ? 'rebooted' : 'died';
       bookRun(kind, target, dir, ending);
       remove(pidFile);
       forgetPause(dir);

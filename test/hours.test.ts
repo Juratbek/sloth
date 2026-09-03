@@ -68,6 +68,22 @@ describe('bookRun', () => {
     expect(readLog().join('\n')).toMatch(/booked issue-8: 1h 9m — billable \(waiting\)/);
   });
 
+  it('ends a done or waiting run when it said so, not when the tick noticed — and a wait opened after that counts nothing', () => {
+    const now = nowSec();
+    // Done half an hour ago; the tick only now noticing adds nothing.
+    const done = makeSession('issue', 11, { started: String(now - 2 * HOUR), 'state.json': { state: 'done', step: '9', since: now - 1800 } });
+    expect(bookRun('issue', 11, done, 'done')).toMatchObject({ endedAt: now - 1800, seconds: 2 * HOUR - 1800 });
+    // Asked ten minutes ago and the process died waiting: the run ended at the question, and the wait the
+    // server opened after it is not subtracted twice.
+    const asked = makeSession('issue', 12, { started: String(now - 2 * HOUR), waiting: String(now - 500), 'state.json': { state: 'waiting', step: 'Q', since: now - 600 } });
+    expect(bookRun('issue', 12, asked, 'waiting')).toMatchObject({ endedAt: now - 600, waitedSeconds: 0, seconds: 2 * HOUR - 600 });
+    // A since outside the run's life is not trusted; a run killed working has no mark of its own.
+    const odd = makeSession('issue', 13, { started: String(now - HOUR), 'state.json': { state: 'done', since: now - 2 * HOUR } });
+    expect(bookRun('issue', 13, odd, 'done')!.endedAt).toBeGreaterThanOrEqual(now);
+    const killed = makeSession('issue', 14, { started: String(now - HOUR), 'state.json': { state: 'working', since: now - 1800 } });
+    expect(bookRun('issue', 14, killed, 'budget')!.endedAt).toBeGreaterThanOrEqual(now);
+  });
+
   it('books nothing on a dry tick', () => {
     setDry(true);
     const dir = makeSession('issue', 7, { started: String(nowSec() - HOUR) });
@@ -128,11 +144,14 @@ describe('reap books every ending', () => {
     dead('issue', 1, { 'state.json': { state: 'done' } });
     dead('issue', 2, { 'state.json': { state: 'waiting', step: '3' } });
     dead('issue', 3, { 'state.json': { state: 'working', step: '4' }, 'run.log': 'x\n' });
+    // Done at the question step: it asked, and waitHours passed with no answer — out of response.
+    dead('issue', 4, { 'state.json': { state: 'done', step: 'Q', note: 'no answer in 2 h' } });
     await reap();
     expect(readLedger().entries.map((e) => [e.target, e.ending, e.billable])).toEqual([
       [1, 'done', true],
       [2, 'waiting', true],
       [3, 'died', false],
+      [4, 'noResponse', true],
     ]);
     // The pid and the pause files are gone all the same.
     expect(exists(sessionDir('issue', 3), 'pid')).toBe(false);
@@ -199,22 +218,31 @@ describe('hoursReport', () => {
     book('issue', 1, 3, 'done');
     book('approved', 50, 0.5, 'verdict', { issue: '1' });
     book('qa', 2, 1, 'done');
+    // Issue 1's died run was taken up by the run after it — continued, half rate. Nobody came back for #3.
+    book('qa', 3, 1, 'died');
     at('2026-09-03T12:00:00Z');
     const r = await hoursReport('2026-09');
     expect(r.month).toBe('2026-09');
     expect(r.billableSeconds).toBe(4.5 * HOUR);
+    expect(r.continuedSeconds).toBe(HOUR);
     expect(r.excludedSeconds).toBe(HOUR);
-    expect(r.runs).toBe(4);
+    expect(r.runs).toBe(5);
     expect(r.totalSeconds).toBe(6.5 * HOUR);
+    expect(r.totalContinuedSeconds).toBe(HOUR);
     expect(r.since).toBe(Date.parse('2026-08-20T10:00:00Z') / 1000);
-    expect(r.issues.map((i) => [i.issue, i.seconds, i.runs, i.byKind, i.excludedSeconds])).toEqual([
-      [1, 3.5 * HOUR, 2, { issue: 3 * HOUR, approved: 0.5 * HOUR }, HOUR],
-      [2, HOUR, 1, { qa: HOUR }, 0],
+    expect(r.issues.map((i) => [i.issue, i.seconds, i.runs, i.byKind, i.continuedSeconds, i.excludedSeconds])).toEqual([
+      [1, 3.5 * HOUR, 2, { issue: 3 * HOUR, approved: 0.5 * HOUR }, HOUR, 0],
+      [2, HOUR, 1, { qa: HOUR }, 0, 0],
+      [3, 0, 0, {}, 0, HOUR],
     ]);
-    expect(r.excluded).toEqual([{ n: 2, kind: 'issue', target: 1, issue: 1, seconds: HOUR, ending: 'died', endedAt: Date.parse('2026-09-02T10:00:00Z') / 1000 }]);
+    const at0902 = Date.parse('2026-09-02T10:00:00Z') / 1000;
+    expect(r.excluded).toEqual([
+      { n: 2, kind: 'issue', target: 1, issue: 1, seconds: HOUR, ending: 'died', endedAt: at0902, continued: true },
+      { n: 6, kind: 'qa', target: 3, issue: 3, seconds: HOUR, ending: 'died', endedAt: at0902, continued: false },
+    ]);
     expect(r.months).toEqual([
-      { month: '2026-09', billableSeconds: 4.5 * HOUR, excludedSeconds: HOUR, runs: 4 },
-      { month: '2026-08', billableSeconds: 2 * HOUR, excludedSeconds: 0, runs: 1 },
+      { month: '2026-09', billableSeconds: 4.5 * HOUR, continuedSeconds: HOUR, excludedSeconds: HOUR, runs: 5 },
+      { month: '2026-08', billableSeconds: 2 * HOUR, continuedSeconds: 0, excludedSeconds: 0, runs: 1 },
     ]);
     expect(r.integrity).toEqual({ chain: 'ok', copy: 'unchecked', problem: undefined, checkedAt: undefined });
     // August on its own; a month with nothing is empty, not an error; a bad month is this one.
@@ -228,7 +256,11 @@ describe('hoursReport', () => {
     makeSession('issue', 9, { pid: alivePid(), started: String(nowSec() - 600), paused_total: '60', waiting: String(nowSec() - 30) });
     makeSession('approved', 51, { pid: alivePid(), started: String(nowSec() - 300), issue: '9' });
     makeSession('issue', 10, { pid: DEAD, started: String(nowSec() - 600) });
+    // A failed run on #9 is continued by the run alive on it now.
+    bookRun('issue', 9, makeSession('approved', 52, { started: String(nowSec() - HOUR), issue: '9' }), 'died');
     const r = await hoursReport();
+    expect(r.excluded[0]).toMatchObject({ target: 9, continued: true });
+    expect(r.continuedSeconds).toBeGreaterThanOrEqual(HOUR - 2);
     expect(r.live.map((l) => [l.kind, l.target, l.issue])).toEqual([
       ['issue', 9, 9],
       ['approved', 51, 9],
@@ -314,6 +346,10 @@ describe('the copy on the assets branch', () => {
     origin('abc', `${JSON.stringify(e)}\n${JSON.stringify({ ...e, n: 2 })}`);
     fs.writeFileSync(unpublishedFile(), '2');
     await checkCopy();
+    // The witness is never overwritten: no commit, no push, the marker stays.
+    expect(called(/^git .* (commit-tree|push) /)).toHaveLength(0);
+    expect(exists(unpublishedFile())).toBe(true);
+    expect(readLog().join('\n')).toMatch(/not pushed over its copy — the copy on sloth-assets has 1 line/);
     expect(copyStatus()).toMatchObject({ copy: 'diverged', problem: 'the copy on sloth-assets has 1 line(s) the ledger no longer has' });
     expect(posted).toHaveLength(1);
     expect(posted[0]).toMatchObject({ event: 'hoursTampered', text: expect.stringContaining('has 1 line(s) the ledger no longer has') });
@@ -327,6 +363,8 @@ describe('the copy on the assets branch', () => {
     await checkCopy();
     expect(posted).toHaveLength(2);
     expect(posted[1].text).toContain('line 1 was changed after it was written (local file)');
+    expect(called(/^git .* push /)).toHaveLength(0);
+    expect(readLog().join('\n')).toMatch(/not pushed while its chain is broken/);
   });
 
   it('is quiet between checks, and unreachable origin is said but not raised', async () => {

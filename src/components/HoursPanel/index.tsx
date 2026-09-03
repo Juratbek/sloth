@@ -62,6 +62,15 @@ export default function HoursPanel({ repo }: { repo: string }) {
         </Button>
         <span className="text-[11px] text-zinc-500">
           <span className="text-zinc-200 tabular-nums">{hrs(report.billableSeconds)}</span> billable
+          {report.continuedSeconds > 0 && (
+            <>
+              {' · '}
+              <span className="text-amber-400/80 tabular-nums" title="failed runs a later run took up — charged at half rate">
+                {hrs(report.continuedSeconds)}
+              </span>{' '}
+              continued at half rate
+            </>
+          )}
           {report.excludedSeconds > 0 && (
             <>
               {' · '}
@@ -69,7 +78,8 @@ export default function HoursPanel({ repo }: { repo: string }) {
             </>
           )}
           {' · '}
-          <span className="tabular-nums">{hrs(report.totalSeconds)}</span> all time
+          <span className="tabular-nums">{hrs(report.totalSeconds)}</span>
+          {report.totalContinuedSeconds > 0 ? ` + ${hrs(report.totalContinuedSeconds)} continued` : ''} all time
           {report.since ? ` since ${dayLabel(new Date(report.since * 1000).toISOString())}` : ''}
           {report.live.length > 0 && <LiveRuns runs={report.live} repo={repo} />}
         </span>
@@ -87,7 +97,7 @@ export default function HoursPanel({ repo }: { repo: string }) {
           {report.excluded.length > 0 && (
             <details className="border-t border-zinc-800/70">
               <summary className="cursor-pointer px-2 py-1 text-[11px] text-zinc-500">
-                {report.excluded.length} failed run{report.excluded.length === 1 ? '' : 's'} not billed
+                {report.excluded.length} failed run{report.excluded.length === 1 ? '' : 's'}
               </summary>
               <ExcludedRuns runs={report.excluded} repo={repo} />
             </details>

@@ -3,10 +3,11 @@ import { dayLabel, hrs } from '../../lib/format';
 
 /** How a kind of run reads in a cell. */
 export const KIND_LABEL: Record<HoursKind, string> = { issue: 'implement', approved: 'review', review: 'review', qa: 'QA' };
-/** Why a run is not billed, in the words the excluded list shows. */
+/** How a run ended, in the words the failed-runs list shows. */
 export const ENDING_LABEL: Record<HoursEnding, string> = {
   done: 'finished',
   waiting: 'asked a human',
+  noResponse: 'out of response',
   verdict: 'posted its verdict',
   died: 'died while working',
   budget: 'hung past its budget',
@@ -25,6 +26,15 @@ const issueLink = (repo: string, issue: number | undefined) =>
   );
 
 const th = 'px-2 py-1 font-medium';
+
+/** What a card's failed runs add up to, for the hover on its billable cell. */
+function failedTitle(i: HoursIssue): string | undefined {
+  const parts = [
+    i.continuedSeconds ? `${hrs(i.continuedSeconds)} in failed runs a later run took up — half rate` : '',
+    i.excludedSeconds ? `${hrs(i.excludedSeconds)} in failed runs nobody took up — not billed` : '',
+  ].filter(Boolean);
+  return parts.length ? parts.join(' · ') : undefined;
+}
 
 /** The month's billable hours, one row per card, most hours first. */
 export function IssuesHours({ issues, repo }: { issues: HoursIssue[]; repo: string }) {
@@ -52,8 +62,9 @@ export function IssuesHours({ issues, repo }: { issues: HoursIssue[]; repo: stri
               {(i.byKind.approved ?? 0) + (i.byKind.review ?? 0) ? hrs((i.byKind.approved ?? 0) + (i.byKind.review ?? 0)) : '—'}
             </td>
             <td className="hidden px-2 py-1 text-right tabular-nums sm:table-cell">{i.byKind.qa ? hrs(i.byKind.qa) : '—'}</td>
-            <td className="px-2 py-1 text-right tabular-nums text-zinc-300" title={i.excludedSeconds ? `${hrs(i.excludedSeconds)} more in runs that failed — not billed` : undefined}>
+            <td className="px-2 py-1 text-right tabular-nums text-zinc-300" title={failedTitle(i)}>
               {hrs(i.seconds)}
+              {i.continuedSeconds > 0 && <span className="text-amber-400/80"> +{hrs(i.continuedSeconds)}</span>}
               {i.excludedSeconds > 0 && <span className="text-zinc-500"> +{hrs(i.excludedSeconds)}</span>}
             </td>
           </tr>
@@ -63,7 +74,7 @@ export function IssuesHours({ issues, repo }: { issues: HoursIssue[]; repo: stri
   );
 }
 
-/** The month's failed runs, each with the reason it is not on the bill. */
+/** The month's failed runs: how each ended, and whether a later run took its card up (half rate) or not (not billed). */
 export function ExcludedRuns({ runs, repo }: { runs: HoursExcluded[]; repo: string }) {
   return (
     <ul className="space-y-0.5 px-2 py-1 text-[11px] text-zinc-500">
@@ -74,6 +85,7 @@ export function ExcludedRuns({ runs, repo }: { runs: HoursExcluded[]; repo: stri
           <span className="tabular-nums">{hrs(r.seconds)}</span>
           <span>{ENDING_LABEL[r.ending]}</span>
           <span className="tabular-nums">{dayLabel(new Date(r.endedAt * 1000).toISOString())}</span>
+          {r.continued ? <span className="text-amber-400/80">taken up by a later run · half rate</span> : <span>not billed</span>}
         </li>
       ))}
     </ul>

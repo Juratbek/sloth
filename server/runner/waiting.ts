@@ -34,10 +34,14 @@ export function trackWaiting(dir: string): void {
   }
 }
 
-/** Seconds this run has spent waiting for an answer so far — its budget clock does not tick meanwhile. */
-export function waitedSeconds(dir: string): number {
+/**
+ * Seconds this run has spent waiting for an answer so far — its budget clock does not tick meanwhile. Up
+ * to `until` when the ledger books a run that ended before the tick noticed: a wait still open then
+ * counts only to that moment.
+ */
+export function waitedSeconds(dir: string, until = nowSec()): number {
   const since = readNumber(file(dir));
-  return readNumber(totalFile(dir)) + (since ? Math.max(0, nowSec() - since) : 0);
+  return readNumber(totalFile(dir)) + (since ? Math.max(0, Math.min(until, nowSec()) - since) : 0);
 }
 
 /** When the run last went from `waiting` back to work, or 0 if it never asked. */

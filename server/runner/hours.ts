@@ -5,7 +5,7 @@ import { billable, type HoursEnding, type HoursEntry, type HoursKind } from '../
 import { isDry, log, nowSec, readFile, readNumber, write } from './log';
 import { statePath } from './markers';
 import { pausedSeconds } from './pressure';
-import { launchedAt } from './session-dirs';
+import { launchedAt, stateOf } from './session-dirs';
 import { waitedSeconds } from './waiting';
 
 /**
@@ -93,6 +93,18 @@ export const issueOfRun = (kind: HoursKind, target: number, dir: string): number
   kind === 'issue' || kind === 'qa' ? target : readNumber(path.join(dir, 'issue')) || undefined;
 
 /**
+ * When a run ended. One that marked itself `done` (or gave up asking) or `waiting` ended when it said so —
+ * `since` in its state — and the tick that noticed may be a long way behind that, a whole outage even. Any
+ * other ending has no mark of its own, so it ended when it was noticed. A `since` outside the run's life
+ * is not trusted.
+ */
+function endedAt(dir: string, ending: HoursEnding, startedAt: number, now: number): number {
+  if (ending !== 'done' && ending !== 'noResponse' && ending !== 'waiting') return now;
+  const since = Number(stateOf(dir).since) || 0;
+  return since >= startedAt && since <= now ? since : now;
+}
+
+/**
  * Books a run that has just ended. Called before the run's `pid`, pause and waiting files go — `launchedAt`
  * falls back to the pid file's date for a run launched by an older Sloth, and the paused and waited seconds
  * live beside it.
@@ -104,10 +116,10 @@ export function bookRun(kind: HoursKind, target: number, dir: string, ending: Ho
     log(`dry-run: would book ${name} in the hours ledger (${ending})`);
     return undefined;
   }
-  const endedAt = nowSec();
   const startedAt = launchedAt(dir);
+  const ended = endedAt(dir, ending, startedAt, nowSec());
   const paused = pausedSeconds(dir);
-  const waited = waitedSeconds(dir);
+  const waited = waitedSeconds(dir, ended);
   const last = lastLine();
   const entry: HoursEntry = {
     n: last.n + 1,
@@ -116,10 +128,10 @@ export function bookRun(kind: HoursKind, target: number, dir: string, ending: Ho
     issue: issueOfRun(kind, target, dir),
     sessionId: readFile(path.join(dir, 'session_id'))?.trim() || undefined,
     startedAt,
-    endedAt,
+    endedAt: ended,
     pausedSeconds: paused,
     waitedSeconds: waited,
-    seconds: Math.max(0, endedAt - startedAt - paused - waited),
+    seconds: Math.max(0, ended - startedAt - paused - waited),
     ending,
     billable: billable(ending),
     prev: last.hash,

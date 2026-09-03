@@ -23,17 +23,23 @@ afterEach(() => {
 const H = 3600;
 const report = (over: Partial<HoursReport> = {}): HoursReport => ({
   month: '2026-09',
-  months: [{ month: '2026-09', billableSeconds: 4.5 * H, excludedSeconds: H, runs: 4 }],
+  months: [{ month: '2026-09', billableSeconds: 4.5 * H, continuedSeconds: H, excludedSeconds: 0.5 * H, runs: 5 }],
   billableSeconds: 4.5 * H,
-  excludedSeconds: H,
-  runs: 4,
+  continuedSeconds: H,
+  excludedSeconds: 0.5 * H,
+  runs: 5,
   issues: [
-    { issue: 1, title: 'Login screen', seconds: 3.5 * H, runs: 2, byKind: { issue: 3 * H, approved: 0.5 * H }, excludedSeconds: H, lastAt: 1 },
-    { issue: 2, title: 'Logout', seconds: H, runs: 1, byKind: { qa: H }, excludedSeconds: 0, lastAt: 1 },
+    { issue: 1, title: 'Login screen', seconds: 3.5 * H, runs: 2, byKind: { issue: 3 * H, approved: 0.5 * H }, continuedSeconds: H, excludedSeconds: 0, lastAt: 1 },
+    { issue: 2, title: 'Logout', seconds: H, runs: 1, byKind: { qa: H }, continuedSeconds: 0, excludedSeconds: 0, lastAt: 1 },
+    { issue: 4, title: 'Search', seconds: 0, runs: 0, byKind: {}, continuedSeconds: 0, excludedSeconds: 0.5 * H, lastAt: 1 },
   ],
-  excluded: [{ n: 2, kind: 'issue', target: 1, issue: 1, seconds: H, ending: 'died', endedAt: Date.parse('2026-09-02T10:00:00Z') / 1000 }],
+  excluded: [
+    { n: 2, kind: 'issue', target: 1, issue: 1, seconds: H, ending: 'died', endedAt: Date.parse('2026-09-02T10:00:00Z') / 1000, continued: true },
+    { n: 5, kind: 'issue', target: 4, issue: 4, seconds: 0.5 * H, ending: 'budget', endedAt: Date.parse('2026-09-02T11:00:00Z') / 1000, continued: false },
+  ],
   live: [{ kind: 'issue', target: 3, issue: 3, seconds: 0.4 * H }],
   totalSeconds: 6.5 * H,
+  totalContinuedSeconds: H,
   since: Date.parse('2026-08-20T10:00:00Z') / 1000,
   integrity: { chain: 'ok', copy: 'ok', checkedAt: 1 },
   ...over,
@@ -58,9 +64,14 @@ describe('HoursPanel', () => {
     expect(screen.getByRole('link', { name: '#2' }).getAttribute('href')).toBe('https://github.com/acme/widgets/issues/2');
     expect(screen.getByText('ledger intact')).toBeTruthy();
     expect(screen.getByText(/running now:/)).toBeTruthy();
-    // The failed run is behind the fold, with the reason it is not billed.
-    await userEvent.click(screen.getByText('1 failed run not billed'));
+    // The continued hours stand apart in the headline; the failed runs are behind the fold, each with how it
+    // ended and whether a later run took it up.
+    expect(screen.getByText(/continued at half rate/)).toBeTruthy();
+    await userEvent.click(screen.getByText('2 failed runs'));
     expect(screen.getByText('died while working')).toBeTruthy();
+    expect(screen.getByText('taken up by a later run · half rate')).toBeTruthy();
+    expect(screen.getByText('hung past its budget')).toBeTruthy();
+    expect(screen.getByText('not billed')).toBeTruthy();
   });
 
   it('pages by month, never past this one', async () => {
