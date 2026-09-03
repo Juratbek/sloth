@@ -215,7 +215,7 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `helpLogins` | `[]` | GitHub logins `@`-mentioned in the comment that parks a card in *needs help*, so GitHub notifies them (not the login `gh` writes with — GitHub skips self-mentions) |
 | `autoMerge` | `""` | How trigger 8 merges a PR whose review passed, whose checks are green and which merges cleanly: `squash`, `merge` or `rebase` (the `gh pr merge` methods) — as soon as it passes, skipping the human test in Approved. Empty leaves merging to a human |
 | `helpWebhook` | `""` | URL POSTed once per event in `webhookEvents` (`{event, text, content, repo, issue, title, url, column, pr?}` — Slack and Discord incoming webhooks read `text` / `content` as is) |
-| `webhookEvents` | `["needsHelp"]` | What `helpWebhook` hears about (Settings → *Notifications*, one toggle each): `needsHelp` (a card is parked), `codeReview` (a PR awaits Sloth's review), `finalPassed` (the review passed and the card is in Approved, with the preview link) / `finalFailed` (the `Fable: approved` label was taken back), `merged` (Sloth filed a closed issue away), `qaPassed` / `qaFailed` (the QA sweep's verdict on a card), `blocked` (Sloth gave up on a card), `stopped` (a run was stopped or parked), `usageLimit` (a Claude limit paused the watcher) |
+| `webhookEvents` | `["needsHelp"]` | What `helpWebhook` hears about (Settings → *Notifications*, one toggle each): `needsHelp` (a card is parked), `codeReview` (a PR awaits Sloth's review), `finalPassed` (the review passed and the card is in Approved, with the preview link) / `finalFailed` (the `Fable: approved` label was taken back), `merged` (Sloth filed a closed issue away), `qaPassed` / `qaFailed` (the QA sweep's verdict on a card), `blocked` (Sloth gave up on a card), `stopped` (a run was stopped or parked), `usageLimit` (a Claude limit paused the watcher), `hoursTampered` (the hours ledger or its branch copy no longer checks out, see *Hours*) |
 | `tunnel` | `["cloudflared", "tunnel", "--url", "http://localhost:{port}"]` | The command Sloth runs so the UI is reachable from outside (see *Remote access*); the first bare `https://` URL it prints is the address |
 | `publicUrl` | — | Where the UI is already reachable — your own tunnel or domain. Set, no tunnel is started |
 | `stack` | `"auto"` | What the sessions' app needs on this machine, out of the stack Sloth can install: `postgresql`, `redis`, `node`, `python`, `java` (see *Stack* below). `auto` reads the checkout at every start; a list pins it |
@@ -248,7 +248,7 @@ UI shows follows the provider's own list prices, cached prompts included. The wh
 ## UI and API
 
 The UI lists sessions (live / needs help / finished) with their transcript, subagents, token spend, what
-the run cost at list price — on the row in the list as well as in the session header — the machine load of a live run (see *Sessions*) and watcher state, plus a home panel with hourly spend, **cost by issue** — every
+the run cost at list price — on the row in the list as well as in the session header — the machine load of a live run (see *Sessions*) and watcher state, plus a home panel with hourly spend, **hours** (below), **cost by issue** — every
 issue Sloth touched, its runs rolled up into one line, dearest first — the queue and the log. It refreshes on a 15s poll
 and an SSE stream. Transcripts are read from `~/.claude/projects/<runner root, non-alphanumerics as '-'>`.
 
@@ -278,7 +278,7 @@ else is the home panel. Back and forward work. A remote link keeps its path thro
 the QR itself always points at `/`.
 
 Read: `GET /api/overview`, `/api/sessions/:id`, `/api/sessions/:id/agents/:agentId`, `/api/usage?days=N`,
-`/api/events` (SSE). Write: `POST /api/tick` (`?dry=1`), `/api/pause`, `/api/resume`, `/api/qa/run` (opens a QA sweep now and ticks), `/api/sessions/:id/stop` (ends the run, parks an issue's card), `/api/previews/:issue/stop` (takes a preview down now), `/api/setup/config`,
+`/api/hours?month=YYYY-MM` (the hours ledger, one month), `/api/events` (SSE). Write: `POST /api/tick` (`?dry=1`), `/api/pause`, `/api/resume`, `/api/qa/run` (opens a QA sweep now and ticks), `/api/sessions/:id/stop` (ends the run, parks an issue's card), `/api/previews/:issue/stop` (takes a preview down now), `/api/setup/config`,
 `/api/setup/clone`. Wizard reads: `GET /api/setup/env`, `/api/setup/projects`, `/api/setup/projects/:id/fields`,
 `/api/setup/config`. `GET /api/remote` (the QR's link and the tunnel tool's state), `POST /api/remote/rotate`
 (a new link) and `POST /api/remote/install` (brew installs the tool). `GET /api/update` (version, commit, commits
@@ -289,6 +289,22 @@ ticks, it never reconfigures or updates.
 `GET /api/webhook` (the comment webhook's state and which poll it puts in force) and `POST /api/webhook/retry`
 (configure it again now) sit behind the same guard as the rest. `POST /api/hooks/github` is the one route that does
 not: it is GitHub's delivery address, and it is authenticated by the signature over its body instead — see below.
+
+## Hours
+
+Sloth books every run it ends in `~/.sloth/state/hours.jsonl`, so a project can be billed by the hours
+it worked: one line per run with its launch, end, the seconds it stood paused for the machine, how it ended
+and whether that is billable. A run is billable when it did its job — reached `done`, stopped to ask a
+human, or posted its verdict; one that died, hung past its budget, hit a usage limit, was stopped from the
+monitor or lost the machine to a reboot is booked with that reason and not billed. Parallel runs each count.
+The home panel's **hours** section shows a month at a time (UTC) with a row per card and the failed runs
+under it; `GET /api/hours?month=YYYY-MM` is the same as JSON. Hours only, never a rate.
+
+The ledger is written by the server alone and is not in any session's environment. Each line fingerprints
+itself and the line before it (`server/runner/hours.ts`), and the file is committed after each run to the
+repository's `sloth-assets` branch as `hours/ledger.jsonl` (`server/runner/hours-copy.ts`). The tick
+compares the two; a broken chain or a copy that differs shows as **ledger tampered** on the panel and is
+raised once through `helpWebhook` as `hoursTampered`.
 
 ## Remote access
 

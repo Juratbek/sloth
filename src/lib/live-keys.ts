@@ -11,7 +11,7 @@ import { queryKeys } from './query-keys';
  * `queryKeys.sessions` covers a session and its agents, `queryKeys.allUsage` every window of the series.
  * The board has no key of its own — it comes down inside the overview.
  */
-const LIVE_KEYS = [queryKeys.overview, queryKeys.sessions, queryKeys.allUsage];
+const LIVE_KEYS = [queryKeys.overview, queryKeys.sessions, queryKeys.allUsage, queryKeys.allHours];
 
 /** Refetches what the server just changed, leaving the config, project and environment queries alone. */
 export function invalidateLive(queryClient: QueryClient): void {

@@ -3,6 +3,8 @@ import path from 'node:path';
 import { cfg } from '../config';
 import { moveCard, reviewVerdict } from './board';
 import { cleanup, cleanupRun, keepWarm } from './cleanup';
+import type { HoursEnding } from '../hours-types';
+import { bookRun } from './hours';
 import { exitLine, exitReport, forgetExits, recordExit } from './exits';
 import { comment } from './gh';
 import { killTree } from './kill';
@@ -11,7 +13,7 @@ import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
 import { MARKERS, markerFiles, statePath } from './markers';
 import { helpMentions, notify } from './notify';
 import { forgetPause, pausedSeconds, resumeRun } from './pressure';
-import { dirAlive, dirOf, issueDir, launchedAt, pidAlive, pidOf, runDirs, stateOf } from './session-dirs';
+import { dirAlive, dirOf, issueDir, launchedAt, pidAlive, pidOf, predatesBoot, runDirs, stateOf } from './session-dirs';
 import type { Kind } from './session-dirs';
 import { ANSWER_MINUTES, answeredAt, forgetWaiting, trackWaiting, waitedSeconds } from './waiting';
 
@@ -24,6 +26,8 @@ import { ANSWER_MINUTES, answeredAt, forgetWaiting, trackWaiting, waitedSeconds 
 
 const KILL_GRACE = 5 * 60; // extra time before Sloth kills a session that is past its budget
 const LIMIT_PAUSE = 30 * 60; // how long the whole watcher sleeps after a usage-limit exit
+/** The reason `reap` stops a hung run with — the one stop the ledger books as `budget` rather than `stopped`. */
+export const BUDGET_REASON = 'hung past the budget';
 
 export const pausedUntil = () => readNumber(statePath('paused_until'));
 
@@ -91,6 +95,9 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
   }
   // What the run was doing when it was killed is all the human will get: it never prints a final report.
   if (kind === 'issue') recordExit(dir, `stopped by Sloth: ${reason}`);
+  // A killed run's hours are not billed, whoever killed it: the budget is Sloth's own failing, and a stop
+  // from the monitor is the human's call. Booked while `pid` and the pause files are still there.
+  bookRun(kind, target, dir, reason === BUDGET_REASON ? 'budget' : 'stopped');
   // A run paused for the machine's sake is stopped cold: it has to be woken to act on the signal.
   resumeRun(dir);
   // Detached, so the run leads its own group — and on Windows a tree `taskkill` walks (`kill.ts`): either
@@ -173,12 +180,17 @@ export async function reap(): Promise<void> {
     if (!fs.existsSync(pidFile)) continue;
     const name = `${kind}-${target}`;
     if (!dirAlive(dir)) {
+      const limit = usageLimit(dir);
+      const state = stateOf(dir).state ?? 'working';
+      // The run's hours are booked before its files go: how it ended decides whether they are billed.
+      const finished = state !== 'working' || (!limit && (await verdictPosted(kind, target, dir)));
+      const ending: HoursEnding = limit ? 'usageLimit' : state === 'done' ? 'done' : state !== 'working' ? 'waiting' : finished ? 'verdict' : predatesBoot(pidFile) ? 'rebooted' : 'died';
+      bookRun(kind, target, dir, ending);
       remove(pidFile);
       forgetPause(dir);
       forgetWaiting(dir);
-      const limit = usageLimit(dir);
       if (!limit) {
-        if ((stateOf(dir).state ?? 'working') === 'working' && !(await verdictPosted(kind, target, dir))) {
+        if (!finished) {
           if (kind === 'issue') {
             log(`${name} ended without finishing — ${exitLine(recordExit(dir, 'the session ended on its own'))}`);
           } else {
@@ -217,7 +229,7 @@ export async function reap(): Promise<void> {
     // session gives itself `max(remaining, 30 min)` then, so the server allows no less.
     const deadline = Math.max(launchedAt(dir) + pausedSeconds(dir) + waitedSeconds(dir) + budget, answeredAt(dir) + ANSWER_MINUTES * 60);
     if ((stateOf(dir).state ?? 'working') !== 'working' || nowSec() <= deadline + KILL_GRACE) continue;
-    const stopped = await stop(kind, target, 'hung past the budget', 'the run for this issue hung past its time budget and was stopped by Sloth.');
+    const stopped = await stop(kind, target, BUDGET_REASON, 'the run for this issue hung past its time budget and was stopped by Sloth.');
     // A hang is not a verdict: the head's marker goes so the sweep tests the card again, `retries` allowing.
     if (stopped && kind === 'qa' && !isDry()) {
       for (const f of markerFiles(kind, target)) remove(statePath(MARKERS.qa, f));

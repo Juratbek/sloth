@@ -18,6 +18,7 @@ import { agentDetail, overview, sessionDetail, watcherOf } from './sessions';
 import { ensureSkipLabel } from './runner/markers';
 import { ensureStack } from './stack';
 import { usageSeries } from './usage';
+import { hoursReport } from './hours';
 import { ensureWebhook, startWebhook, webhookInfo } from './webhook';
 import { webhookMiddleware } from './webhook-route';
 
@@ -133,6 +134,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     // The fallback sits inside the clamp: outside it, an absent `days` read as 0, was clamped to 1 and
     // never reached the 7.
     else if (p === '/api/usage') body = usageSeries(Math.min(31, Math.max(1, Math.floor(Number(url.searchParams.get('days'))) || 7)));
+    // One month of the hours ledger — `?month=YYYY-MM`, this month when absent or malformed.
+    else if (p === '/api/hours') body = await hoursReport(url.searchParams.get('month'));
     else if (session) body = sessionDetail(session[1]);
     else if (agent) body = agentDetail(agent[1], agent[2]);
     if (body === undefined) {

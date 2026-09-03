@@ -139,6 +139,29 @@ Every comment Sloth writes starts with `**Sloth:**`.
 - **Pause** in the header stops Sloth from starting anything new. Running sessions finish, comments
   are still answered, parked cards are still announced. Press **Resume** to continue.
 
+## Hours
+
+Sloth keeps the hours it worked on the board, so a project can be billed by them. A **session-hour** is one
+run's wall-clock time from launch to its end, minus any time Sloth paused it for the machine's sake; three
+runs going at once for an hour are three hours. Implement runs, reviews and QA tests are all booked, a
+status reply never is. A run is **billable** when it did its job: it finished, it stopped to ask a human, or
+it posted its verdict on the PR. A run that failed is booked with its reason and is **not** billed — it died
+while working, it hung past its budget and Sloth killed it, a usage limit stopped it, someone stopped it
+from the monitor, or the machine rebooted under it.
+
+The home panel's **hours** section shows one month at a time (UTC): billable hours as the headline, a row
+per card with the implement / review / QA split, the failed runs under a fold with why each is off the bill,
+and what is running right now. The same month is `GET /api/hours?month=YYYY-MM`. Hours only — the rate is
+the invoice's business, and the ledger began with the version that introduced it.
+
+The record is `~/.sloth/state/hours.jsonl`: one line per run, appended by Sloth's server and by nothing
+else — a session is never told the file exists. Every line carries a fingerprint of its own text and of
+the line before it, so a line changed, removed or slipped in breaks the chain from there on, and the panel's
+chip turns to **ledger tampered**. After each run the ledger is also committed to the repository's
+`sloth-assets` branch (`hours/ledger.jsonl`, beside the PR screenshots), one commit per run, so both sides
+hold the history; the tick compares the two and raises `hoursTampered` through the help webhook when they
+disagree or the chain is broken.
+
 ## Where everything is
 
 ```
@@ -149,7 +172,8 @@ Every comment Sloth writes starts with `**Sloth:**`.
 ├── worktrees/<repo>/    one worktree per issue (and one per QA test while it runs)
 ├── sessions/<repo>/     one folder per session: its log, its state, its inbox — a QA test's verdict
 └── state/               markers so nothing is done twice (approved, handed, finished, closed, checks,
-                         merged, qa); the pause; the day's QA sweep; the remote-access secret
+                         merged, qa); the pause; the day's QA sweep; the remote-access secret;
+                         hours.jsonl — the hours ledger (see *Hours*)
 ```
 
 The UI at `http://localhost:4400` shows every session, its full transcript, its token spend, and

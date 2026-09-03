@@ -19,6 +19,9 @@ export const queryKeys = {
   /** Prefix over every window of the usage series. */
   allUsage: ['usage'] as const,
   usage: (days: number) => ['usage', days] as const,
+  /** Prefix over every month of the hours report. */
+  allHours: ['hours'] as const,
+  hours: (month: string) => ['hours', month] as const,
   /** The models this machine can reach — a `claude --version` and the provider keys behind it. */
   models: ['models'] as const,
   /**

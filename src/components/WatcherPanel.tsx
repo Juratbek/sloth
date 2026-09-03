@@ -5,6 +5,7 @@ import useFollowBottom from '../hooks/use-follow-bottom';
 import useQaRun from '../hooks/use-qa-run';
 import useUnblock from '../hooks/use-unblock';
 import { queued } from '../lib/queued';
+import HoursPanel from './HoursPanel';
 import IssuesTable from './IssuesTable';
 import Chip from './ui/Chip';
 import ErrorNote from './ui/ErrorNote';
@@ -91,6 +92,8 @@ export default function WatcherPanel({ overview, onSelect }: { overview: Overvie
       )}
 
       {overview.blocked.length > 0 && <Blocked cards={overview.blocked} repo={config.repo} />}
+
+      <HoursPanel repo={config.repo} />
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 md:flex-row">
         <IssuesTable issues={overview.issues} config={overview.config} />

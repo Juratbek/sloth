@@ -67,7 +67,7 @@ export const MERGE_METHODS: MergeMethod[] = ['', 'squash', 'merge', 'rebase'];
  * What the `helpWebhook` hears about. `needsHelp` is the one Sloth has always sent, and the only one a
  * config that predates the rest gets: an existing setup keeps behaving exactly as it did.
  */
-export const WEBHOOK_EVENTS = ['needsHelp', 'codeReview', 'finalPassed', 'finalFailed', 'merged', 'qaPassed', 'qaFailed', 'blocked', 'stopped', 'usageLimit'] as const;
+export const WEBHOOK_EVENTS = ['needsHelp', 'codeReview', 'finalPassed', 'finalFailed', 'merged', 'qaPassed', 'qaFailed', 'blocked', 'stopped', 'usageLimit', 'hoursTampered'] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 
 /** One admin, any number of developers and testers. A login holds one role: admin wins, then developer. */

@@ -25,6 +25,9 @@ export function duration(sec: number) {
   return h ? `${h}h ${m}m` : m ? `${m}m ${s}s` : `${s}s`;
 }
 
+/** Session-seconds as an invoice reads them: `12.5 h`, one decimal, never rounded to nothing while there is something. */
+export const hrs = (sec: number) => `${(Math.round(Math.max(0, sec) / 360) / 10).toFixed(1)} h`;
+
 export const clock = (iso?: string | number) =>
   iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
 
