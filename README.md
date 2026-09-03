@@ -295,9 +295,10 @@ not: it is GitHub's delivery address, and it is authenticated by the signature o
 Sloth books every run it ends in `~/.sloth/state/hours.jsonl`, so a project can be billed by the hours
 it worked: one line per run with its launch, end, the seconds it stood paused for the machine and the seconds
 it sat in *Sloth needs help* waiting for an answer (neither is billed), how it ended and whether that is
-billable. A run is billable when it did its job — reached `done`, stopped to ask a
-human, or posted its verdict; one that died, hung past its budget, hit a usage limit, was stopped from the
-monitor or lost the machine to a reboot is booked with that reason and not billed. Parallel runs each count.
+billable. A run is billable when it did its job — reached `done`, stopped to ask a human, asked and ran out
+of response, or posted its verdict; one that died, hung past its budget, hit a usage limit, was stopped from
+the monitor or lost the machine to a reboot is booked with that reason: **continued** (shown apart, half
+rate) when a later run took the card up, not billed when none did. Parallel runs each count.
 The home panel's **hours** section shows a month at a time (UTC) with a row per card and the failed runs
 under it; `GET /api/hours?month=YYYY-MM` is the same as JSON. Hours only, never a rate.
 
@@ -305,7 +306,8 @@ The ledger is written by the server alone and is not in any session's environmen
 itself and the line before it (`server/runner/hours.ts`), and the file is committed after each run to the
 repository's `sloth-assets` branch as `hours/ledger.jsonl` (`server/runner/hours-copy.ts`). The tick
 compares the two; a broken chain or a copy that differs shows as **ledger tampered** on the panel and is
-raised once through `helpWebhook` as `hoursTampered`.
+raised once through `helpWebhook` as `hoursTampered`. The branch is the witness: a file that is broken or
+differs from what the branch holds is never pushed over it, and the branch's history shows every change.
 
 ## Remote access
 

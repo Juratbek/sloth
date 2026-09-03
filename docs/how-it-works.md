@@ -146,14 +146,18 @@ Sloth keeps the hours it worked on the board, so a project can be billed by them
 run's wall-clock time from launch to its end, minus any time Sloth paused it for the machine's sake and
 minus the time it sat in *Sloth needs help* waiting for an answer — a parked session keeps its process
 alive while it waits, and nobody is billed for the wait. Three runs going at once for an hour are three hours. Implement runs, reviews and QA tests are all booked, a
-status reply never is. A run is **billable** when it did its job: it finished, it stopped to ask a human, or
-it posted its verdict on the PR. A run that failed is booked with its reason and is **not** billed — it died
-while working, it hung past its budget and Sloth killed it, a usage limit stopped it, someone stopped it
-from the monitor, or the machine rebooted under it.
+status reply never is. A run that marked itself finished or asked a human ended at the moment it said so, not
+when Sloth noticed — an outage between the two adds nothing. A run is **billable** when it did its job: it
+finished, it stopped to ask a human, it asked and ran **out of response** (no answer in `waitHours`, so it
+ended with the card still parked), or it posted its verdict on the PR. A run that failed — it died while
+working, it hung past its budget and Sloth killed it, a usage limit stopped it, someone stopped it from the
+monitor, or the machine rebooted under it — is booked with its reason and goes one of two ways. When a later
+run took the card up, its hours are **continued**: shown apart from the billable hours, to be charged at half
+rate. When nobody took the card up, they are not billed.
 
-The home panel's **hours** section shows one month at a time (UTC): billable hours as the headline, a row
-per card with the implement / review / QA split, the failed runs under a fold with why each is off the bill,
-and what is running right now. The same month is `GET /api/hours?month=YYYY-MM`. Hours only — the rate is
+The home panel's **hours** section shows one month at a time (UTC): billable hours as the headline with the
+continued hours beside them, a row per card with the implement / review / QA split, the failed runs under a
+fold with how each ended and whether a later run took it up, and what is running right now. The same month is `GET /api/hours?month=YYYY-MM`. Hours only — the rate is
 the invoice's business, and the ledger began with the version that introduced it.
 
 The record is `~/.sloth/state/hours.jsonl`: one line per run, appended by Sloth's server and by nothing
@@ -162,7 +166,9 @@ the line before it, so a line changed, removed or slipped in breaks the chain fr
 chip turns to **ledger tampered**. After each run the ledger is also committed to the repository's
 `sloth-assets` branch (`hours/ledger.jsonl`, beside the PR screenshots), one commit per run, so both sides
 hold the history; the tick compares the two and raises `hoursTampered` through the help webhook when they
-disagree or the chain is broken.
+disagree or the chain is broken. The branch is the witness: a local file whose chain is broken, or whose
+lines differ from what the branch already holds, is never pushed over it — the copy keeps the record as it
+was until a human has put the file right, and the branch's own history shows every change ever made to it.
 
 ## Where everything is
 

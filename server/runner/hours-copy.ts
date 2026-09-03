@@ -73,9 +73,11 @@ async function commitLedger(parent: string | undefined, message: string): Promis
 }
 
 /**
- * Pushes the ledger as it stands. A push that loses the race to a session's `publish_shots` is retried on
- * the new head; one that fails for good (offline, no branch permission) leaves the marker, and the next
- * tick tries again.
+ * Pushes the ledger as it stands — provided it only adds to what the branch already holds. The branch is
+ * the witness: a local file whose chain is broken, or whose lines no longer match the branch's, is never
+ * pushed over it, however it got that way, so the copy keeps the record as it was and the tick raises the
+ * difference. A push that loses the race to a session's `publish_shots` is retried on the new head; one
+ * that fails for good (offline, no branch permission) leaves the marker, and the next tick tries again.
  */
 export async function publishHours(): Promise<boolean> {
   if (!fs.existsSync(ledgerFile())) return true;
@@ -83,12 +85,25 @@ export async function publishHours(): Promise<boolean> {
     log(`dry-run: would copy the hours ledger to ${ASSETS_BRANCH}`);
     return true;
   }
+  const chain = readLedger().problem;
+  if (chain) {
+    log(`hours: the ledger is not pushed while its chain is broken — ${chain}`);
+    return false;
+  }
   const booked = readFile(unpublishedFile())?.trim() || '?';
   for (let attempt = 1; attempt <= PUSH_TRIES; attempt++) {
     const parent = await remoteHead();
     if (parent === null) {
       log(`hours: origin could not be reached — the ledger's copy waits for the next tick`);
       return false;
+    }
+    if (parent) {
+      const theirs = await git(['show', `${parent}:${LEDGER_PATH}`]);
+      const standing = compare(readFile(ledgerFile()) ?? '', theirs.ok ? theirs.out : '');
+      if (standing.copy === 'diverged') {
+        log(`hours: the ledger is not pushed over its copy — ${standing.problem}`);
+        return false;
+      }
     }
     const commit = await commitLedger(parent, `hours: run ${booked} booked`);
     if (!commit) {
@@ -132,7 +147,9 @@ async function raise(problem: string | undefined): Promise<void> {
 /**
  * The tick's step: pushes what is waiting, then compares the branch with the file — every time there was
  * something to push, and once an hour otherwise, so a quiet week costs a fetch an hour. A file whose own
- * chain is broken is raised here too, whatever the copy says.
+ * chain is broken is raised here too, whatever the copy says. A file the push refused — broken, or diverged
+ * from the branch — keeps its marker and is tried every tick: it is not pushed until a human has put the
+ * record right, and the moment they have, the next tick sees it.
  */
 export async function checkCopy(): Promise<void> {
   const pending = fs.existsSync(unpublishedFile());
