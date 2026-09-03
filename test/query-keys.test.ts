@@ -13,6 +13,7 @@ const MOUNTED = {
   models: queryKeys.models,
   health: queryKeys.health,
   remote: queryKeys.remote,
+  webhook: queryKeys.webhook,
   stack: queryKeys.stack(),
   stackAt: queryKeys.stack('/src/medora'),
   update: queryKeys.update,
@@ -72,6 +73,7 @@ describe('queryKeys', () => {
       ['models', queryKeys.models],
       ['health', queryKeys.health],
       ['remote', queryKeys.remote],
+      ['webhook', queryKeys.webhook],
       ['update', queryKeys.update],
       ['service', queryKeys.service],
     ] as const) {

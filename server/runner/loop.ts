@@ -19,6 +19,7 @@ import { answered } from './answers';
 import { pausedUntil, reap } from './run-control';
 import { handover, pickup, retryStranded, reviews } from './triggers';
 import { healthTick } from '../health';
+import { isWebhookLive, onWebhookChange } from '../webhook';
 import { autoUpdate } from '../update';
 import type { LoopStatus } from '../types';
 
@@ -30,6 +31,8 @@ export interface TickOptions {
 
 const state: LoopStatus = { running: false, ticking: false };
 const timers: Partial<Record<Timed, NodeJS.Timeout>> = {};
+/** How many times each timer has been armed; only the newest arming of a kind re-arms itself (`schedule`). */
+const arms: Partial<Record<Timed, number>> = {};
 let chain: Promise<unknown> = Promise.resolve();
 /**
  * Which set of timers is the current one: a `schedule` re-arms only while its generation is still it.
@@ -170,8 +173,16 @@ async function tickSteps({ board = false, comments: wantComments = false }: Tick
 type Timed = 'board' | 'comments' | 'machine' | 'update';
 const TIMED: Timed[] = ['board', 'comments', 'machine', 'update'];
 
+/**
+ * How often mentions are looked for. With the GitHub webhook delivering them, the poll is only the net
+ * under it and runs at `commentSeconds`; with nothing delivering — no public address, a tunnel that
+ * moved, a token that may not write hooks — it is the only way a mention is read at all, and drops to
+ * the shorter `fallbackCommentSeconds`.
+ */
+export const commentInterval = (): number => (isWebhookLive() ? cfg().commentSeconds : cfg().fallbackCommentSeconds);
+
 const intervalOf = (kind: Timed) =>
-  kind === 'board' ? cfg().boardSeconds : kind === 'comments' ? cfg().commentSeconds : kind === 'machine' ? cfg().machineSeconds : cfg().updateSeconds;
+  kind === 'board' ? cfg().boardSeconds : kind === 'comments' ? commentInterval() : kind === 'machine' ? cfg().machineSeconds : cfg().updateSeconds;
 
 /** What one timer does when it fires. The machine's is its own pass, and never runs inside a tick. */
 function fire(kind: Timed): Promise<unknown> {
@@ -189,18 +200,43 @@ function fire(kind: Timed): Promise<unknown> {
   return readMachine().catch((e) => log(`machine reading failed: ${e}`));
 }
 
-/** Re-arms itself after every run, so a slow tick delays the next one instead of stacking up. */
+/**
+ * Re-arms itself after every run, so a slow tick delays the next one instead of stacking up.
+ *
+ * `arms` counts the arming of each kind, and only the newest one of a kind ever re-arms. The generation
+ * covers a whole set of timers being replaced (`startLoop`); this covers one of them being replaced on
+ * its own by `rearm` — a run in flight when that happens holds a `.finally` that would otherwise arm a
+ * second timer beside the fresh one, and two comment timers ticking for ever is two of every poll.
+ */
 function schedule(kind: Timed, delaySeconds: number, gen: number = generation): void {
+  const seq = (arms[kind] = (arms[kind] ?? 0) + 1);
+  const mine = () => state.running && gen === generation && arms[kind] === seq;
   const at = Date.now() + delaySeconds * 1000;
   if (kind === 'board') state.nextBoard = at;
   else if (kind === 'comments') state.nextComment = at;
   timers[kind] = setTimeout(() => {
-    if (!state.running || gen !== generation) return;
+    if (!mine()) return;
     void fire(kind).finally(() => {
-      if (state.running && gen === generation) schedule(kind, intervalOf(kind), gen);
+      if (mine()) schedule(kind, intervalOf(kind), gen);
     });
   }, delaySeconds * 1000);
 }
+
+/**
+ * Re-arms one timer against today's interval, dropping the wait already in flight. The webhook coming up
+ * or going down changes which comment poll is in force, and waiting out an interval chosen under the old
+ * answer is exactly the wrong way round: the fallback is wanted *because* deliveries have stopped.
+ * The generation is left alone — this replaces one timer of the current set, it does not start a new set.
+ */
+export function rearm(kind: Timed): void {
+  if (!state.running) return;
+  clearTimeout(timers[kind]);
+  schedule(kind, intervalOf(kind));
+}
+
+// Registered once, when the module loads: `webhook.ts` knows nothing about the loop, and the loop only
+// asks it a question — the wiring between them is this line.
+onWebhookChange(() => rearm('comments'));
 
 /**
  * Starts the timers — the board every `boardSeconds`, `@sloth` comments every `commentSeconds`, the
@@ -214,7 +250,7 @@ export function startLoop(): void {
   if (!c.configured) return;
   state.running = true;
   log(
-    `watching ${c.repo} · board #${c.project.number} · pickup "${c.statusField.columns.pickup.name}" · board ${c.boardSeconds}s / comments ${c.commentSeconds}s / machine ${c.machineSeconds}s${c.autoUpdate ? ` / auto-update ${c.updateSeconds}s` : ''}`,
+    `watching ${c.repo} · board #${c.project.number} · pickup "${c.statusField.columns.pickup.name}" · board ${c.boardSeconds}s / comments ${c.commentSeconds}s (${c.fallbackCommentSeconds}s without the webhook) / machine ${c.machineSeconds}s${c.autoUpdate ? ` / auto-update ${c.updateSeconds}s` : ''}`,
   );
   schedule('board', 5);
   schedule('comments', 20);

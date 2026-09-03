@@ -142,6 +142,8 @@ export interface SlothConfig {
   maxRetries: number;
   boardSeconds: number;
   commentSeconds: number;
+  /** The comments poll while the GitHub webhook is not live (`server/webhook.ts`): polling is then the only way a mention is read at all, so it runs shorter than `commentSeconds`. */
+  fallbackCommentSeconds: number;
   /**
    * How often the machine is read, in seconds — the holds above and the pausing in `pressure.ts` can
    * only act on a reading they have. Short: the board is read every few minutes, and a session that
@@ -260,6 +262,7 @@ export const CONFIG_DEFAULTS = {
   maxRetries: 2,
   boardSeconds: 300,
   commentSeconds: 120,
+  fallbackCommentSeconds: 30,
   machineSeconds: 15,
   models: DEFAULT_MODELS,
   orchestrator: true,

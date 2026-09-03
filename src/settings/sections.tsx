@@ -1,5 +1,6 @@
 import type { MergeMethod } from '../../server/config-types';
 import { NumberInput, TextInput } from '../setup/ui';
+import WebhookBlock from './WebhookSection';
 import { Choose, ListInput, Row, Toggle } from './ui';
 import type { SectionProps } from './ui';
 
@@ -20,9 +21,16 @@ export function General({ draft, patch }: SectionProps) {
       <Row label="Board poll" hint="Seconds between two reads of the board — pickups, relaunches, reviews. At least 30.">
         <NumberInput min={30} value={draft.boardSeconds} onChange={(boardSeconds) => patch({ boardSeconds })} />
       </Row>
-      <Row label="Comment poll" hint="Seconds between two checks for mentions in issue and PR comments. At least 30.">
+      <Row label="Comment poll" hint="Seconds between two checks for mentions in issue and PR comments, while the GitHub webhook is delivering them. At least 30.">
         <NumberInput min={30} value={draft.commentSeconds} onChange={(commentSeconds) => patch({ commentSeconds })} />
       </Row>
+      <Row
+        label="Comment poll without the webhook"
+        hint="Seconds between two checks for mentions while the webhook is not delivering — no public address, a tunnel that moved, a token that may not write webhooks. Shorter, because then polling is the only way a mention is read at all. At least 10."
+      >
+        <NumberInput min={10} value={draft.fallbackCommentSeconds} onChange={(fallbackCommentSeconds) => patch({ fallbackCommentSeconds })} />
+      </Row>
+      <WebhookBlock />
       <Row
         label="Test in Chrome"
         hint="Give implement sessions a headless Chrome (Playwright), so a tester subagent can click through the change and screenshot it for the PR before it opens. Needs Google Chrome on this machine."
