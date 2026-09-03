@@ -142,8 +142,9 @@ Every comment Sloth writes starts with `**Sloth:**`.
 ## Hours
 
 Sloth keeps the hours it worked on the board, so a project can be billed by them. A **session-hour** is one
-run's wall-clock time from launch to its end, minus any time Sloth paused it for the machine's sake; three
-runs going at once for an hour are three hours. Implement runs, reviews and QA tests are all booked, a
+run's wall-clock time from launch to its end, minus any time Sloth paused it for the machine's sake and
+minus the time it sat in *Sloth needs help* waiting for an answer — a parked session keeps its process
+alive while it waits, and nobody is billed for the wait. Three runs going at once for an hour are three hours. Implement runs, reviews and QA tests are all booked, a
 status reply never is. A run is **billable** when it did its job: it finished, it stopped to ask a human, or
 it posted its verdict on the PR. A run that failed is booked with its reason and is **not** billed — it died
 while working, it hung past its budget and Sloth killed it, a usage limit stopped it, someone stopped it
