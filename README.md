@@ -293,8 +293,9 @@ not: it is GitHub's delivery address, and it is authenticated by the signature o
 ## Hours
 
 Sloth books every run it ends in `~/.sloth/state/hours.jsonl`, so a project can be billed by the hours
-it worked: one line per run with its launch, end, the seconds it stood paused for the machine, how it ended
-and whether that is billable. A run is billable when it did its job — reached `done`, stopped to ask a
+it worked: one line per run with its launch, end, the seconds it stood paused for the machine and the seconds
+it sat in *Sloth needs help* waiting for an answer (neither is billed), how it ended and whether that is
+billable. A run is billable when it did its job — reached `done`, stopped to ask a
 human, or posted its verdict; one that died, hung past its budget, hit a usage limit, was stopped from the
 monitor or lost the machine to a reboot is booked with that reason and not billed. Parallel runs each count.
 The home panel's **hours** section shows a month at a time (UTC) with a row per card and the failed runs

@@ -42,7 +42,7 @@ describe('bookRun', () => {
   it('books the run’s own seconds — launched to now, less the time it stood paused — and chains onto the line before', () => {
     const dir = makeSession('issue', 7, { started: String(nowSec() - 2 * HOUR), paused_total: '600', session_id: 'sid-7' });
     const first = bookRun('issue', 7, dir, 'done')!;
-    expect(first).toMatchObject({ n: 1, kind: 'issue', target: 7, issue: 7, sessionId: 'sid-7', pausedSeconds: 600, ending: 'done', billable: true, prev: '' });
+    expect(first).toMatchObject({ n: 1, kind: 'issue', target: 7, issue: 7, sessionId: 'sid-7', pausedSeconds: 600, waitedSeconds: 0, ending: 'done', billable: true, prev: '' });
     expect(first.seconds).toBeGreaterThanOrEqual(2 * HOUR - 600 - 2);
     expect(first.seconds).toBeLessThanOrEqual(2 * HOUR - 600);
     expect(first.hash).toMatch(/^[0-9a-f]{64}$/);
@@ -54,6 +54,18 @@ describe('bookRun', () => {
     expect(read(unpublishedFile())).toBe('2');
     expect(readLog().join('\n')).toMatch(/booked issue-7: 1h 50m — billable \(done\)/);
     expect(readLog().join('\n')).toMatch(/booked approved-30: 1h 0m — not billable \(died\)/);
+  });
+
+  it('credits back the time a run sat in needs-help waiting for an answer — booked and still open', () => {
+    // Answered once (40 min credited), asked again 10 minutes ago and still waiting: neither is worked time.
+    const dir = makeSession('issue', 8, { started: String(nowSec() - 2 * HOUR), paused_total: '60', waiting_total: String(40 * 60), waiting: String(nowSec() - 600) });
+    const e = bookRun('issue', 8, dir, 'waiting')!;
+    expect(e).toMatchObject({ pausedSeconds: 60, ending: 'waiting', billable: true });
+    expect(e.waitedSeconds).toBeGreaterThanOrEqual(50 * 60);
+    expect(e.waitedSeconds).toBeLessThanOrEqual(50 * 60 + 2);
+    expect(e.seconds).toBeGreaterThanOrEqual(2 * HOUR - 60 - 50 * 60 - 4);
+    expect(e.seconds).toBeLessThanOrEqual(2 * HOUR - 60 - 50 * 60);
+    expect(readLog().join('\n')).toMatch(/booked issue-8: 1h 9m — billable \(waiting\)/);
   });
 
   it('books nothing on a dry tick', () => {
@@ -213,7 +225,7 @@ describe('hoursReport', () => {
   });
 
   it('shows the runs still going, with their seconds so far, and a broken chain', async () => {
-    makeSession('issue', 9, { pid: alivePid(), started: String(nowSec() - 600), paused_total: '60' });
+    makeSession('issue', 9, { pid: alivePid(), started: String(nowSec() - 600), paused_total: '60', waiting: String(nowSec() - 30) });
     makeSession('approved', 51, { pid: alivePid(), started: String(nowSec() - 300), issue: '9' });
     makeSession('issue', 10, { pid: DEAD, started: String(nowSec() - 600) });
     const r = await hoursReport();
@@ -221,8 +233,8 @@ describe('hoursReport', () => {
       ['issue', 9, 9],
       ['approved', 51, 9],
     ]);
-    expect(r.live[0].seconds).toBeGreaterThanOrEqual(538);
-    expect(r.live[0].seconds).toBeLessThanOrEqual(540);
+    expect(r.live[0].seconds).toBeGreaterThanOrEqual(508);
+    expect(r.live[0].seconds).toBeLessThanOrEqual(510);
     fs.mkdirSync(path.dirname(ledgerFile()), { recursive: true });
     fs.writeFileSync(ledgerFile(), 'garbage\n');
     expect((await hoursReport()).integrity).toMatchObject({ chain: 'broken', problem: 'line 1 is not a ledger entry' });

@@ -6,6 +6,7 @@ import { isDry, log, nowSec, readFile, readNumber, write } from './log';
 import { statePath } from './markers';
 import { pausedSeconds } from './pressure';
 import { launchedAt } from './session-dirs';
+import { waitedSeconds } from './waiting';
 
 /**
  * The hours ledger: one line per run that ended, appended by the server when it notices the end (`reap`
@@ -79,16 +80,22 @@ function lastLine(): { n: number; hash: string } {
   }
 }
 
-/** Seconds a run has been its own so far — launched, minus the time it stood paused for the machine. */
-export const runSeconds = (dir: string, until = nowSec()): number => Math.max(0, until - launchedAt(dir) - pausedSeconds(dir));
+/**
+ * Seconds a run has been its own so far — launched, minus the time it stood paused for the machine and the
+ * time it sat in needs-help waiting for an answer. A parked session keeps its process alive while it
+ * waits, so its span from launch to end holds the wait; nobody worked those hours, and the budget clock
+ * (`run-control.ts`) does not count them either.
+ */
+export const runSeconds = (dir: string, until = nowSec()): number => Math.max(0, until - launchedAt(dir) - pausedSeconds(dir) - waitedSeconds(dir));
 
 /** The issue a run in `dir` works for: an implement or QA run is named after it, a review has it written beside it. */
 export const issueOfRun = (kind: HoursKind, target: number, dir: string): number | undefined =>
   kind === 'issue' || kind === 'qa' ? target : readNumber(path.join(dir, 'issue')) || undefined;
 
 /**
- * Books a run that has just ended. Called before the run's `pid` and pause files go — `launchedAt` falls
- * back to the pid file's date for a run launched by an older Sloth, and the paused seconds live beside it.
+ * Books a run that has just ended. Called before the run's `pid`, pause and waiting files go — `launchedAt`
+ * falls back to the pid file's date for a run launched by an older Sloth, and the paused and waited seconds
+ * live beside it.
  * A dry tick books nothing: it forgets no pid either, so the real tick after it books the run once.
  */
 export function bookRun(kind: HoursKind, target: number, dir: string, ending: HoursEnding): HoursEntry | undefined {
@@ -100,6 +107,7 @@ export function bookRun(kind: HoursKind, target: number, dir: string, ending: Ho
   const endedAt = nowSec();
   const startedAt = launchedAt(dir);
   const paused = pausedSeconds(dir);
+  const waited = waitedSeconds(dir);
   const last = lastLine();
   const entry: HoursEntry = {
     n: last.n + 1,
@@ -110,7 +118,8 @@ export function bookRun(kind: HoursKind, target: number, dir: string, ending: Ho
     startedAt,
     endedAt,
     pausedSeconds: paused,
-    seconds: Math.max(0, endedAt - startedAt - paused),
+    waitedSeconds: waited,
+    seconds: Math.max(0, endedAt - startedAt - paused - waited),
     ending,
     billable: billable(ending),
     prev: last.hash,

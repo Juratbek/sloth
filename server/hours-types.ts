@@ -28,11 +28,15 @@ export interface HoursEntry {
   /** The issue the run worked for; a review names its PR in `target`, and the issue beside it here. */
   issue?: number;
   sessionId?: string;
-  /** Epoch seconds: launched, ended, and how long it stood paused for the machine in between. */
+  /**
+   * Epoch seconds: launched, ended, and how long in between it stood paused for the machine, or parked
+   * in needs-help waiting for an answer (`runner/waiting.ts`) — neither is time the run worked.
+   */
   startedAt: number;
   endedAt: number;
   pausedSeconds: number;
-  /** `endedAt - startedAt - pausedSeconds`, never below zero: the run's own session-seconds. */
+  waitedSeconds: number;
+  /** `endedAt - startedAt - pausedSeconds - waitedSeconds`, never below zero: the run's own session-seconds. */
   seconds: number;
   ending: HoursEnding;
   billable: boolean;
