@@ -144,13 +144,15 @@ Sloth keeps the hours it worked on the board, so a project can be billed by them
 run's wall-clock time from launch to its end, minus any time Sloth paused it for the machine's sake; three
 runs going at once for an hour are three hours. Implement runs, reviews and QA tests are all booked, a
 status reply never is. A run is **billable** when it did its job: it finished, it stopped to ask a human, or
-it posted its verdict on the PR. A run that failed is booked with its reason and is **not** billed — it died
-while working, it hung past its budget and Sloth killed it, a usage limit stopped it, someone stopped it
-from the monitor, or the machine rebooted under it.
+it posted its verdict on the PR. A run that failed is booked with its reason — it died while working, it
+hung past its budget and Sloth killed it, a usage limit stopped it, someone stopped it from the monitor, or
+the machine rebooted under it. Its hours are **continued** once a later session takes the card up (the work
+was taken over, not lost) and are billed at a 50% discount, shown as a number of their own; a failed run
+nobody continued is not billed.
 
-The home panel's **hours** section shows one month at a time (UTC): billable hours as the headline, a row
-per card with the implement / review / QA split, the failed runs under a fold with why each is off the bill,
-and what is running right now. The same month is `GET /api/hours?month=YYYY-MM`. Hours only — the rate is
+The home panel's **hours** section shows one month at a time (UTC): billable hours as the headline, the
+continued and the not-billed hours beside them, a row per card with the implement / review / QA split, the
+failed runs under a fold with why each failed and whether it was continued, and what is running right now. The same month is `GET /api/hours?month=YYYY-MM`. Hours only — the rate is
 the invoice's business, and the ledger began with the version that introduced it.
 
 The record is `~/.sloth/state/hours.jsonl`: one line per run, appended by Sloth's server and by nothing

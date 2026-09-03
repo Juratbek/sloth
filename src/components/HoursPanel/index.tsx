@@ -5,12 +5,13 @@ import { dayLabel, hrs } from '../../lib/format';
 import Button from '../ui/Button';
 import Chip from '../ui/Chip';
 import ErrorNote from '../ui/ErrorNote';
-import { ExcludedRuns, IssuesHours, LiveRuns } from './HoursTable';
+import { DISCOUNT, ExcludedRuns, IssuesHours, LiveRuns } from './HoursTable';
 
 /**
  * The hours a project is billed by: one month of the ledger the server keeps (`server/runner/hours.ts`),
- * billable session-hours as the headline, a row per card, and the failed runs that are not on the bill
- * under it with their reasons. Hours, never money — the rate is the invoice's business. The chip at the
+ * billable session-hours as the headline, beside them the hours of failed runs a later session took up
+ * (billed at a discount) and the ones nobody did (not billed), a row per card, and the failed runs under
+ * a fold with their reasons. Hours, never money — the rate is the invoice's business. The chip at the
  * end says whether the record can be trusted: its own chain of fingerprints, and its copy on the
  * assets branch of the repository.
  */
@@ -62,14 +63,26 @@ export default function HoursPanel({ repo }: { repo: string }) {
         </Button>
         <span className="text-[11px] text-zinc-500">
           <span className="text-zinc-200 tabular-nums">{hrs(report.billableSeconds)}</span> billable
+          {report.continuedSeconds > 0 && (
+            <>
+              {' · '}
+              <span className="text-sky-300 tabular-nums">{hrs(report.continuedSeconds)}</span> continued, {DISCOUNT} off
+            </>
+          )}
           {report.excludedSeconds > 0 && (
             <>
               {' · '}
-              <span className="tabular-nums">{hrs(report.excludedSeconds)}</span> in failed runs, not billed
+              <span className="tabular-nums">{hrs(report.excludedSeconds)}</span> not billed
             </>
           )}
-          {' · '}
-          <span className="tabular-nums">{hrs(report.totalSeconds)}</span> all time
+          {' · all time '}
+          <span className="tabular-nums">{hrs(report.totalSeconds)}</span>
+          {report.totalContinuedSeconds > 0 && (
+            <>
+              {' + '}
+              <span className="tabular-nums">{hrs(report.totalContinuedSeconds)}</span> continued
+            </>
+          )}
           {report.since ? ` since ${dayLabel(new Date(report.since * 1000).toISOString())}` : ''}
           {report.live.length > 0 && <LiveRuns runs={report.live} repo={repo} />}
         </span>
@@ -87,7 +100,7 @@ export default function HoursPanel({ repo }: { repo: string }) {
           {report.excluded.length > 0 && (
             <details className="border-t border-zinc-800/70">
               <summary className="cursor-pointer px-2 py-1 text-[11px] text-zinc-500">
-                {report.excluded.length} failed run{report.excluded.length === 1 ? '' : 's'} not billed
+                {report.excluded.length} failed run{report.excluded.length === 1 ? '' : 's'} — continued at {DISCOUNT} off, or not billed
               </summary>
               <ExcludedRuns runs={report.excluded} repo={repo} />
             </details>

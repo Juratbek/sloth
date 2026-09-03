@@ -1,5 +1,9 @@
 import type { HoursEnding, HoursExcluded, HoursIssue, HoursKind, HoursLive } from '../../../server/types';
+import { CONTINUED_RATE } from '../../../server/hours-types';
 import { dayLabel, hrs } from '../../lib/format';
+
+/** `50%`, as the discount reads on the panel. */
+export const DISCOUNT = `${Math.round((1 - CONTINUED_RATE) * 100)}%`;
 
 /** How a kind of run reads in a cell. */
 export const KIND_LABEL: Record<HoursKind, string> = { issue: 'implement', approved: 'review', review: 'review', qa: 'QA' };
@@ -39,6 +43,9 @@ export function IssuesHours({ issues, repo }: { issues: HoursIssue[]; repo: stri
           <th className={`${th} hidden text-right sm:table-cell`}>review</th>
           <th className={`${th} hidden text-right sm:table-cell`}>QA</th>
           <th className={`${th} text-right`}>billable</th>
+          <th className={`${th} hidden text-right sm:table-cell`} title={`failed runs a later session continued — billed at ${DISCOUNT} off`}>
+            continued
+          </th>
         </tr>
       </thead>
       <tbody className="text-zinc-400">
@@ -52,10 +59,11 @@ export function IssuesHours({ issues, repo }: { issues: HoursIssue[]; repo: stri
               {(i.byKind.approved ?? 0) + (i.byKind.review ?? 0) ? hrs((i.byKind.approved ?? 0) + (i.byKind.review ?? 0)) : '—'}
             </td>
             <td className="hidden px-2 py-1 text-right tabular-nums sm:table-cell">{i.byKind.qa ? hrs(i.byKind.qa) : '—'}</td>
-            <td className="px-2 py-1 text-right tabular-nums text-zinc-300" title={i.excludedSeconds ? `${hrs(i.excludedSeconds)} more in runs that failed — not billed` : undefined}>
+            <td className="px-2 py-1 text-right tabular-nums text-zinc-300" title={i.excludedSeconds ? `${hrs(i.excludedSeconds)} more in failed runs nobody continued — not billed` : undefined}>
               {hrs(i.seconds)}
               {i.excludedSeconds > 0 && <span className="text-zinc-500"> +{hrs(i.excludedSeconds)}</span>}
             </td>
+            <td className="hidden px-2 py-1 text-right tabular-nums sm:table-cell">{i.continuedSeconds ? hrs(i.continuedSeconds) : '—'}</td>
           </tr>
         ))}
       </tbody>
@@ -63,7 +71,7 @@ export function IssuesHours({ issues, repo }: { issues: HoursIssue[]; repo: stri
   );
 }
 
-/** The month's failed runs, each with the reason it is not on the bill. */
+/** The month's failed runs, each with why it failed and whether a later session took its card up (billed at the discount) or not (not billed). */
 export function ExcludedRuns({ runs, repo }: { runs: HoursExcluded[]; repo: string }) {
   return (
     <ul className="space-y-0.5 px-2 py-1 text-[11px] text-zinc-500">
@@ -74,6 +82,7 @@ export function ExcludedRuns({ runs, repo }: { runs: HoursExcluded[]; repo: stri
           <span className="tabular-nums">{hrs(r.seconds)}</span>
           <span>{ENDING_LABEL[r.ending]}</span>
           <span className="tabular-nums">{dayLabel(new Date(r.endedAt * 1000).toISOString())}</span>
+          <span className={r.continued ? 'text-sky-400' : 'text-zinc-600'}>{r.continued ? `continued by a later session · ${DISCOUNT} off` : 'not continued · not billed'}</span>
         </li>
       ))}
     </ul>

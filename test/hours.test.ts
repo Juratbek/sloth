@@ -175,41 +175,65 @@ describe('stop books the kill', () => {
 
 describe('hoursReport', () => {
   const at = (iso: string) => vi.setSystemTime(new Date(iso));
-  const book = (kind: 'issue' | 'approved' | 'qa', n: number, hours: number, ending: 'done' | 'died' | 'verdict', files: Record<string, string> = {}) =>
+  const book = (kind: 'issue' | 'approved' | 'qa', n: number, hours: number, ending: 'done' | 'died' | 'verdict' | 'budget', files: Record<string, string> = {}) =>
     bookRun(kind, n, makeSession(kind, n, { started: String(nowSec() - hours * HOUR), ...files }), ending);
 
-  it('sums one month by issue, lists the failed runs with their reasons, and keeps the other months for the picker', async () => {
+  it('sums one month by issue, splits the failed runs into continued and not, and keeps the other months for the picker', async () => {
     vi.useFakeTimers();
     at('2026-08-20T10:00:00Z');
     book('issue', 1, 2, 'done');
+    // A failure in August whose card the September run took up: continued, counted in August.
+    book('issue', 3, 1.5, 'died');
     at('2026-09-02T10:00:00Z');
     book('issue', 1, 1, 'died');
     book('issue', 1, 3, 'done');
     book('approved', 50, 0.5, 'verdict', { issue: '1' });
     book('qa', 2, 1, 'done');
+    book('issue', 3, 0.5, 'budget');
+    // Nobody took #4 up after it: not billed.
+    book('issue', 4, 2, 'died');
     at('2026-09-03T12:00:00Z');
     const r = await hoursReport('2026-09');
     expect(r.month).toBe('2026-09');
     expect(r.billableSeconds).toBe(4.5 * HOUR);
-    expect(r.excludedSeconds).toBe(HOUR);
-    expect(r.runs).toBe(4);
+    expect(r.continuedSeconds).toBe(HOUR);
+    expect(r.excludedSeconds).toBe(2.5 * HOUR);
+    expect(r.runs).toBe(6);
     expect(r.totalSeconds).toBe(6.5 * HOUR);
+    expect(r.totalContinuedSeconds).toBe(2.5 * HOUR);
     expect(r.since).toBe(Date.parse('2026-08-20T10:00:00Z') / 1000);
-    expect(r.issues.map((i) => [i.issue, i.seconds, i.runs, i.byKind, i.excludedSeconds])).toEqual([
-      [1, 3.5 * HOUR, 2, { issue: 3 * HOUR, approved: 0.5 * HOUR }, HOUR],
-      [2, HOUR, 1, { qa: HOUR }, 0],
+    expect(r.issues.map((i) => [i.issue, i.seconds, i.runs, i.byKind, i.continuedSeconds, i.excludedSeconds])).toEqual([
+      [1, 3.5 * HOUR, 2, { issue: 3 * HOUR, approved: 0.5 * HOUR }, HOUR, 0],
+      [2, HOUR, 1, { qa: HOUR }, 0, 0],
+      [3, 0, 0, {}, 0, 0.5 * HOUR],
+      [4, 0, 0, {}, 0, 2 * HOUR],
     ]);
-    expect(r.excluded).toEqual([{ n: 2, kind: 'issue', target: 1, issue: 1, seconds: HOUR, ending: 'died', endedAt: Date.parse('2026-09-02T10:00:00Z') / 1000 }]);
+    const sep2 = Date.parse('2026-09-02T10:00:00Z') / 1000;
+    expect(r.excluded).toEqual([
+      { n: 8, kind: 'issue', target: 4, issue: 4, seconds: 2 * HOUR, ending: 'died', endedAt: sep2, continued: false },
+      { n: 7, kind: 'issue', target: 3, issue: 3, seconds: 0.5 * HOUR, ending: 'budget', endedAt: sep2, continued: false },
+      { n: 3, kind: 'issue', target: 1, issue: 1, seconds: HOUR, ending: 'died', endedAt: sep2, continued: true },
+    ]);
     expect(r.months).toEqual([
-      { month: '2026-09', billableSeconds: 4.5 * HOUR, excludedSeconds: HOUR, runs: 4 },
-      { month: '2026-08', billableSeconds: 2 * HOUR, excludedSeconds: 0, runs: 1 },
+      { month: '2026-09', billableSeconds: 4.5 * HOUR, continuedSeconds: HOUR, excludedSeconds: 2.5 * HOUR, runs: 6 },
+      { month: '2026-08', billableSeconds: 2 * HOUR, continuedSeconds: 1.5 * HOUR, excludedSeconds: 0, runs: 2 },
     ]);
     expect(r.integrity).toEqual({ chain: 'ok', copy: 'unchecked', problem: undefined, checkedAt: undefined });
     // August on its own; a month with nothing is empty, not an error; a bad month is this one.
-    expect((await hoursReport('2026-08')).billableSeconds).toBe(2 * HOUR);
+    expect(await hoursReport('2026-08')).toMatchObject({ billableSeconds: 2 * HOUR, continuedSeconds: 1.5 * HOUR });
     expect(await hoursReport('2026-07')).toMatchObject({ month: '2026-07', runs: 0, issues: [], totalSeconds: 6.5 * HOUR });
     expect(monthArg('2026-13')).toBe('2026-09');
     expect(monthArg(null)).toBe('2026-09');
+  });
+
+  it('a failed run is continued the moment a later session on its card is running', async () => {
+    bookRun('issue', 9, makeSession('issue', 9, { started: String(nowSec() - HOUR) }), 'stopped');
+    expect((await hoursReport()).excluded[0].continued).toBe(false);
+    makeSession('issue', 9, { pid: alivePid(), started: String(nowSec() - 60) });
+    const r = await hoursReport();
+    expect(r.excluded[0].continued).toBe(true);
+    expect(r.continuedSeconds).toBe(HOUR);
+    expect(r.excludedSeconds).toBe(0);
   });
 
   it('shows the runs still going, with their seconds so far, and a broken chain', async () => {
