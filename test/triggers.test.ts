@@ -627,6 +627,39 @@ describe('reap', () => {
       kill.mockRestore();
     }
   });
+  it('does not count the time a run spent waiting for an answer, and gives it 30 minutes after one', async () => {
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    try {
+      const budget = (cfg().budgetMinutes + 10) * 60;
+      // Launched 70 minutes ago, but 20 of them parked on a question: 50 of its own, inside the budget.
+      makeSession('issue', 3, { pid: '12345', started: String(nowSec() - budget), waiting_total: String(20 * 60), 'state.json': { state: 'working', step: '3', since: nowSec() - 30 } });
+      // The same, still parked when the server last looked: the open wait is credited when it ends.
+      makeSession('issue', 4, { pid: '12346', started: String(nowSec() - budget), waiting: String(nowSec() - 20 * 60), 'state.json': { state: 'working', step: '3', since: nowSec() - 30 } });
+      // Two hours in, one minute since its answer: the session gave itself 30 minutes, so the server allows them.
+      makeSession('issue', 5, { pid: '12347', started: String(nowSec() - 120 * 60), waiting_total: '600', answered: String(nowSec() - 60), 'state.json': { state: 'working', step: '4', since: nowSec() - 60 } });
+      // …and 36 minutes since its answer, the floor and the grace are both spent.
+      makeSession('issue', 6, { pid: '12348', started: String(nowSec() - 120 * 60), waiting_total: '600', answered: String(nowSec() - 36 * 60), 'state.json': { state: 'working', step: '4', since: nowSec() - 60 } });
+      onGh(/project item-add/, 'ITEM');
+      await reap();
+      const logged = readLog().join('\n');
+      expect(logged).not.toMatch(/#3 stopped/);
+      expect(logged).not.toMatch(/#4 stopped/);
+      expect(logged).not.toMatch(/#5 stopped/);
+      expect(logged).toMatch(/#6 stopped: hung past the budget/);
+      expect(exists(sessionDir('issue', 4), 'waiting')).toBe(false);
+      expect(Number(read(path.join(sessionDir('issue', 4), 'waiting_total')))).toBeGreaterThanOrEqual(20 * 60);
+      expect(exists(sessionDir('issue', 4), 'answered')).toBe(true);
+    } finally {
+      kill.mockRestore();
+    }
+  });
+  it('starts the waiting ledger when it sees a run parked, and a new launch forgets it', async () => {
+    makeSession('issue', 7, { pid: alivePid(), started: String(nowSec() - 10), 'state.json': { state: 'waiting', step: '2', since: nowSec() } });
+    await reap();
+    expect(exists(sessionDir('issue', 7), 'waiting')).toBe(true);
+    await reap();
+    expect(exists(sessionDir('issue', 7), 'waiting')).toBe(true); // one open wait, not one per tick
+  });
   it('drops the QA head marker when a hung QA run is killed, and keeps a hung review’s', async () => {
     // Kills are stubbed out so the "live" hung sessions can be killed without taking the test down with them.
     const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);

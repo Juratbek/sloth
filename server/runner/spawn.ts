@@ -17,6 +17,7 @@ import { APPEND_PROMPT, sessionEnv, type SessionExtras, type Target } from './se
 import { approvedDir, issueDir, qaDir, slotsFull, statusDir, triesOn } from './session-dirs';
 import { machineHold } from './machine';
 import { forgetPause } from './pressure';
+import { forgetWaiting } from './waiting';
 import { leaseSlot, releaseSlot } from './slots';
 import { claimWarm, warmOf } from './warm';
 
@@ -119,6 +120,7 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
   // reads it continues where the last one stopped instead of re-deriving everything. A fresh start —
   // pickup, a QA fail — removes it before calling launch.
   forgetPause(dir);
+  forgetWaiting(dir);
   for (const f of fs.readdirSync(path.join(dir, 'inbox'))) remove(path.join(dir, 'inbox', f));
   // Without this fetch the session branches off whatever the runner checkout last saw: work already
   // merged is done again, and `warmOf` below cannot tell whether the slot's stack is on the current head.

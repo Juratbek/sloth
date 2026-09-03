@@ -98,7 +98,8 @@ rides the 5-minute poll (`GET /api/health`, `POST /api/health/check`).
   rest under them — then, within a column, the card's `priorityField` value, and among equals the newest run
   goes first. Its budget clock stands still meanwhile. Not on Windows, which has no SIGSTOP. A session past
   `budgetMinutes + 5` — counted from the moment Sloth started it, not from the step it says it is on,
-  which a session rewrites every few minutes — is killed, cleaned up, and its card parked; **stop** in a live session's header
+  which a session rewrites every few minutes; the time it spent parked waiting for an answer does not count,
+  and once the answer is in it has 30 minutes at least — is killed, cleaned up, and its card parked; **stop** in a live session's header
   does the same on demand. A review that is stopped or killed this way is not repeated for that PR head —
   nothing would ever review it again, so the issue behind the PR is parked rather than left in Code Review
   with no verdict and nobody on it. **End** on a parked
