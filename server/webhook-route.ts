@@ -1,9 +1,12 @@
+import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import path from 'node:path';
 import { cfg } from './config';
 import { tick } from './runner/loop';
 import { log } from './runner/log';
 import { HOOK_PATH } from './webhook-gh';
-import { recordDelivery, recordPing, verifySignature } from './webhook';
+import { deliveryUrl, recordDelivery, recordPing, recordRejection, verifySignature, webhookStatus } from './webhook';
+import { TRELLO_HOOK_PATH, trelloSecret, verifyTrelloSignature, type TrelloDelivery } from './webhook-trello';
 
 /**
  * Where GitHub's deliveries land. This is the one route that is *not* behind `remote.ts`'s guard:
@@ -94,13 +97,73 @@ async function deliver(req: IncomingMessage, res: ServerResponse): Promise<void>
   void tick({ comments: true });
 }
 
+/** How much of a rejected body is kept: enough of a real delivery to check the signature by hand, not a stranger's megabyte. */
+const KEPT_BODY = 8 << 10;
+
+/** The last rejected delivery, kept under the state directory so a signature that will not verify can be looked at. */
+function keepRejected(body: Buffer, signature: string | undefined, url: string): void {
+  try {
+    fs.writeFileSync(path.join(cfg().stateDir, 'trello-rejected.json'), JSON.stringify({ at: new Date().toISOString(), url, signature, length: body.length, body: body.subarray(0, KEPT_BODY).toString('base64') }));
+  } catch {
+    /* diagnostics only */
+  }
+}
+
 /**
- * The delivery route as one connect middleware, mounted ahead of the guard (`server/api.ts`). Anything
+ * Trello's deliveries. A `HEAD` is Trello checking the address before it creates the hook, and is
+ * answered yes; a `POST` is signed over the body and the callback URL, and says which card was
+ * commented on and what was written. The comments tick it starts copies the comment onto the card's
+ * issue and reads it there (`runner/trello-mirror.ts`), so every comment on a card counts — a mention
+ * is an order or a question, anything else may be the answer a parked card waits for.
+ */
+async function deliverTrello(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  // Off Trello the route does not exist; with no secret no hook was ever registered, so a delivery is
+  // nobody's and says nothing about the webhook that is live.
+  if (cfg().project.provider !== 'trello') return end(res, 404);
+  const method = req.method ?? 'GET';
+  if (method === 'HEAD' || method === 'GET') return end(res, 200);
+  if (method !== 'POST') return end(res, 405);
+  if (!trelloSecret()) return end(res, 401);
+  const body = await rawBody(req);
+  // Signed over the body and the callback URL the hook was registered with — the address Trello was given, which is
+  // not always the address of the moment: a tunnel that just moved has a hook still pointing at the old one.
+  const registered = webhookStatus().url || deliveryUrl();
+  if (!verifyTrelloSignature(body, header(req, 'x-trello-webhook'), registered)) {
+    // Logged, counted and 401ed — never held against the hook: anyone who finds the address can send this, and
+    // one forged request must not push the comments poll onto the fallback. Settings shows the count.
+    log('webhook: a Trello delivery arrived unsigned or signed with the wrong secret — rejected');
+    keepRejected(body, header(req, 'x-trello-webhook'), registered);
+    recordRejection();
+    return end(res, 401);
+  }
+  let payload: TrelloDelivery;
+  try {
+    payload = JSON.parse(body.toString('utf8')) as TrelloDelivery;
+  } catch {
+    return end(res, 204);
+  }
+  if (payload.action?.type !== 'commentCard') return end(res, 204);
+  recordDelivery();
+  end(res, 200);
+  log(`webhook: a comment on Trello card "${payload.action.data?.card?.name ?? '?'}" — reading comments now`);
+  void tick({ comments: true });
+}
+
+/**
+ * The delivery routes as one connect middleware, mounted ahead of the guard (`server/api.ts`). Anything
  * that is not a delivery falls through untouched; a body that never arrives answers 400 here rather than
  * going unhandled, which would end the process.
  */
 export function webhookMiddleware(req: IncomingMessage, res: ServerResponse, next: () => void): void {
-  if ((req.url ?? '/').split('?')[0] !== HOOK_PATH) {
+  const path = (req.url ?? '/').split('?')[0];
+  if (path === TRELLO_HOOK_PATH) {
+    void deliverTrello(req, res).catch((e) => {
+      log(`webhook: Trello delivery not read — ${(e instanceof Error ? e.message : String(e)).split('\n')[0]}`);
+      if (!res.writableEnded && !res.headersSent) end(res, 400);
+    });
+    return;
+  }
+  if (path !== HOOK_PATH) {
     next();
     return;
   }

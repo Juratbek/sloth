@@ -60,7 +60,8 @@ words from anyone else in the thread are handled the same way.
 
 Then **claim the card**: move it to `$SLOTH_COL_IN_PROGRESS_NAME` (`$SLOTH_COL_IN_PROGRESS_ID`, `item-add` +
 `item-edit` per `board`, wrapped in `retry`) before reading further, so a second run cannot take the issue.
-Keep `ITEM_ID` and `ISSUE_URL`.
+Keep `ITEM_ID` and `ISSUE_URL`. On a Trello board (`SLOTH_BOARD=trello`) the claim is `board_move` from the
+`board` skill's Trello section, and there is no `ITEM_ID` to keep — the same goes for every move below.
 
 **A handoff from a dead run.** `$SESSION_DIR/handoff.md`, when it exists, is the note the previous run on
 this issue left before it died: `head:`, `done:`, `next:`, `don't redo:` (`session` skill). Once the wired
@@ -377,6 +378,7 @@ REJECTED=$(gh api "repos/$SLOTH_REPO/pulls/$PR/reviews" --paginate | jq -rs --ar
 COLUMN=$(gh api graphql -f query="{ repository(owner: \"${SLOTH_REPO%/*}\", name: \"${SLOTH_REPO#*/}\") { issue(number: $SLOTH_ISSUE) {
   projectItems(first: 10) { nodes { project { number } fieldValueByName(name: \"Status\") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }" \
   --jq ".data.repository.issue.projectItems.nodes[] | select(.project.number == $SLOTH_PROJECT_NUMBER) | .fieldValueByName.name")
+# Trello: COLUMN=$(curl -s "$SLOTH_BOARD_API/card/$SLOTH_ISSUE" | jq -r '.column // empty')
 ```
 
 - `REJECTED` is `true` → the server's review already failed this head. **Do not move the card**: its findings
@@ -390,6 +392,7 @@ COLUMN=$(gh api graphql -f query="{ repository(owner: \"${SLOTH_REPO%/*}\", name
 ```bash
 retry gh project item-edit --id "$ITEM_ID" --project-id "$SLOTH_PROJECT_ID" \
   --field-id "$SLOTH_STATUS_FIELD_ID" --single-select-option-id "$SLOTH_COL_CODE_REVIEW_ID"
+# Trello: board_move "$SLOTH_ISSUE" "$SLOTH_COL_CODE_REVIEW_NAME"
 ```
 
 The server reviews the PR there (`/sloth:review … final`, another agent on its own model) — it waits for this

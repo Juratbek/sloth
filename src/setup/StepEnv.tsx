@@ -1,5 +1,6 @@
 import type { SetupCheck } from '../../server/config-types';
 import { Button, Error, Loading } from './ui';
+import TrelloConnect from './TrelloConnect';
 import { useSetupEnv } from './use-setup';
 
 const HINTS: Record<string, { label: string; hint: string; href: string }> = {
@@ -40,6 +41,10 @@ export default function StepEnv({ onContinue }: { onContinue: () => void }) {
           {(['claude', 'gh', 'ghAuth'] as const).map((id) => (
             <Row key={id} id={id} check={data[id]} />
           ))}
+          <div className="rounded-md border border-zinc-800 px-3 py-2">
+            <p className="mb-2 text-xs text-zinc-500">Optional — only for a Trello board instead of a GitHub Projects one.</p>
+            <TrelloConnect compact />
+          </div>
         </div>
       )}
       <div className="flex gap-2">

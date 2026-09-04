@@ -8,6 +8,7 @@ import { gh } from './gh';
 import { isDry, log, remove } from './log';
 import { isBlocked, issueAlive, issueDir } from './session-dirs';
 import { launch } from './spawn';
+import { mirrorAuthor } from './trello-mirror';
 
 interface Answer {
   id: number;
@@ -24,7 +25,7 @@ async function answerOn(issue: number): Promise<Answer | undefined> {
   const c = cfg();
   const r = await gh([
     'api', `repos/${c.repo}/issues/${issue}/comments`, '--paginate',
-    '--jq', `.[] | [.id, .user.login, (.body | startswith(${JSON.stringify(c.botPrefix)}))] | @tsv`,
+    '--jq', '.[] | [.id, .user.login, (.body | @base64)] | @tsv',
   ]);
   if (!r.ok) {
     log(`#${issue} thread read failed: ${r.err.split('\n')[0]}`);
@@ -33,12 +34,15 @@ async function answerOn(issue: number): Promise<Answer | undefined> {
   let answer: Answer | undefined;
   let asked = false;
   for (const line of r.out.split('\n').filter(Boolean)) {
-    const [id, login, sloth] = line.split('\t');
-    if (sloth === 'true') {
+    const [id, author, encoded] = line.split('\t');
+    const body = Buffer.from(encoded ?? '', 'base64').toString('utf8');
+    if (body.startsWith(c.botPrefix)) {
       asked = true;
       answer = undefined;
       continue;
     }
+    // A comment the Trello mirror copied onto the issue is its Trello author's answer, not the login that copied it.
+    const { login } = mirrorAuthor({ id: Number(id), login: author, body });
     const role = roleOf(c.roles, login);
     if (asked && role && canAnswer(role)) answer ??= { id: Number(id), login, role };
   }

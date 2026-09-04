@@ -1,48 +1,10 @@
 /** The saved configuration (~/.sloth/config.json, path overridden with SLOTH_CONFIG) and the
  *  payloads the get-started wizard exchanges with /api/setup/*. */
 
-export interface ColumnRef {
-  id: string;
-  name: string;
-}
-export interface ConfigProject {
-  id: string;
-  number: number;
-  owner: string;
-  title: string;
-}
-export interface ConfigColumns {
-  pickup: ColumnRef;
-  inProgress: ColumnRef;
-  needsHelp: ColumnRef;
-  codeReview: ColumnRef;
-  /** Optional: with no Approved column a passing review leaves the card in Code Review and trigger 5 never fires. */
-  approved: ColumnRef;
-  /**
-   * Optional: the column the QA sweep (trigger 9) tests — cards whose fix is merged and deployed to
-   * `qa.branch`, waiting for a tester. Never created unless asked for; blank means no sweep.
-   */
-  qa: ColumnRef;
-  /** Optional: where a card goes once its issue is closed (trigger 6), or once it passed the QA sweep; without it the card stays put. */
-  done: ColumnRef;
-}
-export type ColumnRole = keyof ConfigColumns;
-
-/** The names Sloth gives the columns it creates when the board has none for a role. */
-export const DEFAULT_COLUMN_NAMES: Record<ColumnRole, string> = {
-  pickup: 'Todo',
-  inProgress: 'In Progress',
-  needsHelp: 'Sloth needs help',
-  codeReview: 'Code Review',
-  approved: 'Approved',
-  qa: 'QA',
-  done: 'Done',
-};
-
-/** The roles a board need not have: left blank, the trigger that needs the column simply never fires. */
-export const OPTIONAL_COLUMNS: ColumnRole[] = ['needsHelp', 'approved', 'qa', 'done'];
-/** The roles that are never created unasked — the wizard offers "none" for them, and blank stays blank. */
-export const OPT_IN_COLUMNS: ColumnRole[] = ['qa'];
+/** The board — where it lives and which of its columns Sloth uses — is typed in `board-config.ts`, re-exported here. */
+export { BOARD_PROVIDERS, DEFAULT_COLUMN_NAMES, OPTIONAL_COLUMNS, OPT_IN_COLUMNS } from './board-config';
+export type { BoardProvider, ColumnRef, ColumnRole, ConfigColumns, ConfigProject } from './board-config';
+import type { ConfigColumns, ConfigProject } from './board-config';
 
 /**
  * The QA sweep (trigger 9): once a day, at `at` (`HH:MM`, this machine's clock), every card in the QA
@@ -113,6 +75,7 @@ export interface SlothConfig {
   version: 1;
   repo: string;
   project: ConfigProject;
+  /** The Status field the columns are options of; on Trello `id` is the board id again and the columns are its lists. */
   statusField: { id: string; columns: ConfigColumns };
   /** The checkout the sessions run from; Sloth clones the repo here. */
   runnerRoot: string;
@@ -287,11 +250,17 @@ export const CONFIG_DEFAULTS = {
   qa: DEFAULT_QA,
 } satisfies Partial<SlothConfig>;
 
-/** The directories that are kept apart per repository (`name` is the part after the slash). */
-export const defaultDirs = (name: string) => ({
-  runnerRoot: `~/.sloth/runners/${name}`,
-  worktreesDir: `~/.sloth/worktrees/${name}`,
-  sessionsDir: `~/.sloth/sessions/${name}`,
+/**
+ * Where an instance keeps its files: under its home — the directory its config file is in, `~/.sloth`
+ * by default — and, for the per-repository ones, under the repository's name (the part after the slash).
+ */
+export const defaultDirs = (name: string, home = '~/.sloth') => ({
+  runnersDir: `${home}/runners`,
+  runnerRoot: `${home}/runners/${name}`,
+  worktreesDir: `${home}/worktrees/${name}`,
+  sessionsDir: `${home}/sessions/${name}`,
+  stateDir: `${home}/state`,
+  watcherLog: `${home}/watcher.log`,
 });
 
 /** The payloads the get-started wizard exchanges with `/api/setup/*` (`setup-types.ts`). */

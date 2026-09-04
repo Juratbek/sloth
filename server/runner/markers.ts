@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
+import { ensureTrelloSkipLabel } from './board-trello';
 import { gh } from './gh';
 import { isDry, log } from './log';
 import { APPROVED_LABEL, SKIP_LABEL, skipped } from '../board-types';
@@ -45,6 +46,8 @@ export { SKIP_LABEL, skipped };
  */
 export async function ensureSkipLabel(): Promise<void> {
   if (!cfg().configured) return;
+  // A Trello board's cards carry Trello labels; the issue-side label below is created as well, since a label on either side holds a card back.
+  if (cfg().project.provider === 'trello') await ensureTrelloSkipLabel();
   if (isDry()) {
     log(`dry-run: would create the "${SKIP_LABEL}" label in ${cfg().repo}`);
     return;

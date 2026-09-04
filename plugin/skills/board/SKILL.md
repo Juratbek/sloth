@@ -12,8 +12,14 @@ description: >-
 
 Every id comes from the environment the server set for this session — never hard-code one.
 
+**Which board:** `SLOTH_BOARD` is `github` (a Projects v2 board — everything below applies) or `trello`
+(a Trello board whose lists are the columns — read **Trello boards** at the end first: the `gh project`
+calls below do not apply there, and `SLOTH_BOARD_API` replaces them).
+
 | Variable | Holds |
 |---|---|
+| `SLOTH_BOARD` | `github` or `trello` |
+| `SLOTH_BOARD_API` | Sloth's own board API on this machine, `http://127.0.0.1:<port>/api/board` — the reads and moves on a Trello board |
 | `SLOTH_REPO` | `owner/repo` |
 | `SLOTH_PROJECT_ID` | Project node id (`PVT_…`) |
 | `SLOTH_PROJECT_NUMBER` / `SLOTH_PROJECT_OWNER` | Project number and its owner login |
@@ -154,3 +160,47 @@ retry() {
   "can not request review from the author" is permanent: stop and handle it.
 - If a call still fails after every retry, finish what did succeed and report exactly which call failed.
   Never swallow it.
+
+## Trello boards (`SLOTH_BOARD=trello`)
+
+The card is a Trello card linked to the GitHub issue you are working; the issue, its comments, the PR and
+the reviews are on GitHub exactly as on a Projects board. Only the *board* is different, and the server
+speaks Trello for you: `SLOTH_PROJECT_ID` holds the Trello board id, `SLOTH_STATUS_FIELD_ID` the same,
+every `SLOTH_COL_*_ID` a Trello list id, and `SLOTH_COLUMNS` every list on the board. Nothing here needs a
+Trello key — the calls go to Sloth, on this machine.
+
+**Never run `gh project …` on a Trello board** — the issue is on no Projects board, and `item-add` would
+put it on none. Use these instead, wherever a step above says `item-edit` or reads a column:
+
+```bash
+# the column the card is in (as of the last board read; empty = no card linked to this issue)
+COLUMN=$(curl -s "$SLOTH_BOARD_API/card/$SLOTH_ISSUE" | jq -r '.column // empty')
+
+# move the card — by column name (case-insensitive) or list id; the server moves it on Trello.
+# Retries a connection failure or a 5xx on its own; a 400 is permanent (its `error` says why) and is printed, not retried.
+board_move() {
+  local out code n
+  for n in 1 2 3 4; do
+    out=$(curl -s -w '\n%{http_code}' -X POST "$SLOTH_BOARD_API/move" -H 'content-type: application/json' \
+      -d "$(jq -n --argjson issue "$1" --arg column "$2" '{issue: $issue, column: $column}')")
+    code=${out##*$'\n'}
+    case "$code" in
+      200) return 0 ;;
+      4??) echo "board_move $1 -> $2 refused: ${out%$'\n'*}" >&2; return 2 ;;
+    esac
+    echo "board_move $1 -> $2: attempt $n failed (${code:-no answer}); retrying" >&2
+    sleep $((n * 10))
+  done
+  echo "FAILED after 4 attempts: board_move $1 -> $2" >&2
+  return 1
+}
+board_move "$SLOTH_ISSUE" "$SLOTH_COL_IN_PROGRESS_NAME"     # claim
+board_move "$SLOTH_ISSUE" "$SLOTH_COL_CODE_REVIEW_NAME"     # hand over
+board_move "$SLOTH_ISSUE" "$SLOTH_COL_NEEDS_HELP_NAME"      # park (Step Q)
+board_move "$SLOTH_ISSUE" "Planning"                        # a column a human asked for, from $SLOTH_COLUMNS
+```
+
+Do not wrap `board_move` in `retry`: it retries what is worth retrying. A `400` names the problem in its
+JSON (`error`) — an unknown column lists the ones that exist; report it the way you would an `item-edit`
+that failed. `ITEM_ID` does not exist on Trello: skip every step that
+derives or keeps it. The wired-PR query and every `gh issue` / `gh pr` call are unchanged.

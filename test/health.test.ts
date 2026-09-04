@@ -44,7 +44,7 @@ describe('checkHealth', () => {
   it('asks gh, git, the browser and sudo, and says what each one answered', async () => {
     allWell();
     const health = await checkHealth();
-    expect(health.checks.map((c) => c.id)).toEqual(['gh', 'git', 'chrome', 'sudo']);
+    expect(health.checks.map((c) => c.id)).toEqual(['gh', 'git', 'chrome', 'sudo', 'state']);
     expect(health.at).toBeGreaterThan(0);
     expect(of(health, 'gh').ok).toBe(true);
     expect(of(health, 'gh').detail).toContain('Logged in to github.com');
@@ -178,6 +178,6 @@ describe('the cache and the ten-minute gate', () => {
     // …and says so again when the machine changes its mind.
     onExecFile(/gh auth status/, { stdout: 'Logged in' });
     await refreshHealth();
-    expect(readLog().filter((l) => l.includes('all in order'))).toHaveLength(1);
+    expect(readLog().filter((l) => l.includes('every check is in order'))).toHaveLength(1);
   });
 });

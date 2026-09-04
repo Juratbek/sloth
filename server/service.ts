@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { writeAtomic } from './atomic';
 import { CONFIG_PATH, SLOTH_ROOT, cfg, envValue } from './config';
+import { SLOTH_HOME } from './env';
 import { which } from './install';
 import { run } from './runner/gh';
 import { log } from './runner/log';
@@ -28,7 +29,7 @@ export const servicePath = () =>
 /** One agent per watched repository, so two Sloths on one Mac do not fight over the same label. */
 export const label = () => `dev.sloth.${(cfg().repo.split('/')[1] || 'sloth').replace(/[^\w.-]/g, '-')}`;
 export const plistPath = () => path.join(os.homedir(), 'Library/LaunchAgents', `${label()}.plist`);
-const logFile = () => path.join(os.homedir(), '.sloth/service.log');
+const logFile = () => path.join(SLOTH_HOME, 'service.log');
 const target = () => `gui/${process.getuid?.() ?? 0}/${label()}`;
 
 export interface PlistOptions {

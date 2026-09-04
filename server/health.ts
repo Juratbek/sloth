@@ -1,4 +1,6 @@
 import { cfg } from './config';
+import { ownerConflict } from './runner/owner';
+import { me as trelloMe, trelloReady } from './trello';
 import { chromeBinary, type Browser } from './runner/browser';
 import { run } from './runner/gh';
 import { log } from './runner/log';
@@ -92,10 +94,27 @@ export function sudoCheck(by: Installer): HealthCheck {
   return { id: 'sudo', ok: false, detail: by.error };
 }
 
-/** One reading of all four, taken together — the shell-outs go at once, so the whole thing is one timeout long. */
+/** On a Trello board: whether the key and token still open the account the board is on. Not a check at all elsewhere. */
+async function trelloCheck(): Promise<HealthCheck | undefined> {
+  if (cfg().project.provider !== 'trello') return undefined;
+  if (!trelloReady()) return { id: 'trello', ok: false, detail: 'no Trello key and token — set them in Settings → Board; the board cannot be read without them' };
+  try {
+    return { id: 'trello', ok: true, detail: `signed in as ${(await trelloMe()).username}` };
+  } catch (e) {
+    return { id: 'trello', ok: false, detail: first(e instanceof Error ? e.message : String(e)) || 'Trello did not answer' };
+  }
+}
+
+/** Whether this instance is watching at all, or held off its state directory by another Sloth (`runner/owner.ts`). */
+const ownerCheck = (): HealthCheck => {
+  const conflict = ownerConflict();
+  return conflict ? { id: 'state', ok: false, detail: conflict } : { id: 'state', ok: true, detail: `this Sloth alone works in ${cfg().stateDir}` };
+};
+
+/** One reading of all of them, taken together — the shell-outs go at once, so the whole thing is one timeout long. */
 export async function checkHealth(): Promise<Health> {
-  const [gh, git, by] = await Promise.all([ghCheck(), gitCheck(), installer()]);
-  return { at: Date.now(), checks: [gh, git, chromeCheck(cfg().chrome, chromeBinary()), sudoCheck(by)] };
+  const [gh, git, by, trello] = await Promise.all([ghCheck(), gitCheck(), installer(), trelloCheck()]);
+  return { at: Date.now(), checks: [gh, git, chromeCheck(cfg().chrome, chromeBinary()), sudoCheck(by), ...(trello ? [trello] : []), ownerCheck()] };
 }
 
 let cache: Health | undefined;
@@ -108,7 +127,7 @@ export const healthStatus = (): Health | undefined => cache;
 /** What the log says about a reading — only when it says something new, so a healthy machine is quiet. */
 function announce(health: Health): void {
   const bad = health.checks.filter((c) => !c.ok && !c.skipped);
-  const line = bad.length ? `health: ${bad.map((c) => `${c.id} — ${c.detail}`).join('; ')}` : 'health: gh, git, browser and sudo are all in order';
+  const line = bad.length ? `health: ${bad.map((c) => `${c.id} — ${c.detail}`).join('; ')}` : 'health: every check is in order';
   if (line === announced) return;
   announced = line;
   log(line);

@@ -50,9 +50,10 @@ export interface StackStatus {
  */
 export interface WebhookStatus {
   state: 'off' | 'active' | 'failed';
-  /** The address GitHub was given — `<public URL>/api/hooks/github`. */
+  /** The address the provider was given — `<public URL>/api/hooks/github`, or `/api/hooks/trello` on a Trello board. */
   url?: string;
-  hookId?: number;
+  /** GitHub numbers its hooks; Trello names them. */
+  hookId?: number | string;
   /** Why it is not delivering; absent while it is. */
   reason?: string;
   /** When the state above was last decided. */
@@ -60,6 +61,9 @@ export interface WebhookStatus {
   /** The last `ping` GitHub sent, and the last mention that started a comments tick. */
   lastPing?: number;
   lastDelivery?: number;
+  /** Deliveries that failed the signature check since the last verified one — a wrong secret, or a stranger at the address. Never a reason to call the hook failed: one forged request must not take the poll down. */
+  rejected?: number;
+  lastRejected?: number;
 }
 
 /** The status as the settings page reads it: whether it is really live, and which poll that puts in force. */
@@ -117,7 +121,7 @@ export interface ServiceStatus {
 }
 
 /** One thing the runner needs in order to do any work at all — see `server/health.ts`. */
-export type HealthId = 'gh' | 'git' | 'chrome' | 'sudo';
+export type HealthId = 'gh' | 'git' | 'chrome' | 'sudo' | 'trello' | 'state';
 export interface HealthCheck {
   id: HealthId;
   ok: boolean;

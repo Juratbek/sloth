@@ -64,6 +64,9 @@ export function sessionEnv(dir: string, target: Target, model: string, chrome: b
     ...(target.pr ? { SLOTH_PR: String(target.pr) } : {}),
     ...(target.reviewComment ? { SLOTH_REVIEW_COMMENT: String(target.reviewComment) } : {}),
     SLOTH_REPO: c.repo,
+    // Which kind of board, and the local API a session reads and moves cards through on one that is not GitHub's (`board-api.ts`).
+    SLOTH_BOARD: c.project.provider,
+    SLOTH_BOARD_API: `http://127.0.0.1:${c.port}/api/board`,
     SLOTH_PROJECT_ID: c.project.id,
     SLOTH_PROJECT_NUMBER: String(c.project.number),
     SLOTH_PROJECT_OWNER: c.project.owner,

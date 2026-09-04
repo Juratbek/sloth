@@ -23,12 +23,13 @@ export default function StepTeam({
   return (
     <div className="space-y-4">
       <p className="text-sm text-zinc-400">
-        Who may talk to Sloth in issue comments. Sloth only listens to these GitHub logins — a mention from anyone else
-        is ignored.
+        {draft.project?.provider === 'trello'
+          ? 'Who may talk to Sloth on the cards. Sloth only listens to these Trello usernames (without the @) — a comment from anyone else is ignored.'
+          : 'Who may talk to Sloth in issue comments. Sloth only listens to these GitHub logins — a mention from anyone else is ignored.'}
       </p>
 
       <Field label="Admin" hint="One login. Orders Sloth anything: work on an issue, move a card to any column, close an issue.">
-        <TextInput value={admin ?? login} onChange={setAdmin} placeholder="your-github-login" />
+        <TextInput value={admin ?? login} onChange={setAdmin} placeholder={draft.project?.provider === 'trello' ? 'your-trello-username' : 'your-github-login'} />
       </Field>
       <Field
         label="Developers"

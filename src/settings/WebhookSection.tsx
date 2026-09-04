@@ -19,7 +19,7 @@ export default function WebhookBlock() {
   const failed = w?.state === 'failed';
   return (
     <Row
-      label="GitHub webhook"
+      label="Comment webhook"
       hint={
         <>
           Sloth points the repository's webhook at its own public address, so an <code>@sloth</code> comment is read the moment it is
@@ -51,6 +51,11 @@ export default function WebhookBlock() {
             {!w.lastDelivery && w.lastPing ? ` · pinged ${clock(w.lastPing)}` : ''}
           </p>
         )}
+        {w?.rejected ? (
+          <p className="text-right text-[11px] text-amber-400">
+            {w.rejected} {w.rejected === 1 ? 'delivery' : 'deliveries'} rejected since the last verified one{w.lastRejected ? `, last ${clock(w.lastRejected)}` : ''} — a secret that does not match the one in Settings → Board, or someone else at the address
+          </p>
+        ) : null}
         <ErrorNote error={webhook.error ?? retry.error} className="block text-right" />
       </div>
     </Row>

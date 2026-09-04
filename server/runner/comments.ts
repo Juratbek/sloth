@@ -9,10 +9,11 @@ import { isPaused } from './pause';
 import { snapshot } from './board-snapshot';
 import { isBlocked, issueAlive, issueDir, stateOf } from './session-dirs';
 import { launch, statusReply } from './spawn';
+import { mirrorAuthor, takePending } from './trello-mirror';
 
 const LOOKBACK = 60 * 60; // search window; the seen/ markers do the real de-duplication
 
-interface Comment {
+export interface Comment {
   id: number;
   login: string;
   body: string;
@@ -23,7 +24,7 @@ interface Comment {
 }
 
 /** Where a comment was written: the issue itself, or a PR — then `issue` is the one the PR closes. */
-interface Thread {
+export interface Thread {
   /** The number the comments are read from and replies go to. */
   number: number;
   /** The issue the thread belongs to — the PR's own number when it closes none. */
@@ -66,6 +67,8 @@ async function search(q: string, what: string): Promise<{ number: number; isPr: 
 async function sources(since: string): Promise<Map<number, Source>> {
   const c = cfg();
   const out = new Map<number, Source>();
+  // What the Trello mirror wrote this tick is read now, not once the search index has caught up with it.
+  for (const number of takePending()) out.set(number, { isPr: false, conversation: true, review: false });
   for (const { number, isPr } of await search(`repo:${c.repo} "${c.mention}" in:comments updated:>=${since}`, 'comment')) {
     out.set(number, { isPr, conversation: true, review: out.get(number)?.review ?? false });
   }
@@ -136,7 +139,7 @@ const kindOf = (c: Comment) => (c.review ? 'review comment' : 'comment');
 const seenKey = (c: Comment) => (c.review ? `review-${c.id}` : String(c.id));
 
 /** Hands a comment to the session that is already working on the issue, with the author's role and where it was written. */
-function deliver(t: Thread, c: Comment, role: Role): void {
+export function deliver(t: Thread, c: Comment, role: Role): void {
   const dir = path.join(issueDir(t.issue), 'inbox');
   if (isDry()) {
     log(`dry-run: would deliver ${kindOf(c)} ${c.id} by ${c.login} (${role}) on ${where(t)} to #${t.issue}`);
@@ -208,10 +211,11 @@ export async function comments(): Promise<void> {
     // — with GitHub back — reads this thread again and the order still lands.
     if (t.unknown) continue;
     const unwired = source.isPr && t.issue === t.pr;
+    // A comment the mirror copied off a Trello card is its Trello author's, and reads as their words.
     const found = [
       ...(source.conversation ? await commentsOf(number, since) : []),
       ...(source.review ? await reviewCommentsOf(number, since) : []),
-    ];
+    ].map(mirrorAuthor);
     for (const comment of found) {
       if (!mention.test(comment.body) || comment.body.startsWith(c.botPrefix)) continue;
       const seen = path.join(seenDir, seenKey(comment));

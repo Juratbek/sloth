@@ -1,4 +1,5 @@
 import { cfg } from '../config';
+import { trelloColumns } from './board-trello';
 import { graphql, graphqlBody } from './gh';
 import { log } from './log';
 import { DEFAULT_COLUMN_NAMES, OPTIONAL_COLUMNS, OPT_IN_COLUMNS } from '../config-types';
@@ -41,7 +42,7 @@ export async function refreshColumns(): Promise<void> {
   const field = cfg().statusField.id;
   if (!field) return;
   try {
-    known = (await fieldOptions(field)).filter((o) => o.id).map(({ id, name }) => ({ id, name }));
+    known = cfg().project.provider === 'trello' ? await trelloColumns() : (await fieldOptions(field)).filter((o) => o.id).map(({ id, name }) => ({ id, name }));
   } catch (e) {
     log(`column list read failed: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
   }
