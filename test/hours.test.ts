@@ -398,7 +398,8 @@ describe('the copy on the assets branch', () => {
     await checkCopy();
     expect(posted.map((p) => p.text)).toHaveLength(1);
     expect(posted[0].text).toMatch(/the copy on sloth-assets has been out of reach for more than a day/);
-    // A status file dated in the future is no check at all: the next tick compares again.
+    // A status file dated in the future is no check at all: the next tick compares again, nothing pending or not.
+    fs.rmSync(unpublishedFile(), { force: true });
     fs.writeFileSync(statePath('hours_copy.json'), JSON.stringify({ copy: 'ok', checkedAt: nowSec() + 10 * HOUR }));
     resetGh();
     origin('abc');
@@ -541,5 +542,70 @@ describe('booked once, and never more than it could have lived', () => {
     // The earliest honest mark wins over a later one.
     const marked = makeSession('issue', 35, { started: String(now - HOUR), exited: String(now - 300), 'state.json': { state: 'done', since: now - 900 } });
     expect(bookRun('issue', 35, marked, 'done')!.endedAt).toBe(now - 900);
+  });
+});
+
+describe('the second review’s holes', () => {
+  const at = (iso: string) => vi.setSystemTime(new Date(iso));
+  const book = (kind: 'issue' | 'approved' | 'qa', n: number, hours: number, ending: 'done' | 'died' | 'verdict', files: Record<string, string> = {}) =>
+    bookRun(kind, n, makeSession(kind, n, { started: String(nowSec() - hours * HOUR), ...(ending === 'done' ? { 'state.json': { state: 'done', since: nowSec() } } : {}), ...files }), ending);
+
+  it('a start-over is a wall: nothing after it takes up what came before', async () => {
+    vi.useFakeTimers();
+    at('2026-09-01T10:00:00Z');
+    book('issue', 7, 1, 'died');
+    at('2026-09-01T12:00:00Z');
+    book('issue', 7, 1, 'done', { started_fresh: '1' });
+    at('2026-09-01T13:00:00Z');
+    book('approved', 70, 0.5, 'verdict', { issue: '7' });
+    expect((await hoursReport('2026-09')).excluded.map((e) => [e.n, e.continued])).toEqual([[1, false]]);
+  });
+
+  it('a wait the ticks never saw is credited from the session’s own marks, once', () => {
+    const now = nowSec();
+    const dir = makeSession('issue', 42, { started: String(now - HOUR), asked_at: String(now - 900), 'state.json': { state: 'working', step: '4', since: now - 300 } });
+    trackWaiting(dir, 42);
+    expect(read(path.join(dir, 'waiting_total'))).toBe('600');
+    expect(read(path.join(dir, 'answered'))).toBe(String(now - 300));
+    trackWaiting(dir, 42);
+    expect(read(path.join(dir, 'waiting_total'))).toBe('600');
+    // A card the board says is parked, by a session that said nothing: the wait began when it posted the question.
+    const quiet = makeSession('issue', 43, { started: String(now - HOUR), asked_at: String(now - 400), 'state.json': { state: 'working', step: '3', since: now - 1800 } });
+    setSnapshot([{ number: 43, title: 't', status: cfg().statusField.columns.needsHelp.name, labels: [], assignees: [], closed: false }]);
+    trackWaiting(quiet, 43);
+    expect(read(path.join(quiet, 'waiting'))).toBe(String(now - 400));
+  });
+
+  it('the server’s own start mark wins over one rewritten in the session’s directory', () => {
+    const now = nowSec();
+    const dir = makeSession('issue', 44, { pid: '777', started: String(now - 10 * HOUR), exited: String(now - 60) });
+    fs.mkdirSync(statePath('started'), { recursive: true });
+    fs.writeFileSync(statePath('started', 'issue-44'), `777 ${now - HOUR}`);
+    expect(bookRun('issue', 44, dir, 'died')).toMatchObject({ startedAt: now - HOUR, seconds: HOUR - 60 });
+    // A mark left by another run of the directory — another pid — says nothing about this one.
+    const other = makeSession('issue', 45, { pid: '778', started: String(now - 2 * HOUR), exited: String(now - 60) });
+    fs.writeFileSync(statePath('started', 'issue-45'), `999 ${now - HOUR}`);
+    expect(bookRun('issue', 45, other, 'died')).toMatchObject({ startedAt: now - 2 * HOUR });
+  });
+
+  it('a branch that held the copy and is gone, or shrank, is a rewritten witness — raised, never recreated', async () => {
+    const booked = () => bookRun('issue', 1, makeSession('issue', 1, { started: String(nowSec() - HOUR) }), 'died')!;
+    const e = booked();
+    fs.writeFileSync(statePath('hours_copy.json'), JSON.stringify({ copy: 'ok', checkedAt: nowSec() - 2 * HOUR, lines: 3 }));
+    onCommand(/^git .* ls-remote /, '');
+    await checkCopy();
+    expect(called(/^git .* (commit-tree|push) /)).toHaveLength(0);
+    expect(copyStatus()).toMatchObject({ copy: 'diverged', problem: 'the copy on sloth-assets is gone — the branch held 3 line(s)', lines: 3 });
+    expect(posted).toHaveLength(1);
+    // Back, but shorter than it ever was — and equal to a local file rewritten to match.
+    resetGh();
+    fs.writeFileSync(statePath('hours_copy.json'), JSON.stringify({ copy: 'ok', checkedAt: nowSec() - 2 * HOUR, lines: 3 }));
+    onCommand(/^git .* ls-remote /, 'abc\trefs/heads/sloth-assets');
+    onCommand(/^git .* rev-parse /, 'abc');
+    onCommand(/^git .* show /, JSON.stringify(e));
+    fs.writeFileSync(unpublishedFile(), '1');
+    await checkCopy();
+    expect(called(/^git .* push /)).toHaveLength(0);
+    expect(copyStatus()).toMatchObject({ copy: 'diverged', problem: 'the copy on sloth-assets held 3 line(s) and now holds 1', lines: 3 });
   });
 });

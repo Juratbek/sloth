@@ -147,10 +147,12 @@ export async function qaVerdicts(): Promise<void> {
       if (!(await moveCard(issue, col.inProgress.id))) continue;
       // A stale handoff note goes with them: the new run works from the QA findings on the issue, not
       // from where a run long over thought it stopped.
-      for (const f of ['retries', 'blocked', 'handoff.md']) remove(path.join(issueDir(issue), f));
-      // …and the ledger hears that the next run starts over (`launch` turns this into `started_fresh`).
-      write(path.join(issueDir(issue), 'fresh'), '1');
-      forgetExits(issueDir(issue));
+      if (!isDry()) {
+        for (const f of ['retries', 'blocked', 'handoff.md']) remove(path.join(issueDir(issue), f));
+        // …and the ledger hears that the next run starts over (`launch` turns this into `started_fresh`).
+        write(path.join(issueDir(issue), 'fresh'), '1');
+        forgetExits(issueDir(issue));
+      }
       log(`QA #${issue} failed on ${where} — card to ${col.inProgress.name}, a new implement run reads the findings`);
       await notify('qaFailed', { issue, column: col.inProgress.name, text: `#${issue} failed the QA sweep on ${where} — back to ${col.inProgress.name}` });
     } else log(`QA #${issue} ${verdict} on ${where} — card stays in ${col.qa.name}`);

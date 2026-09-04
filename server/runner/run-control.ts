@@ -226,7 +226,7 @@ export async function reap(): Promise<void> {
       }
       // Which of the two signals fired is in the line: the transcript's own error entry, or the CLI's prose.
       log(`${name} stopped on a usage limit (${limit}) — pausing ${LIMIT_PAUSE / 60} min, card untouched`);
-      write(statePath('paused_until'), String(nowSec() + LIMIT_PAUSE));
+      if (!isDry()) write(statePath('paused_until'), String(nowSec() + LIMIT_PAUSE));
       await notify('usageLimit', {
         issue: kind === 'issue' ? target : undefined,
         text: `${name} stopped on a Claude usage limit — Sloth waits ${LIMIT_PAUSE / 60} minutes, the card keeps its place`,

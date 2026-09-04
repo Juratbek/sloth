@@ -12,6 +12,7 @@ import { runHeader } from './exits';
 import { run } from './gh';
 import { isDry, log, readFile, remove, write } from './log';
 import { cleanup } from './cleanup';
+import { statePath } from './markers';
 import { stopPreview } from './preview';
 import { APPEND_PROMPT, sessionEnv, type SessionExtras, type Target } from './session-env';
 import { approvedDir, issueDir, qaDir, slotsFull, statusDir, triesOn } from './session-dirs';
@@ -90,7 +91,11 @@ export function start(bookDir: string, sessionDir: string, prompt: string, targe
     write(path.join(bookDir, 'pid'), String(pid));
     // When this run began, in Sloth's hand. The session writes its own `state.json` and rewrites `since`
     // at every step; this it never touches, so the time budget has something it cannot move (`launchedAt`).
-    write(path.join(bookDir, 'started'), String(Math.floor(Date.now() / 1000)));
+    const startedAt = Math.floor(Date.now() / 1000);
+    write(path.join(bookDir, 'started'), String(startedAt));
+    // The same mark once more where the session cannot reach it, with the pid that ties it to this run:
+    // `launchedAt` trusts this one first, so a `started` rewritten in the session's directory bills nothing.
+    write(statePath('started', path.basename(bookDir)), `${pid} ${startedAt}`);
     // …and when it ended, to the second, for the hours ledger: the tick that reaps it may be minutes behind.
     // Only while this is still the run in `pid` — a relaunch after a kill must not inherit the old exit.
     remove(path.join(bookDir, 'exited'));
@@ -125,13 +130,6 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
   fs.mkdirSync(path.join(dir, 'inbox'), { recursive: true });
   remove(path.join(dir, 'state.json'));
   remove(path.join(dir, 'blocked'));
-  // A start-over ordered before this launch (a QA fail) becomes this run's own mark, read by the ledger
-  // when it is booked: a run that took nothing up continues no failed run before it. A pickup writes the
-  // mark itself, after the launch.
-  if (fs.existsSync(path.join(dir, 'fresh'))) {
-    write(path.join(dir, 'started_fresh'), '1');
-    remove(path.join(dir, 'fresh'));
-  } else remove(path.join(dir, 'started_fresh'));
   // `handoff.md` stays on purpose: it is the dead run's note to the run launched here, and a retry that
   // reads it continues where the last one stopped instead of re-deriving everything. A fresh start —
   // pickup, a QA fail — removes it before calling launch.
@@ -148,6 +146,15 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
     log(`#${issue} not launched: git fetch origin failed — ${fetched.err.split('\n')[0]}`);
     return false;
   }
+  // From here the run starts. A start-over ordered before this launch (a QA fail) becomes this run's own
+  // mark, read by the ledger when it is booked: a run that took nothing up continues no failed run before
+  // it. Consumed only now, past the fetch that can still abandon the launch — an order consumed by a launch
+  // that never started would be lost, and the run that did start would be charged for work it threw away.
+  // A pickup writes the mark itself, after the launch.
+  if (fs.existsSync(path.join(dir, 'fresh'))) {
+    write(path.join(dir, 'started_fresh'), '1');
+    remove(path.join(dir, 'fresh'));
+  } else remove(path.join(dir, 'started_fresh'));
   // `moveCard` says why it failed; the run still starts, because the card being in the wrong column is a
   // smaller wrong than nobody working the issue. Trigger 2 sees the session and leaves it alone.
   if (!(await moveCard(issue, cfg().statusField.columns.inProgress.id))) {

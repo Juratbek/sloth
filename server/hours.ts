@@ -29,14 +29,23 @@ const monthOf = (sec: number) => new Date(sec * 1000).toISOString().slice(0, 7);
 /** `YYYY-MM` of now, or of the argument when it is one. */
 export const monthArg = (wanted: string | null | undefined): string => (wanted && MONTH.test(wanted) ? wanted : monthOf(nowSec()));
 
-/** The failed entries a later billable run took up, by their line number. */
+/**
+ * The failed entries a later billable run took up, by their line number. A start-over on the card is a
+ * wall: nothing after it took up what came before, so the walk forward stops there.
+ */
 function continuedLines(entries: HoursEntry[]): Set<number> {
   const out = new Set<number>();
   const window = CONTINUE_DAYS * 24 * 3600;
   for (const [i, e] of entries.entries()) {
     if (e.billable || !e.issue) continue;
-    const takenUp = entries.slice(i + 1).some((later) => later.issue === e.issue && later.billable && !later.fresh && later.startedAt >= e.endedAt && later.startedAt <= e.endedAt + window);
-    if (takenUp) out.add(e.n);
+    for (const later of entries.slice(i + 1)) {
+      if (later.issue !== e.issue) continue;
+      if (later.fresh || later.startedAt > e.endedAt + window) break;
+      if (later.billable && later.startedAt >= e.endedAt) {
+        out.add(e.n);
+        break;
+      }
+    }
   }
   return out;
 }

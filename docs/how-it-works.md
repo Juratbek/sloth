@@ -149,8 +149,10 @@ alive while it waits, and nobody is billed for the wait. Three runs going at onc
 status reply never is. Sloth looks at its runs every few minutes, and never rounds in its own favour: a
 run that marked itself finished or asked a human ended at the moment it said so; one that ended without a
 word ended when its process exited, or at its last line of output; a wait begins at the second the session
-asked, not at the check that noticed. A card standing in *Sloth needs help* is waiting whatever its session
-says. An outage between an end and the check that finds it adds nothing. A run is **billable** when it did its job: it
+asked, not at the check that noticed, and a question answered between two checks is credited from the
+session's own marks. A card standing in *Sloth needs help* is waiting whatever its session says. An outage
+between an end and the check that finds it adds nothing, and a run with no mark at all ends no later than
+its budget allows. The launch time the bill is measured from is kept where the session cannot reach it. A run is **billable** when it did its job: it
 finished, it stopped to ask a human, it asked and ran **out of response** (no answer in `waitHours`, so it
 ended with the card still parked), or it posted its verdict on the PR. A run that failed — it died while
 working, it hung past its budget and Sloth killed it, a usage limit stopped it, someone stopped it from the
@@ -169,7 +171,8 @@ the line before it, so a line changed, removed or slipped in breaks the chain fr
 chip turns to **ledger tampered**. After each run the ledger is also committed to the repository's
 `sloth-assets` branch (`hours/ledger.jsonl`, beside the PR screenshots), one commit per run, so both sides
 hold the history; the tick compares the two and raises `hoursTampered` through the help webhook when they
-disagree or the chain is broken. A local file that no longer matches the branch is never pushed over it.
+disagree or the chain is broken. A local file that no longer matches the branch is never pushed over it,
+and a branch that is gone or shorter than it was is a rewritten witness, raised and never recreated.
 
 A failed run is **continued** — shown apart, charged at half rate — when a later billable run on the same
 card took its work up: one that started within 30 days of the failure and did not start over (a card moved

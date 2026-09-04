@@ -16,12 +16,14 @@ import { launchedAt, stateOf } from './session-dirs';
  * credited so far and `answered` when the server last saw the run working again. A run is waiting when
  * it says so in its state, or when its card stands in the needs-help column on the board the loop last
  * read — the column is the rule the client is billed by, and it holds even for a session that moved the
- * card and forgot to say so. Where the wait *began* is taken from the session's own `since` when it said
- * it was asking and the mark is one it could have written honestly — after the launch, after its last
- * answer, not in the future — and from the tick otherwise: the tick is five minutes wide, and the minutes
- * between the question and the tick that noticed it would be billed as work. A wrong `since` can only
- * shorten the bill, never the deadline: `launchedAt` is what the budget is measured from, and that the
- * session cannot move.
+ * card and forgot to say so. Where the wait *began* is taken from the session's own marks when they are
+ * ones it could have written honestly — after the launch, after its last answer, not in the future:
+ * `since` when it said it was asking, `asked_at` (written when it posted the question) when only the
+ * board says so — and from the tick otherwise. The tick is five minutes wide, and the minutes between the
+ * question and the tick that noticed it would be billed as work; a question answered inside one tick
+ * would never be noticed at all, so a run seen working with an `asked_at` newer than its last answer is
+ * credited that wait too. A wrong mark can only shorten the bill, never the deadline: `launchedAt` is
+ * what the budget is measured from, and that the session cannot move.
  */
 
 /** How long a run has at least once its answer arrives, whatever its budget says — the skill's own floor. */
@@ -39,11 +41,16 @@ function parkedOnBoard(issue: number | undefined): boolean {
   return snapshot()?.items.some((i) => i.number === issue && i.status === column) ?? false;
 }
 
-/** When a wait first seen now began: the session's `since` if it is one it could honestly hold, else now. */
-function waitBegan(dir: string, now: number): number {
-  const since = Number(stateOf(dir).since) || 0;
+/** A mark of the session's, if it lies in the run's own life: after the launch and its last answer, not in the future. */
+function honest(dir: string, mark: number, now: number): number | undefined {
   const floor = Math.max(launchedAt(dir), answeredAt(dir));
-  return since >= floor && since <= now ? since : now;
+  return mark > floor && mark <= now ? mark : undefined;
+}
+
+/** Books a wait that ran from `from` to `to`, and remembers when the run was last seen working. */
+function credit(dir: string, from: number, to: number): void {
+  write(totalFile(dir), String(readNumber(totalFile(dir)) + Math.max(0, to - from)));
+  write(answeredFile(dir), String(to));
 }
 
 /**
@@ -53,14 +60,23 @@ function waitBegan(dir: string, now: number): number {
 export function trackWaiting(dir: string, issue?: number): void {
   const since = readNumber(file(dir));
   const now = nowSec();
-  const said = stateOf(dir).state === 'waiting';
+  const state = stateOf(dir);
+  const said = state.state === 'waiting';
   const waiting = said || parkedOnBoard(issue);
-  // The session's own mark for when it asked counts only when it said it was asking.
-  if (waiting && !since) write(file(dir), String(said ? waitBegan(dir, now) : now));
-  else if (!waiting && since) {
-    write(totalFile(dir), String(readNumber(totalFile(dir)) + Math.max(0, now - since)));
-    write(answeredFile(dir), String(now));
+  if (waiting && !since) {
+    // The session's `since` counts only when it said it was asking; `asked_at` it wrote when it posted the
+    // question, whatever it said afterwards. Neither, and the wait began when the board was last read.
+    const asked = honest(dir, readNumber(path.join(dir, 'asked_at')), now);
+    const began = (said ? honest(dir, Number(state.since) || 0, now) : undefined) ?? asked ?? Math.min(now, Math.floor((snapshot()?.at ?? Infinity) / 1000));
+    write(file(dir), String(began));
+  } else if (!waiting && since) {
+    credit(dir, since, now);
     remove(file(dir));
+  } else if (!waiting) {
+    // Asked and answered between two ticks: the session's own marks are all there is, and they only credit.
+    const asked = honest(dir, readNumber(path.join(dir, 'asked_at')), now);
+    const resumed = honest(dir, Number(state.since) || 0, now);
+    if (asked && resumed && resumed > asked) credit(dir, asked, resumed);
   }
 }
 

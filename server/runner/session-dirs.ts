@@ -4,6 +4,7 @@ import path from 'node:path';
 import { cfg } from '../config';
 import type { WatcherState } from '../types';
 import { readFile, readNumber } from './log';
+import { statePath } from './markers';
 
 /**
  * `approved` is trigger 4's `/sloth:review <pr> final`, the review a Code Review card gets; `qa` is trigger
@@ -114,6 +115,11 @@ export const stateOf = (dir: string): RunState => readState(dir) ?? {};
  * launched by an older Sloth has no `started`, and the pid file's mtime dates it well enough.
  */
 export function launchedAt(dir: string): number {
+  // The server's own copy of the mark, outside the session's directory (`spawn.ts`), wins over the one
+  // beside the run when it is the same run's — the pid says so. A session could rewrite the one it can
+  // reach and bill ten hours it never worked; it cannot reach this one.
+  const own = (readFile(statePath('started', path.basename(dir))) ?? '').trim().split(' ');
+  if (own.length === 2 && own[0] === String(pidOf(dir) ?? '') && Number(own[1]) > 0) return Number(own[1]);
   const started = readNumber(path.join(dir, 'started'));
   if (started) return started;
   try {
