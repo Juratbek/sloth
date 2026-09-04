@@ -66,6 +66,8 @@ export const COMMANDS: Record<string, string> = {
   'sloth:review': 'pull',
   'sloth:status': 'issues',
   'sloth:qa': 'issues',
+  // A smoke test's number is a run's, not an issue's: nothing on GitHub to link it to.
+  'sloth:smoke': '',
 };
 
 function resolve(): ResolvedConfig {

@@ -5,7 +5,7 @@ description: >-
   forwarded `@sloth` comments, the time budget, the needs-help protocol (one
   numbered comment, park the card, wait loop, idle teardown, resume) and the
   comment conventions every Sloth comment follows. Use from any command the
-  Sloth server launches (implement, review, status, qa).
+  Sloth server launches (implement, review, status, qa, smoke).
 ---
 
 # Sloth session protocol
@@ -28,6 +28,7 @@ directory.
 | `SLOTH_WARM` | `1`: this run inherited the slot's live stack — the pids in `dev.pid` / `redis.pid` and the database in `demo.db` are already yours and running. Reset instead of booting: sync the schema onto the existing database, reseed, `FLUSHALL` Redis; no createdb, no redis-server, no build, no server start — the watch-mode servers pick the fresh checkout up. A reset step fails → kill those pids yourself and boot cold |
 | `SLOTH_WARM_SAME` | `1`: that stack last served this very issue at this very head — a retry. Reuse everything untouched: no schema sync, no reseed, no flush |
 | `SLOTH_QA_BRANCH` | The branch the QA sweep tests (`/sloth:qa`); empty means the repository's default branch |
+| `SLOTH_SMOKE_RUN` / `SLOTH_SMOKE_BRANCH` / `SLOTH_SMOKE_SHA` | A smoke test's (`/sloth:smoke`) own number, the branch it qualifies and the exact head the server pinned; `$SLOTH_SESSION_DIR/brief.md` holds what to smoke when Settings says |
 | `SLOTH_ADMIN_LOGIN` | The **admin** — the one login whose orders have no limit (may be empty) |
 | `SLOTH_DEVELOPER_LOGINS` | Space-separated **developers** — their orders are followed within the issue they are on (may be empty) |
 | `SLOTH_TESTER_LOGINS` | Space-separated **testers** — they answer questions and ask for status, never order (may be empty) |
@@ -87,6 +88,8 @@ Other files the server understands, all inside `$SLOTH_SESSION_DIR`:
   run (`SLOTH_WARM_SLOTS`). Write them the moment a process or database exists.
 - `screenshots/*.png` — what the tester saved (`$SLOTH_SCREENSHOTS_DIR`); published with `publish_shots` (below).
 - `preview.json` — `{url, login}`, written by an implement run that leaves its app up for a preview (below).
+- `verdict` — one word for the server: a QA test's `passed` / `failed` / `inconclusive`, a smoke test's `go` /
+  `go-with-risks` / `no-go` / `inconclusive`; a smoke test also writes `report_issue`, the number of the issue its report went on.
 
 ## Inbox — comments forwarded to a live session
 
@@ -207,14 +210,15 @@ the process's working directory, not here), named `NN-<kebab-what>.png`: a two-d
 letters, digits and dashes only.
 
 The PR embeds them from `$SLOTH_ASSETS_BRANCH` — a branch of this repository that holds **only images**, under
-`issue-<n>/<utc-timestamp>/`. It is never merged, never carries code, and is never checked out: the function
-below builds its commit out of the index, so the worktree is untouched.
+`issue-<n>/<utc-timestamp>/` (`smoke-<n>/…` for a smoke test's run). It is never merged, never carries code,
+and is never checked out: the function below builds its commit out of the index, so the worktree is untouched.
 
 ```bash
 # publish_shots <dir> — pushes every *.png in <dir> to $SLOTH_ASSETS_BRANCH and prints the URL base of the files
 publish_shots() {
   local dir=$1 br=$SLOTH_ASSETS_BRANCH wt=${SLOTH_WORKTREE:-$SLOTH_WORKTREES_DIR/issue-$SLOTH_ISSUE}
-  local dest="issue-$SLOTH_ISSUE/$(date -u +%Y%m%d-%H%M%S)" idx=$SLOTH_SESSION_DIR/assets.index parent tree commit f
+  local who=${SLOTH_ISSUE:+issue-$SLOTH_ISSUE}; who=${who:-smoke-${SLOTH_SMOKE_RUN:-0}}
+  local dest="$who/$(date -u +%Y%m%d-%H%M%S)" idx=$SLOTH_SESSION_DIR/assets.index parent tree commit f
   for _ in 1 2 3 4 5; do
     parent=$(git -C "$wt" fetch -q origin "+refs/heads/${br}:refs/remotes/origin/${br}" 2>/dev/null && git -C "$wt" rev-parse "refs/remotes/origin/$br") || parent=""
     rm -f "$idx"
@@ -224,8 +228,8 @@ publish_shots() {
       GIT_INDEX_FILE=$idx git -C "$wt" update-index --add --cacheinfo "100644,$(git -C "$wt" hash-object -w "$f"),$dest/$(basename "$f")"
     done
     tree=$(GIT_INDEX_FILE=$idx git -C "$wt" write-tree)
-    if [ -n "$parent" ]; then commit=$(git -C "$wt" commit-tree "$tree" -p "$parent" -m "screenshots for #$SLOTH_ISSUE")
-    else commit=$(git -C "$wt" commit-tree "$tree" -m "screenshots for #$SLOTH_ISSUE"); fi
+    if [ -n "$parent" ]; then commit=$(git -C "$wt" commit-tree "$tree" -p "$parent" -m "screenshots for $who")
+    else commit=$(git -C "$wt" commit-tree "$tree" -m "screenshots for $who"); fi
     if git -C "$wt" push -q origin "${commit}:refs/heads/${br}"; then echo "https://github.com/$SLOTH_REPO/blob/$br/$dest"; return 0; fi
     sleep 3
   done

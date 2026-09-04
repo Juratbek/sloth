@@ -15,7 +15,7 @@ import { cleanup } from './cleanup';
 import { statePath } from './markers';
 import { stopPreview } from './preview';
 import { APPEND_PROMPT, sessionEnv, type SessionExtras, type Target } from './session-env';
-import { approvedDir, issueDir, qaDir, slotsFull, statusDir, triesOn } from './session-dirs';
+import { approvedDir, issueDir, slotsFull, statusDir, triesOn } from './session-dirs';
 import { machineHold } from './machine';
 import { forgetPause } from './pressure';
 import { forgetWaiting } from './waiting';
@@ -23,8 +23,8 @@ import { leaseSlot, releaseSlot } from './slots';
 import { claimWarm, warmOf } from './warm';
 
 /** Why nothing may start right now: every slot taken, or the machine too loaded to take one more run. */
-const held = (): string | undefined => (slotsFull() ? 'slots full' : machineHold());
-const noSlot = (what: string): false => (log(`${what} queued (no free worktree slot)`), false);
+export const held = (): string | undefined => (slotsFull() ? 'slots full' : machineHold());
+export const noSlot = (what: string): false => (log(`${what} queued (no free worktree slot)`), false);
 
 const trusted = new Set<string>();
 /** Claude Code exits silently in an untrusted directory, so headless runs need the flag pre-set. */
@@ -214,53 +214,6 @@ export function launchApproved(pr: number, issue: number, sha: string): boolean 
   // needs it to roll this run's cost up under the issue.
   write(path.join(approvedDir(pr), 'issue'), String(issue));
   start(approvedDir(pr), approvedDir(pr), `/sloth:review ${pr} final`, { pr, issue }, path.join(approvedDir(pr), 'run.log'), { model: c.models.final });
-  return true;
-}
-
-/**
- * Trigger 9: the QA sweep's test of one card — `/sloth:qa <issue>` on `models.qa`, in a worktree of the QA
- * branch at `sha`, with the sweep's own budget. Held like an implement run, by the slots and the machine.
- * The run's directory is `qa-<issue>`, apart from the issue's implement run: the two may exist at once and
- * neither may touch the other's servers or worktree. The head under test is written beside the run, so the
- * verdict can be tied to it, and a run that ended without a verdict counts against `retries` — reset when
- * the branch moves on, since a new head is a new test.
- */
-export async function launchQa(issue: number, sha: string, branch: string): Promise<boolean> {
-  const c = cfg();
-  const dir = qaDir(issue);
-  const why = held();
-  if (why) {
-    log(`QA #${issue} queued (${why})`);
-    return false;
-  }
-  const where = `${branch} @ ${sha.slice(0, 7)}`;
-  if (isDry()) {
-    log(`dry-run: would launch QA #${issue} on ${c.models.qa} (${where})`);
-    return true;
-  }
-  const slot = await leaseSlot('qa', issue);
-  if (!slot) return noSlot(`QA #${issue}`);
-  // Before the books are written: a test of a head the checkout has not fetched is a test of the wrong
-  // code, and a run abandoned here must not count against the card's `retries` — see `launch` above.
-  const fetched = await run('git', ['-C', c.runnerRoot, 'fetch', '-q', 'origin'], { timeout: 120_000 });
-  if (!fetched.ok) {
-    await releaseSlot('qa', issue);
-    log(`QA #${issue} not launched: git fetch origin failed — ${fetched.err.split('\n')[0]}`);
-    return false;
-  }
-  const retries = triesOn(dir, sha);
-  for (const f of ['state.json', 'verdict', 'handled']) remove(path.join(dir, f));
-  write(path.join(dir, 'sha'), sha);
-  write(path.join(dir, 'retries'), String(retries + 1));
-  // The head under test is known here, so a warm stack from an earlier test of this card on the same
-  // head is reused untouched; the same stack on a moved branch still saves the boot, minus a reseed.
-  const warm = await claimWarm('qa', issue, slot, sha);
-  log(`launch QA #${issue} on ${c.models.qa} (${where})`);
-  start(dir, dir, `/sloth:qa ${issue}`, { issue }, path.join(dir, 'run.log'), {
-    model: c.models.qa,
-    chrome: c.chrome,
-    extras: { budgetMinutes: c.qa.budgetMinutes, worktree: slot, warm: !!warm, warmSame: warm?.same },
-  });
   return true;
 }
 

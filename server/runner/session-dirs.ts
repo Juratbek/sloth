@@ -9,12 +9,13 @@ import { statePath } from './markers';
 /**
  * `approved` is trigger 4's `/sloth:review <pr> final`, the review a Code Review card gets; `qa` is trigger
  * 9's `/sloth:qa <issue>`, the QA sweep's test of one card — named after the issue, but apart from its
- * implement run, so the two never share a directory or a worktree. `review` was the plain `/sloth:review`
- * an older Sloth ran on human PRs: nothing starts one any more, but its directories still list, count and
- * prune like the rest.
+ * implement run, so the two never share a directory or a worktree. `smoke` is trigger 11's `/sloth:smoke <n>`,
+ * the scheduled smoke test of the whole app — its number is the run's own, counted up in `state/smoke_seq`,
+ * since it works for no card. `review` was the plain `/sloth:review` an older Sloth ran on human PRs: nothing
+ * starts one any more, but its directories still list, count and prune like the rest.
  */
-export type Kind = 'issue' | 'review' | 'approved' | 'qa';
-export const KINDS: Kind[] = ['issue', 'review', 'approved', 'qa'];
+export type Kind = 'issue' | 'review' | 'approved' | 'qa' | 'smoke';
+export const KINDS: Kind[] = ['issue', 'review', 'approved', 'qa', 'smoke'];
 
 export interface RunDir {
   name: string;
@@ -28,8 +29,9 @@ export const dirOf = (kind: Kind, target: number) => path.join(cfg().sessionsDir
 export const issueDir = (issue: number) => dirOf('issue', issue);
 export const approvedDir = (pr: number) => dirOf('approved', pr);
 export const qaDir = (issue: number) => dirOf('qa', issue);
+export const smokeDir = (n: number) => dirOf('smoke', n);
 /** The per-run worktree of the old scheme — `issue-12`, `qa-12` — still removed when found; runs now lease a slot (`slots.ts`). */
-export const worktreeName = (kind: Kind, target: number) => (kind === 'qa' ? `qa-${target}` : `issue-${target}`);
+export const worktreeName = (kind: Kind, target: number) => (kind === 'qa' || kind === 'smoke' ? `${kind}-${target}` : `issue-${target}`);
 
 export function pidAlive(pid: number | undefined): boolean {
   if (!pid) return false;
@@ -70,7 +72,7 @@ export const issueAlive = (issue: number) => dirAlive(issueDir(issue));
  * Anything else (a stray file, a directory a human made) is not a run.
  */
 export function parseRunName(name: string): { kind: Kind; target: number } | undefined {
-  const m = /^(issue|review|approved|qa)-(\d+)$/.exec(name);
+  const m = /^(issue|review|approved|qa|smoke)-(\d+)$/.exec(name);
   return m ? { kind: m[1] as Kind, target: Number(m[2]) } : undefined;
 }
 

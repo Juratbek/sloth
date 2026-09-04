@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { writeAtomic } from './atomic';
-import { AGENT_ROLES, CONFIG_DEFAULTS, DEFAULT_MODELS, MERGE_METHODS, STACK, WEBHOOK_EVENTS, defaultDirs, type AgentModels, type AgentRole, type ColumnRef, type MergeMethod, type QaConfig, type Roles, type SlothConfig, type StackChoice, type StackId, type WebhookEvent } from './config-types';
+import { AGENT_ROLES, CONFIG_DEFAULTS, DEFAULT_MODELS, MERGE_METHODS, STACK, WEBHOOK_EVENTS, defaultDirs, type AgentModels, type AgentRole, type ColumnRef, type MergeMethod, type QaConfig, type Roles, type SlothConfig, type SmokeConfig, type StackChoice, type StackId, type WebhookEvent } from './config-types';
 import { sameLogin } from './roles';
 
 const home = os.homedir();
@@ -128,6 +128,22 @@ function qaOf(v: unknown, d: QaConfig): QaConfig {
   return { branch, at, budgetMinutes: int(q.budgetMinutes, d.budgetMinutes) };
 }
 
+/** The smoke test: how many days apart (0 = off), a `HH:MM` local time, a branch name safe in argv, the budget, and the brief as typed. */
+function smokeOf(v: unknown, d: SmokeConfig): SmokeConfig {
+  const q = (v ?? {}) as Record<string, unknown>;
+  const branch = text(q.branch) ?? '';
+  if (branch && !BRANCH_RE.test(branch)) throw new Error('smoke.branch must be a branch name');
+  const at = text(q.at) ?? d.at;
+  if (!TIME_RE.test(at)) throw new Error('smoke.at must be a time of day, HH:MM');
+  return {
+    everyDays: int(q.everyDays, d.everyDays, 0),
+    at,
+    branch,
+    budgetMinutes: int(q.budgetMinutes, d.budgetMinutes),
+    brief: typeof q.brief === 'string' ? q.brief.trim() : d.brief,
+  };
+}
+
 function column(v: unknown, what: string): ColumnRef {
   const c = v as ColumnRef | undefined;
   return { id: str(c?.id, `${what}.id`), name: str(c?.name, `${what}.name`) };
@@ -218,6 +234,7 @@ export function normalizeConfig(input: unknown): SlothConfig {
     publicUrl: url(b.publicUrl, 'publicUrl'),
     stack: stackOf(b.stack),
     qa: qaOf(b.qa, d.qa),
+    smoke: smokeOf(b.smoke, d.smoke),
   };
 }
 

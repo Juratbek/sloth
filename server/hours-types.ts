@@ -19,7 +19,7 @@ export const BILLABLE_ENDINGS: readonly HoursEnding[] = ['done', 'waiting', 'noR
 export const billable = (ending: HoursEnding): boolean => BILLABLE_ENDINGS.includes(ending);
 
 /** The run kinds the ledger books — every kind that works a board card; a status reply is not a run. */
-export type HoursKind = 'issue' | 'approved' | 'review' | 'qa';
+export type HoursKind = 'issue' | 'approved' | 'review' | 'qa' | 'smoke';
 
 /** One line of the ledger. `hash` fingerprints the line's own text, `prev` the line before it. */
 export interface HoursEntry {

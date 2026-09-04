@@ -21,7 +21,7 @@ const README = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'pl
  * Only a `/sloth:stack` run gets this one, and `stack-session.ts` puts it on that run itself — it is
  * documented in the same table because a command reads it, but no ordinary session has it.
  */
-const NOT_ON_EVERY_SESSION = ['SLOTH_STACK_INSTALL', 'SLOTH_REVIEW_COMMENT'];
+const NOT_ON_EVERY_SESSION = ['SLOTH_STACK_INSTALL', 'SLOTH_REVIEW_COMMENT', 'SLOTH_SMOKE_RUN', 'SLOTH_SMOKE_SHA'];
 
 /**
  * The names in the environment table. A row names a variable in full (`` `SLOTH_REPO` ``), several in

@@ -34,6 +34,11 @@ const AGENTS: { role: AgentRole; label: string; hint: string; orchestrated?: { l
     label: 'QA sweep',
     hint: 'The session the daily QA sweep starts per card in the QA column: it checks the QA branch out, boots the app and judges the fix from what the browser tester (above) sees.',
   },
+  {
+    role: 'smoke',
+    label: 'Smoke test',
+    hint: 'The scheduled smoke test of the whole app: it reads the roles off the project, boots the app, runs one browser tester (above) per role and writes the GO / NO-GO report.',
+  },
 ];
 
 export function Models({ draft, patch }: SectionProps) {
