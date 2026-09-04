@@ -102,7 +102,7 @@ describe('wiredPrs', () => {
     onGh(/api graphql/, {
       data: {
         repository: {
-          i1: { closedByPullRequestsReferences: { nodes: [{ number: 10, state: 'OPEN', isDraft: false, headRefOid: 'aaa', headRefName: 'sloth/issue-1-x', mergeable: 'MERGEABLE', ...rollup('FAILURE'), ...reviewed('aaa', 'failed', 'aaa', 'passed') }] } },
+          i1: { closedByPullRequestsReferences: { nodes: [{ number: 10, state: 'OPEN', isDraft: false, headRefOid: 'aaa', headRefName: 'sloth/issue-1-x', baseRefName: 'main', mergeable: 'MERGEABLE', ...rollup('FAILURE'), ...reviewed('aaa', 'failed', 'aaa', 'passed') }] } },
           i2: { closedByPullRequestsReferences: { nodes: [{ number: 11, state: 'OPEN', isDraft: true, headRefOid: 'bbb', headRefName: 'feat' }, { number: 12, state: 'MERGED', isDraft: false, headRefOid: 'ccc', headRefName: 'old' }] } },
           i3: { closedByPullRequestsReferences: { nodes: [{ number: 13, state: 'OPEN', isDraft: false, headRefOid: 'ddd', headRefName: 'ok', reviewDecision: 'APPROVED', mergeable: 'CONFLICTING', ...rollup('PENDING'), ...reviewed('old', 'passed') }] } },
         },
@@ -110,9 +110,9 @@ describe('wiredPrs', () => {
     });
     expect(await wiredPrs([1, 2, 3])).toEqual([
       // The latest Sloth verdict on the current head counts; one on an older head is none.
-      { issue: 1, pr: 10, sha: 'aaa', head: 'sloth/issue-1-x', state: 'OPEN', draft: false, checks: 'FAILURE', mergeable: 'MERGEABLE', verdict: 'passed' },
-      { issue: 2, pr: 11, sha: 'bbb', head: 'feat', state: 'OPEN', draft: true, checks: 'NONE', mergeable: 'UNKNOWN' },
-      { issue: 3, pr: 13, sha: 'ddd', head: 'ok', state: 'OPEN', draft: false, checks: 'PENDING', mergeable: 'CONFLICTING' },
+      { issue: 1, pr: 10, sha: 'aaa', head: 'sloth/issue-1-x', base: 'main', state: 'OPEN', draft: false, checks: 'FAILURE', mergeable: 'MERGEABLE', verdict: 'passed' },
+      { issue: 2, pr: 11, sha: 'bbb', head: 'feat', base: '', state: 'OPEN', draft: true, checks: 'NONE', mergeable: 'UNKNOWN' },
+      { issue: 3, pr: 13, sha: 'ddd', head: 'ok', base: '', state: 'OPEN', draft: false, checks: 'PENDING', mergeable: 'CONFLICTING' },
     ]);
     // A repository that runs no checks reports no rollup at all — that is not a pending one.
     expect((await wiredPrs([2], { states: ['MERGED'] })).map((p) => [p.pr, p.state, p.checks])).toEqual([[12, 'MERGED', 'NONE']]);

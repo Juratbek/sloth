@@ -6,7 +6,7 @@ import type { BoardItem } from './board';
 import { setSnapshot } from './board-snapshot';
 import { refreshColumns } from './columns';
 import { comments } from './comments';
-import { autoMerge, failedChecks, finished } from './lifecycle';
+import { autoMerge, conflicts, failedChecks, finished } from './lifecycle';
 import { isDry, log, nowSec, withDry } from './log';
 import { boardEvents } from './notify-events';
 import { sampleMachine } from './machine';
@@ -160,6 +160,9 @@ async function tickSteps({ board = false, comments: wantComments = false }: Tick
     // of everything that starts a build — a red check, a stranded card, an order, the pickup column.
     await step('reviews', () => reviews(items!));
     await step('failed checks', () => failedChecks(items!));
+    // A conflict is the other way a finished PR stops being done; red checks go first, so a head with both
+    // is sent back for the checks and the tick after sees whether the new head still conflicts.
+    await step('conflicts', () => conflicts(items!));
     await step('handover', () => handover(items!));
     await step('auto-merge', () => autoMerge(items!));
     await step('retry stranded', () => retryStranded(items!));

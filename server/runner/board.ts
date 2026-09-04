@@ -129,6 +129,8 @@ export interface WiredPr {
   sha: string;
   /** The head branch — `sloth/issue-<n>-…` marks a PR Sloth wrote itself. */
   head: string;
+  /** The branch the PR merges into — what a conflict round-trip merges into the head. */
+  base: string;
   state: PrState;
   /** Still a draft on GitHub. Reviewed like any other — the column is the signal — but never merged. */
   draft: boolean;
@@ -192,7 +194,7 @@ interface ReviewNode {
 const REVIEW_FIELDS = 'reviews(last: 30) { nodes { body commit { oid } } }';
 const ROLLUP_FIELDS = `statusCheckRollup { state contexts(first: 100) { nodes {
   ... on StatusContext { state description } ... on CheckRun { conclusion } } } }`;
-const PR_FIELDS = `number state isDraft headRefOid headRefName mergeable commits(last: 1) { nodes { commit { ${ROLLUP_FIELDS} } } } ${REVIEW_FIELDS}`;
+const PR_FIELDS = `number state isDraft headRefOid headRefName baseRefName mergeable commits(last: 1) { nodes { commit { ${ROLLUP_FIELDS} } } } ${REVIEW_FIELDS}`;
 
 /**
  * The verdict `/sloth:review … final` posted on a PR for the head `sha`, read off the PR itself: the
@@ -244,6 +246,7 @@ export async function wiredPrs(issues: number[], { states = ['OPEN'] }: WiredOpt
           pr: p.number as number,
           sha: p.headRefOid as string,
           head: String(p.headRefName ?? ''),
+          base: String(p.baseRefName ?? ''),
           state: p.state as PrState,
           draft: !!p.isDraft,
           checks: checksOf(p.commits?.nodes?.[0]?.commit?.statusCheckRollup),

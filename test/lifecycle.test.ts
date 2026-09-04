@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { autoMerge, failedChecks, finished } from '../server/runner/lifecycle';
+import { autoMerge, conflicts, failedChecks, finished } from '../server/runner/lifecycle';
 import { setDry } from '../server/runner/log';
 import { resetSpawn, spawned } from './child-process-mock';
 import { called, fail, onGh, resetGh } from './gh-mock';
@@ -36,6 +36,7 @@ const wired = (prs: Record<number, Pr[]>) =>
                   isDraft: !!p.draft,
                   headRefOid: p.sha,
                   headRefName: p.head,
+                  baseRefName: 'main',
                   reviewDecision: null,
                   mergeable: p.mergeable ?? 'MERGEABLE',
                   ...(p.checks ? { commits: { nodes: [{ commit: { statusCheckRollup: { state: p.checks } } }] } } : {}),
@@ -56,7 +57,7 @@ beforeEach(() => {
   resetGh();
   resetSpawn();
   setDry(false);
-  for (const dir of ['approved', 'finished', 'checks', 'closed', 'merged', 'merge-failed']) fs.mkdirSync(statePath(dir), { recursive: true });
+  for (const dir of ['approved', 'finished', 'checks', 'conflicts', 'closed', 'merged', 'merge-failed']) fs.mkdirSync(statePath(dir), { recursive: true });
 });
 
 describe('finished (trigger 6)', () => {
@@ -165,6 +166,78 @@ describe('failedChecks (trigger 7)', () => {
     expect(launches()).toEqual([]);
     expect(exists(statePath('checks', '10-aaa'))).toBe(false);
     expect(readLog().at(-1)).toMatch(/dry-run: would launch #1 \(The checks on PR #10 fail/);
+  });
+});
+
+describe('conflicts (trigger 10)', () => {
+  const ORDER =
+    '/sloth:implement 1 PR #10 conflicts with its base on commit abcdef1: this is a review round-trip — check the branch out, ' +
+    'merge `origin/main` into it, resolve every conflict keeping what both sides meant, make the checks pass, push, keep the PR. ' +
+    'Merge only: never rebase, never force-push.';
+
+  it('does nothing until the setting is on', async () => {
+    wired({ 1: [{ pr: 10, sha: 'abcdef1234', head: 'sloth/issue-1-x', mergeable: 'CONFLICTING' }] });
+    await conflicts([card(1, COLUMNS.codeReview.name)]);
+    expect(launches()).toEqual([]);
+    expect(called(/closedByPullRequestsReferences/)).toHaveLength(0);
+  });
+
+  it('sends the session back to a conflicting Code Review PR once per head, naming the base', async () => {
+    configure({ resolveConflicts: true });
+    wired({ 1: [{ pr: 10, sha: 'abcdef1234', head: 'sloth/issue-1-x', mergeable: 'CONFLICTING' }] });
+    const board = [card(1, COLUMNS.codeReview.name)];
+    await conflicts(board);
+    expect(launches()).toEqual([ORDER]);
+    expect(called(/item-edit .*opt-wip/)).toHaveLength(1);
+    expect(exists(statePath('conflicts', '10-abcdef1234'))).toBe(true);
+    resetSpawn();
+    await conflicts(board);
+    expect(launches()).toEqual([]);
+  });
+
+  it('tries a new head again — the base moved once more — but not the same one', async () => {
+    configure({ resolveConflicts: true });
+    marker('conflicts', '10-old');
+    wired({ 1: [{ pr: 10, sha: 'new', head: 'sloth/issue-1-x', mergeable: 'CONFLICTING' }] });
+    await conflicts([card(1, COLUMNS.codeReview.name)]);
+    expect(launches()).toHaveLength(1);
+    expect(exists(statePath('conflicts', '10-new'))).toBe(true);
+  });
+
+  it("leaves a human's PR, a mergeable or unknown head, a skipped card, an Approved card, a live session and a running review alone", async () => {
+    configure({ resolveConflicts: true });
+    makeSession('issue', 5, { pid: alivePid() });
+    makeSession('approved', 16, { pid: alivePid() });
+    wired({
+      1: [{ pr: 10, sha: 'a', head: 'feature/x', mergeable: 'CONFLICTING' }],
+      2: [{ pr: 11, sha: 'b', head: 'sloth/issue-2-x', mergeable: 'MERGEABLE' }],
+      3: [{ pr: 12, sha: 'c', head: 'sloth/issue-3-x', mergeable: 'UNKNOWN' }],
+      4: [{ pr: 13, sha: 'd', head: 'sloth/issue-4-x', mergeable: 'CONFLICTING' }],
+      5: [{ pr: 14, sha: 'e', head: 'sloth/issue-5-x', mergeable: 'CONFLICTING' }],
+      6: [{ pr: 15, sha: 'f', head: 'sloth/issue-6-x', mergeable: 'CONFLICTING' }],
+      7: [{ pr: 16, sha: 'g', head: 'sloth/issue-7-x', mergeable: 'CONFLICTING' }],
+    });
+    await conflicts([
+      card(1, COLUMNS.codeReview.name),
+      card(2, COLUMNS.codeReview.name),
+      card(3, COLUMNS.codeReview.name),
+      card(4, COLUMNS.codeReview.name, { labels: ['Sloth: skip'] }),
+      card(5, COLUMNS.codeReview.name),
+      card(6, COLUMNS.approved.name, { labels: ['Fable: approved'] }),
+      card(7, COLUMNS.codeReview.name),
+    ]);
+    expect(launches()).toEqual([]);
+    expect(fs.readdirSync(statePath('conflicts'))).toEqual([]);
+  });
+
+  it('only logs in a dry run', async () => {
+    configure({ resolveConflicts: true });
+    setDry(true);
+    wired({ 1: [{ pr: 10, sha: 'aaa', head: 'sloth/issue-1-x', mergeable: 'CONFLICTING' }] });
+    await conflicts([card(1, COLUMNS.codeReview.name)]);
+    expect(launches()).toEqual([]);
+    expect(exists(statePath('conflicts', '10-aaa'))).toBe(false);
+    expect(readLog().at(-1)).toMatch(/dry-run: would launch #1 \(PR #10 conflicts with its base/);
   });
 });
 
