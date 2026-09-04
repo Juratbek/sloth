@@ -46,6 +46,7 @@ gh api graphql -f query="{ repository(owner: \"$OWNER\", name: \"$NAME\") { issu
   projectItems(first: 10) { nodes { project { number }
     fieldValueByName(name: \"Status\") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }" \
   --jq ".data.repository.issue.projectItems.nodes[] | select(.project.number == $SLOTH_PROJECT_NUMBER) | .fieldValueByName.name"
+# Trello (SLOTH_BOARD=trello): curl -sf "$SLOTH_BOARD_API/card/$ISSUE" | jq -r '.column'
 
 # the last session for this issue, if any
 cat "$SLOTH_SESSION_DIR/state.json" 2>/dev/null      # state / since / step / note / branch / pr

@@ -67,8 +67,10 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_REVIEW_COMMENT` | A status reply only: the question was a comment on a line of `$SLOTH_PR`'s diff, with this id; the answer goes into that review thread |
 | `SLOTH_ISSUE` / `SLOTH_PR` | The target issue (implement, status) or PR (review) |
 | `SLOTH_REPO` | `owner/repo` |
-| `SLOTH_PROJECT_ID`, `SLOTH_PROJECT_NUMBER`, `SLOTH_PROJECT_OWNER` | The board |
-| `SLOTH_STATUS_FIELD_ID` | Its single-select Status field |
+| `SLOTH_BOARD` | `github` (a Projects v2 board) or `trello` (a Trello board — its lists are the columns, and the `board` skill's Trello section says how a session reads and moves a card there) |
+| `SLOTH_BOARD_API` | Sloth's own board API on this machine, `http://127.0.0.1:<port>/api/board`: a card's column and a move, for a board that is not GitHub's |
+| `SLOTH_PROJECT_ID`, `SLOTH_PROJECT_NUMBER`, `SLOTH_PROJECT_OWNER` | The board (on Trello: the board id, `0`, the member) |
+| `SLOTH_STATUS_FIELD_ID` | Its single-select Status field (on Trello: the board id again) |
 | `SLOTH_COL_PICKUP_ID` / `_NAME` | Column work is taken from |
 | `SLOTH_COL_IN_PROGRESS_ID` / `_NAME` | Claimed / being worked on |
 | `SLOTH_COL_NEEDS_HELP_ID` / `_NAME` | Parked, waiting for a human (may be empty) |

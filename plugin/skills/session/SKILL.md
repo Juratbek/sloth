@@ -154,6 +154,7 @@ Sloth's, the reviewer loop will not pass, or time is running out.
    retry gh issue comment "$SLOTH_ISSUE" --repo "$SLOTH_REPO" --body-file "$SLOTH_SESSION_DIR/question.md"
    retry gh project item-edit --id "$ITEM_ID" --project-id "$SLOTH_PROJECT_ID" \
      --field-id "$SLOTH_STATUS_FIELD_ID" --single-select-option-id "$SLOTH_COL_NEEDS_HELP_ID"
+   # on a Trello board (SLOTH_BOARD=trello): retry board_move "$SLOTH_ISSUE" "$SLOTH_COL_NEEDS_HELP_NAME" instead — `board` skill
    ASKED=$(date +%s); echo "$ASKED" >"$SLOTH_SESSION_DIR/asked_at"
    ASKED_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
    # set_state waiting Q "<one-line summary>"   with SINCE=$ASKED

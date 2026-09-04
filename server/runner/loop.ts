@@ -256,7 +256,7 @@ export function startLoop(): void {
   if (!c.configured) return;
   state.running = true;
   log(
-    `watching ${c.repo} · board #${c.project.number} · pickup "${c.statusField.columns.pickup.name}" · board ${c.boardSeconds}s / comments ${c.commentSeconds}s (${c.fallbackCommentSeconds}s without the webhook) / machine ${c.machineSeconds}s${c.autoUpdate ? ` / auto-update ${c.updateSeconds}s` : ''}`,
+    `watching ${c.repo} · ${c.project.provider === 'trello' ? `Trello board ${c.project.title}` : `board #${c.project.number}`} · pickup "${c.statusField.columns.pickup.name}" · board ${c.boardSeconds}s / comments ${c.commentSeconds}s (${c.fallbackCommentSeconds}s without the webhook) / machine ${c.machineSeconds}s${c.autoUpdate ? ` / auto-update ${c.updateSeconds}s` : ''}`,
   );
   schedule('board', 5);
   schedule('comments', 20);

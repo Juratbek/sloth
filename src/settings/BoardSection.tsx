@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { DEFAULT_COLUMN_NAMES } from '../../server/config-types';
 import type { ColumnRole, ConfigColumns } from '../../server/config-types';
+import { boardLabel } from '../setup/board-label';
 import { OTHERS, columnFor, pickColumn } from '../setup/column-roles';
 import { Error, Loading, Select } from '../setup/ui';
 import { useProjectFields, useProjects } from '../setup/use-setup';
@@ -27,11 +28,12 @@ export default function BoardSection({ draft, patch }: SectionProps) {
   const list = projects.data ?? [];
   // The saved board stays choosable even while the list is loading or no longer includes it.
   const known = list.some((p) => p.id === draft.project.id) || !draft.project.id ? list : [{ ...draft.project, url: '', items: 0 }, ...list];
+  const onTrello = draft.project.provider === 'trello';
   const choose = (id: string) => {
     const p = list.find((x) => x.id === id);
     if (!p || p.id === draft.project.id) return;
     patch({
-      project: { id: p.id, number: p.number, owner: p.owner, title: p.title },
+      project: { provider: p.provider, id: p.id, number: p.number, owner: p.owner, title: p.title },
       statusField: { id: '', columns: { pickup: BLANK, inProgress: BLANK, needsHelp: BLANK, codeReview: BLANK, approved: BLANK, qa: BLANK, done: BLANK } },
     });
   };
@@ -40,13 +42,17 @@ export default function BoardSection({ draft, patch }: SectionProps) {
 
   return (
     <>
-      <Row label="Project board" hint="The GitHub Projects (v2) board Sloth watches. Picking another board re-guesses the columns below." wide>
+      <Row
+        label="Project board"
+        hint="The GitHub Projects (v2) or Trello board Sloth watches — Trello boards are listed once SLOTH_TRELLO_KEY and SLOTH_TRELLO_TOKEN are in Sloth's environment. Picking another board re-guesses the columns below."
+        wide
+      >
         <div className="w-full space-y-1">
           <Choose
             label="Project board"
             value={draft.project.id}
             onChange={choose}
-            options={known.map((p) => ({ id: p.id, name: `${p.title} · ${p.owner}/#${p.number}` }))}
+            options={known.map((p) => ({ id: p.id, name: `${p.title} · ${boardLabel(p)}` }))}
             placeholder={projects.isFetching ? 'loading boards…' : 'choose a board'}
           />
           {projects.error && <Error>{String(projects.error)}</Error>}
@@ -55,7 +61,14 @@ export default function BoardSection({ draft, patch }: SectionProps) {
       {!fields.data && fields.isFetching && <Loading what="columns" />}
       {fields.error && <Error>{String(fields.error)}</Error>}
       {fields.data && !status && <Error>This project has no Status field — add one on the board first.</Error>}
-      <Row label="Watched column" hint="Sloth picks cards up from here — every card but the ones labelled “Sloth: skip”. It only ever reads this column.">
+      <Row
+        label="Watched column"
+        hint={
+          onTrello
+            ? 'Sloth picks cards up from this list — every card but the ones labelled “Sloth: skip” — and opens a GitHub issue for each card that has none yet.'
+            : 'Sloth picks cards up from here — every card but the ones labelled “Sloth: skip”. It only ever reads this column.'
+        }
+      >
         <Choose label="Watched column" value={columns.pickup.id} onChange={(id) => set('pickup', id)} options={options} placeholder="choose a column" />
       </Row>
       {OTHERS.map(({ role, label, hint, none }) => (

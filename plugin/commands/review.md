@@ -151,7 +151,8 @@ on is the one that produced the findings.
 
 New bugs, or the PR does not resolve its issue, or both → move that issue's card to
 `$SLOTH_COL_IN_PROGRESS_NAME` (`board` skill: single-issue read for `ITEM_ID`, then `item-edit` with
-`$SLOTH_COL_IN_PROGRESS_ID`). Not on the board, or already there → leave it and note that in the report.
+`$SLOTH_COL_IN_PROGRESS_ID`; on a Trello board, `board_move` by column name). Not on the board, or already
+there → leave it and note that in the report.
 
 Final mode, "OK to merge" **yes** → move it to `$SLOTH_COL_APPROVED_NAME` the same way, with
 `$SLOTH_COL_APPROVED_ID`; the server then tells the issue it is ready to test, with the preview link. An empty

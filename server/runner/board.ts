@@ -1,7 +1,17 @@
 import { skipped } from '../board-types';
 import { cfg } from '../config';
+import { fetchTrelloBoard, moveTrelloCard } from './board-trello';
 import { gh, graphql } from './gh';
 import { isDry, log } from './log';
+
+/**
+ * The board Sloth watches, behind one reader and one writer whatever it is: a GitHub Projects (v2) board
+ * (below — the Status field's options are the columns) or a Trello board (`board-trello.ts` — its lists
+ * are). `cfg().project.provider` says which; every trigger sees the same `BoardItem`s and moves a card the
+ * same way. What is *not* the board's — the PRs wired to an issue, a review's verdict — is GitHub's on
+ * either, and stays below.
+ */
+const onTrello = () => cfg().project.provider === 'trello';
 
 export interface BoardItem {
   number: number;
@@ -43,8 +53,10 @@ function rankOf(n: RawNode): number | undefined {
   return n.priority?.optionId && at >= 0 ? at : undefined;
 }
 
-/** Every issue card on the board, in board order. */
-export async function fetchBoard(): Promise<BoardItem[] | undefined> {
+/** Every issue card on the board, in board order; `undefined` when the board could not be read. */
+export const fetchBoard = (): Promise<BoardItem[] | undefined> => (onTrello() ? fetchTrelloBoard() : fetchGithubBoard());
+
+async function fetchGithubBoard(): Promise<BoardItem[] | undefined> {
   const items: BoardItem[] = [];
   let cursor: string | undefined;
   try {
@@ -93,13 +105,14 @@ export const pickupOrder = (board: BoardItem[], column: string): number[] =>
     .sort((a, b) => (a.priority ?? Infinity) - (b.priority ?? Infinity))
     .map((i) => i.number);
 
-/** Moves an issue's card to a Status option, adding it to the board first if it is not on it. */
+/** Moves an issue's card to a column — a Status option, or a Trello list — adding it to a Projects board first if it is not on it. */
 export async function moveCard(issue: number, optionId: string): Promise<boolean> {
   const c = cfg();
   if (!optionId) {
     log(`#${issue} move skipped: empty option id`);
     return false;
   }
+  if (onTrello()) return moveTrelloCard(issue, optionId);
   if (isDry()) {
     log(`dry-run: would move #${issue} to ${optionId}`);
     return true;

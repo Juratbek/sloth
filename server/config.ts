@@ -48,7 +48,7 @@ const BLANK_COLUMN = { id: '', name: '' };
 const BLANK: SlothConfig = {
   version: 1,
   repo: '',
-  project: { id: '', number: 0, owner: '', title: '' },
+  project: { provider: 'github', id: '', number: 0, owner: '', title: '' },
   statusField: {
     id: '',
     columns: { pickup: BLANK_COLUMN, inProgress: BLANK_COLUMN, needsHelp: BLANK_COLUMN, codeReview: BLANK_COLUMN, approved: BLANK_COLUMN, qa: BLANK_COLUMN, done: BLANK_COLUMN },

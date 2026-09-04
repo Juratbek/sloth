@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { writeAtomic } from './atomic';
-import { AGENT_ROLES, CONFIG_DEFAULTS, DEFAULT_MODELS, MERGE_METHODS, STACK, WEBHOOK_EVENTS, defaultDirs, type AgentModels, type AgentRole, type ColumnRef, type MergeMethod, type QaConfig, type Roles, type SlothConfig, type StackChoice, type StackId, type WebhookEvent } from './config-types';
+import { AGENT_ROLES, BOARD_PROVIDERS, CONFIG_DEFAULTS, DEFAULT_MODELS, MERGE_METHODS, STACK, WEBHOOK_EVENTS, defaultDirs, type AgentModels, type AgentRole, type BoardProvider, type ColumnRef, type MergeMethod, type QaConfig, type Roles, type SlothConfig, type StackChoice, type StackId, type WebhookEvent } from './config-types';
 import { sameLogin } from './roles';
 
 const home = os.homedir();
@@ -128,6 +128,13 @@ function qaOf(v: unknown, d: QaConfig): QaConfig {
   return { branch, at, budgetMinutes: int(q.budgetMinutes, d.budgetMinutes) };
 }
 
+/** A config from before boards had a provider names none, and is a GitHub one. */
+function providerOf(v: unknown): BoardProvider {
+  if (v === undefined || v === null || v === '') return 'github';
+  if (!BOARD_PROVIDERS.includes(v as BoardProvider)) throw new Error(`project.provider must be one of ${BOARD_PROVIDERS.join(', ')}`);
+  return v as BoardProvider;
+}
+
 function column(v: unknown, what: string): ColumnRef {
   const c = v as ColumnRef | undefined;
   return { id: str(c?.id, `${what}.id`), name: str(c?.name, `${what}.name`) };
@@ -145,15 +152,18 @@ export function normalizeConfig(input: unknown): SlothConfig {
   const repo = repoSlug(b.repo);
   const name = repo.split('/')[1];
   const columns = (b.statusField?.columns ?? {}) as Record<string, unknown>;
+  const provider = providerOf(b.project?.provider);
   const d = CONFIG_DEFAULTS;
   const dirs = defaultDirs(name);
   return {
     version: 1,
     repo,
     project: {
+      provider,
       id: str(b.project?.id, 'project.id'),
       number: int(b.project?.number, 0, 0),
-      owner: str(b.project?.owner, 'project.owner'),
+      // A Trello board has no owner login to insist on; a Projects board always has one.
+      owner: provider === 'trello' ? (text(b.project?.owner) ?? '') : str(b.project?.owner, 'project.owner'),
       title: str(b.project?.title, 'project.title'),
     },
     statusField: {

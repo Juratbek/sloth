@@ -4,7 +4,10 @@ import { CONFIG_PATH, reloadConfig } from './config';
 import { run } from './exec';
 import { expandPath, normalizeConfig, readConfigFile, writeConfigFile } from './config-file';
 import { watchAll } from './events';
+import { ensureTrelloLists } from './runner/board-trello';
 import { ensureColumns } from './runner/columns';
+import * as trello from './trello';
+import { trelloReady } from './trello';
 import { graphql as ghGraphql } from './runner/gh';
 import { startTunnel } from './remote';
 import { betweenTicks, startLoop } from './runner/loop';
@@ -26,9 +29,18 @@ async function ghAuth(): Promise<SetupCheck> {
   return who.ok ? { ok: true, login: who.out } : { ok: false, error: who.err };
 }
 
+/** The Trello key and token, when both are set: who they sign in as, or why they do not. */
+async function trelloAuth(): Promise<SetupCheck> {
+  try {
+    return { ok: true, login: (await trello.me()).username };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 async function environment(): Promise<SetupEnv> {
-  const [claude, gh, auth] = await Promise.all([version('claude'), version('gh'), ghAuth()]);
-  return { claude, gh, ghAuth: auth };
+  const [claude, gh, auth, trelloCheck] = await Promise.all([version('claude'), version('gh'), ghAuth(), trelloReady() ? trelloAuth() : undefined]);
+  return { claude, gh, ghAuth: auth, ...(trelloCheck ? { trello: trelloCheck } : {}) };
 }
 
 /**
@@ -63,7 +75,7 @@ interface RawProject {
 }
 
 /** Every open Projects (v2) board the authenticated user can pick — their own plus their orgs'. */
-async function projects(): Promise<SetupProject[]> {
+async function githubProjects(): Promise<SetupProject[]> {
   const data = await graphql(PROJECTS_QUERY);
   const orgs: RawProject[] = (data.viewer.organizations?.nodes ?? []).flatMap((o: { projectsV2?: { nodes?: RawProject[] } }) => o?.projectsV2?.nodes ?? []);
   const all: RawProject[] = [...(data.viewer.projectsV2?.nodes ?? []), ...orgs];
@@ -71,6 +83,7 @@ async function projects(): Promise<SetupProject[]> {
   return all
     .filter((p) => p && !p.closed && !seen.has(p.id) && seen.add(p.id))
     .map((p) => ({
+      provider: 'github' as const,
       id: p.id,
       number: p.number,
       title: p.title,
@@ -78,6 +91,32 @@ async function projects(): Promise<SetupProject[]> {
       owner: p.owner?.login ?? '',
       items: p.items?.totalCount ?? 0,
     }));
+}
+
+/** Every open Trello board the token's member is on — none without a key and token, and none when Trello will not answer. */
+async function trelloBoards(): Promise<SetupProject[]> {
+  if (!trelloReady()) return [];
+  try {
+    const [who, boards] = await Promise.all([trello.me(), trello.boards()]);
+    return boards.map((b) => ({ provider: 'trello' as const, id: b.id, number: 0, title: b.name, url: b.url, owner: who.username, items: 0 }));
+  } catch (e) {
+    throw new Error(`Trello: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+/** The boards the wizard offers: GitHub's, then Trello's. */
+async function projects(): Promise<SetupProject[]> {
+  const [github, trelloList] = await Promise.all([githubProjects(), trelloBoards()]);
+  return [...github, ...trelloList];
+}
+
+/** A Trello board id: 24 hex digits, which no Projects node id (`PVT_…`) ever is. */
+const TRELLO_ID = /^[0-9a-f]{24}$/;
+
+/** A Trello board's lists, in the shape of a Status field, so the column steps need not know the difference. */
+async function trelloFields(boardId: string): Promise<SetupFields> {
+  const lists = await trello.lists(boardId);
+  return { statusField: { id: boardId, name: 'Lists', options: lists.map(({ id, name }) => ({ id, name })) }, repositories: [] };
 }
 
 const FIELDS_QUERY = `query($id: ID!) {
@@ -122,7 +161,8 @@ async function withColumns(body: unknown): Promise<unknown> {
   const wanted = Object.fromEntries(
     ROLES.map((role) => [role, { id: columns[role]?.id ?? '', name: columns[role]?.name ?? '' }]),
   ) as Record<ColumnRole, ColumnRef>;
-  return { ...b, statusField: { ...b.statusField, columns: await ensureColumns(b.statusField.id, wanted) } };
+  const ensure = b.project?.provider === 'trello' ? ensureTrelloLists : ensureColumns;
+  return { ...b, statusField: { ...b.statusField, columns: await ensure(b.statusField.id, wanted) } };
 }
 
 /** Routes under /api/setup/*. Returns undefined for "404" (including "no config saved yet"). */
@@ -130,7 +170,7 @@ export async function handleSetup(pathname: string, method: string, body: unknow
   const fields = /^\/api\/setup\/projects\/([\w-]+)\/fields$/.exec(pathname);
   if (pathname === '/api/setup/env') return environment();
   if (pathname === '/api/setup/projects') return projects();
-  if (fields) return projectFields(fields[1]);
+  if (fields) return TRELLO_ID.test(fields[1]) ? trelloFields(fields[1]) : projectFields(fields[1]);
   if (pathname === '/api/setup/clone' && method === 'POST') return clone(body);
   if (pathname === '/api/setup/config' && method === 'POST') {
     const was = readConfigFile(CONFIG_PATH)?.autostart ?? false;

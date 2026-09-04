@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { handleBoardApi, isBoardApi } from './board-api';
 import { cfg } from './config';
 import { install } from './install';
 import { modelChoices } from './models';
@@ -54,7 +55,7 @@ const json = (res: ServerResponse, body: unknown) => {
 
 /** Whether `p` is one of the settings endpoints — the paths `api.ts` holds behind its guards. */
 export const isSettings = (p: string): boolean =>
-  p.startsWith('/api/setup/') || p.startsWith('/api/remote') || p.startsWith('/api/update') || p.startsWith('/api/stack') || p === '/api/service' || p === '/api/models';
+  p.startsWith('/api/setup/') || p.startsWith('/api/remote') || p.startsWith('/api/update') || p.startsWith('/api/stack') || p === '/api/service' || p === '/api/models' || isBoardApi(p);
 
 /** /api/setup/* — the get-started wizard. A rejected payload answers 400, a missing config 404. */
 async function setup(p: string, req: IncomingMessage, res: ServerResponse): Promise<boolean> {
@@ -76,6 +77,18 @@ async function setup(p: string, req: IncomingMessage, res: ServerResponse): Prom
 /** Answers a path `isSettings` claimed; `api.ts` has already established the request is local and same-origin. */
 export async function handleSettings(p: string, url: URL, req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   if (p.startsWith('/api/setup/')) return setup(p, req, res);
+  // /api/board/* — a session reading or moving a card through Sloth rather than the board's own API (`board-api.ts`).
+  // Local like the rest: the sessions run on this machine, and a phone has the board page for looking.
+  if (isBoardApi(p)) {
+    const body = await handleBoardApi(p, req.method ?? 'GET', req.method === 'POST' ? await readBody(req) : undefined);
+    if (body === undefined) {
+      res.statusCode = 404;
+      res.end('not found');
+      return true;
+    }
+    if ((body as { ok?: boolean }).ok === false) res.statusCode = 400;
+    return json(res, body);
+  }
   // Whether this machine starts Sloth at login; the toggle itself is a config key, saved with the rest.
   if (p === '/api/service') return json(res, serviceStatus());
   if (p.startsWith('/api/remote')) {

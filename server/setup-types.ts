@@ -1,7 +1,7 @@
 /** What the get-started wizard and `/api/setup/*` pass each other. Split out of `config-types.ts`,
  *  which re-exports all of it. */
 
-import type { ColumnRef } from './config-types';
+import type { BoardProvider, ColumnRef } from './config-types';
 
 export interface SetupCheck {
   ok: boolean;
@@ -13,8 +13,11 @@ export interface SetupEnv {
   claude: SetupCheck;
   gh: SetupCheck;
   ghAuth: SetupCheck;
+  /** Only when a Trello key and token are in the environment: whether they open a Trello account. */
+  trello?: SetupCheck;
 }
 export interface SetupProject {
+  provider: BoardProvider;
   id: string;
   number: number;
   title: string;
