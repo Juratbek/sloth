@@ -71,7 +71,8 @@ board. When it finds work, it starts a Claude Code session to do it. That is all
    app and has one browser tester per user role walk that role's main flows, happy paths only, one role
    at a time. What to smoke can be written down in the same settings, one role and its flows per line;
    left empty, the session reads the roles off the project's own docs and skills. A blocker or a major
-   finding becomes an issue of its own, put on the board with no status so a person decides whether Sloth
+   finding becomes an issue of its own — with a screenshot of the broken screen in it, so whoever reads it
+   sees the bug instead of imagining it — put on the board with no status so a person decides whether Sloth
    fixes it; the report — GO, GO with risks or NO-GO, with the findings, screenshots and a table of the
    roles — is a comment on an issue titled *Smoke test reports* that Sloth creates once. Nothing on the
    board moves. **test now** on the home panel runs one at any hour; a second one is never started while

@@ -103,9 +103,16 @@ and a role prefix for its files. Its task:
    console or network excerpt, and the server log excerpt when the backend was in it. A finding that is
    clearly the environment — a seed missing, a port clash — is a **setup failure**, fixed and re-run,
    never reported as an app bug.
-6. Screenshot every screen it verifies — `browser_take_screenshot` with an **absolute**
-   `filename: "$SLOTH_SCREENSHOTS_DIR/NN-<role>-<kebab-what>.png"` — one per state, the finding's screen
-   first; at least one per role, rarely more than six.
+6. **Every finding is photographed.** The moment a failure is seen, `browser_take_screenshot` of the
+   failing state — `$SLOTH_SCREENSHOTS_DIR/NN-<role>-<kebab-what>-bug.png` — and, when the steps matter,
+   the screen just before the action that broke (`…-before.png`). During the reproduction, once more: the
+   picture that goes on the issue is the reproduced one. A finding with no image of its screen is not
+   finished: go back and take it. The build gate and a backend-only failure (a 5xx with nothing on
+   screen) are the exceptions — there the log excerpt is the evidence, and a screenshot of whatever the
+   screen showed still goes with it.
+   Screenshot every screen it verifies as well — the same call, an **absolute**
+   `filename: "$SLOTH_SCREENSHOTS_DIR/NN-<role>-<kebab-what>.png"` — one per state; at least one per role,
+   rarely more than six beyond the findings' own.
 7. `browser_close`. Return raw data: screens visited, each flow pass / fail with its steps, every finding
    with severity and evidence, what could not be tested and why, and the screenshot files with a one-line
    caption each.
@@ -120,6 +127,9 @@ Decide from the testers' raw data, never their summaries: **`no-go`** with one B
 build gate failed; **`go-with-risks`** with MAJORs only; **`go`** with at most MINORs; **`inconclusive`**
 when nothing could be tested — the app never came up, no browser, every role untested. Untested roles are
 listed and change no verdict. `set_state working 4 "<verdict>: filing findings"`.
+
+Publish the screenshots first (`SHOTS=$(publish_shots "$SLOTH_SCREENSHOTS_DIR")`, `session` skill — it
+needs the worktree, so before Step 6); the issues below and the report embed them from there.
 
 **Every BLOCKER and every MAJOR becomes an issue**, one each, unless an open one already covers it:
 
@@ -137,14 +147,19 @@ retry gh project item-add "$SLOTH_PROJECT_NUMBER" --owner "$SLOTH_PROJECT_OWNER"
 ```
 
 The body: `$SLOTH_BOT_PREFIX` first, then **severity and role**, the route, the numbered steps, expected
-against seen, the evidence excerpts, and a last line `_Found by Sloth's smoke test $RUN on \`$BRANCH\` @
-${SHA:0:7}._`. The card lands on the board **with no status** — a human decides whether Sloth fixes it.
-**Never move it to `$SLOTH_COL_PICKUP_NAME` yourself**, never assign, never label. MINORs are report-only.
+against seen, **the screenshot of the failing screen** — `![<what it shows>](<SHOTS>/NN-<role>-<what>-bug.png?raw=true)`,
+the before-picture above it when one was taken — then the console / network / log excerpts, and a last line
+`_Found by Sloth's smoke test $RUN on \`$BRANCH\` @ ${SHA:0:7}._`. **An issue with no image is not filed**:
+a person reading it has to see what is wrong, not imagine it. A finding whose tester saved no picture goes
+back to that role's one re-run (Step 3) for the screenshot; still without one, it stays in the report,
+marked *no screenshot*, and no issue is opened. The build gate's blocker is the one issue without a
+screen — its image is the build output in a code block. The card lands on the board **with no status** —
+a human decides whether Sloth fixes it. **Never move it to `$SLOTH_COL_PICKUP_NAME` yourself**, never
+assign, never label. MINORs are report-only.
 
 ## Step 5 — The report, on the report issue
 
-Publish the screenshots first (`SHOTS=$(publish_shots "$SLOTH_SCREENSHOTS_DIR")`, `session` skill — it
-needs the worktree, so before Step 6). Then write `$SESSION_DIR/report.md`, first line `$SLOTH_BOT_PREFIX`:
+Write `$SESSION_DIR/report.md`, first line `$SLOTH_BOT_PREFIX`, embedding the same published screenshots:
 
 ```
 **Sloth:**
@@ -206,6 +221,7 @@ issue's number.
 - **The verdict is written after the report comment**, once — one of `go`, `go-with-risks`, `no-go`, `inconclusive` in `$SESSION_DIR/verdict`, or nothing if the run dies. **Never ask for help**: what stops a test is said in the report.
 - **One tester at a time** in the one browser; a fresh subagent per role, on `$SLOTH_TESTER_MODEL`.
 - **Every finding has evidence and one reproduction.** No evidence, no finding; a setup failure is never an app bug.
+- **Every filed issue shows the bug**: at least one screenshot of the failing screen, taken by the tester and pushed by `publish_shots`, embedded in the body. No image, no issue — it stays in the report. Never a picture that was not taken.
 - **Respect `$SLOTH_DEADLINE`** (`session` skill): out of time is untested roles in the report, never a report skipped — reserve the last fifteen minutes for Steps 4–6.
 - Every comment starts with `$SLOTH_BOT_PREFIX`; never write `$SLOTH_MENTION`. No screenshot that was not taken.
 - **Never touch `$SLOTH_RUNNER_ROOT`, another slot, a shared database, or a port another session uses.**

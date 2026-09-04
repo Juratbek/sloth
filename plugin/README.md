@@ -151,8 +151,8 @@ The **last message of the transcript is the report** — the monitor shows it.
   cannot test is `inconclusive`, and the card stays for a human.
 - A `/sloth:smoke` run is the scheduled smoke test: its slot at the exact head the server pinned, the project's build as
   the gate, the app booted the way the run skill says, and one tester subagent per user role — one at a time, in the
-  session's one browser — walking that role's main flows, happy paths only. Blockers and majors are filed as issues and
-  put on the board with no status; the report — verdict, findings with screenshots, a roles table — is a comment on
+  session's one browser — walking that role's main flows, happy paths only. Blockers and majors are filed as issues — each embedding
+  the tester's screenshot of the failing screen; no image, no issue — and put on the board with no status; the report — verdict, findings with screenshots, a roles table — is a comment on
   the open issue titled `Smoke test reports`, created once. It writes `verdict` and `report_issue`, moves no card and
   never asks for help.
 - A `/sloth:stack` run is not a board run: no issue, no card, no worktree, no git. It installs, starts the
