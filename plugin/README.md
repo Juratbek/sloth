@@ -128,6 +128,9 @@ The **last message of the transcript is the report** — the monitor shows it.
 - Orders override everything, in any column, at any step: the admin's without limit, a developer's within the issue. A tester answers and asks; a login with no role never reaches a session — the server drops those comments.
 - An open PR on the issue whose branch is `sloth/issue-<n>-*` is resumed, not duplicated.
 - The reviewer subagent is spawned once and reused across rounds.
+- Sloth writes no code comments: names carry the meaning, a stretch that needs explaining becomes a well-named
+  function; only toolchain directives and comments the project's `CLAUDE.md` requires are allowed. The reviewer
+  treats a comment the diff adds as a bug (`commands/implement.md` Step 3, `commands/review.md` Assess 2).
 - With `SLOTH_ORCHESTRATOR=1` the implement session never edits code: one implementor subagent (spawned once, reused
   for every fix) makes every change, while the session keeps the issue, the board, verification, the tester, the
   reviewer loop and the PR.
