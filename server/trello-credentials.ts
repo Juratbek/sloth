@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { writeAtomic } from './atomic';
-import { CONFIG_PATH, envValue } from './config';
+import { SLOTH_HOME, envValue } from './env';
 
 /**
  * Where the Trello key, token and secret come from. Set in the UI — the wizard's environment step or
@@ -22,7 +22,7 @@ export interface TrelloCredentials {
   secret: string;
 }
 
-export const credentialsFile = (): string => path.join(path.dirname(CONFIG_PATH), 'trello.json');
+export const credentialsFile = (): string => path.join(SLOTH_HOME, 'trello.json');
 
 function fromFile(): Partial<TrelloCredentials> {
   try {

@@ -1,4 +1,5 @@
 import { cfg } from './config';
+import { ownerConflict } from './runner/owner';
 import { me as trelloMe, trelloReady } from './trello';
 import { chromeBinary, type Browser } from './runner/browser';
 import { run } from './runner/gh';
@@ -104,10 +105,16 @@ async function trelloCheck(): Promise<HealthCheck | undefined> {
   }
 }
 
+/** Whether this instance is watching at all, or held off its state directory by another Sloth (`runner/owner.ts`). */
+const ownerCheck = (): HealthCheck => {
+  const conflict = ownerConflict();
+  return conflict ? { id: 'state', ok: false, detail: conflict } : { id: 'state', ok: true, detail: `this Sloth alone works in ${cfg().stateDir}` };
+};
+
 /** One reading of all of them, taken together — the shell-outs go at once, so the whole thing is one timeout long. */
 export async function checkHealth(): Promise<Health> {
   const [gh, git, by, trello] = await Promise.all([ghCheck(), gitCheck(), installer(), trelloCheck()]);
-  return { at: Date.now(), checks: [gh, git, chromeCheck(cfg().chrome, chromeBinary()), sudoCheck(by), ...(trello ? [trello] : [])] };
+  return { at: Date.now(), checks: [gh, git, chromeCheck(cfg().chrome, chromeBinary()), sudoCheck(by), ...(trello ? [trello] : []), ownerCheck()] };
 }
 
 let cache: Health | undefined;

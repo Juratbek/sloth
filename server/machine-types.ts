@@ -118,7 +118,7 @@ export interface ServiceStatus {
 }
 
 /** One thing the runner needs in order to do any work at all — see `server/health.ts`. */
-export type HealthId = 'gh' | 'git' | 'chrome' | 'sudo' | 'trello';
+export type HealthId = 'gh' | 'git' | 'chrome' | 'sudo' | 'trello' | 'state';
 export interface HealthCheck {
   id: HealthId;
   ok: boolean;

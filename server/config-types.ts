@@ -250,11 +250,17 @@ export const CONFIG_DEFAULTS = {
   qa: DEFAULT_QA,
 } satisfies Partial<SlothConfig>;
 
-/** The directories that are kept apart per repository (`name` is the part after the slash). */
-export const defaultDirs = (name: string) => ({
-  runnerRoot: `~/.sloth/runners/${name}`,
-  worktreesDir: `~/.sloth/worktrees/${name}`,
-  sessionsDir: `~/.sloth/sessions/${name}`,
+/**
+ * Where an instance keeps its files: under its home — the directory its config file is in, `~/.sloth`
+ * by default — and, for the per-repository ones, under the repository's name (the part after the slash).
+ */
+export const defaultDirs = (name: string, home = '~/.sloth') => ({
+  runnersDir: `${home}/runners`,
+  runnerRoot: `${home}/runners/${name}`,
+  worktreesDir: `${home}/worktrees/${name}`,
+  sessionsDir: `${home}/sessions/${name}`,
+  stateDir: `${home}/state`,
+  watcherLog: `${home}/watcher.log`,
 });
 
 /** The payloads the get-started wizard exchanges with `/api/setup/*` (`setup-types.ts`). */

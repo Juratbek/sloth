@@ -6,6 +6,7 @@ import type { BoardItem } from './board';
 import { setSnapshot } from './board-snapshot';
 import { refreshColumns } from './columns';
 import { comments } from './comments';
+import { claimState, releaseState } from './owner';
 import { mirrorComments } from './trello-mirror';
 import { autoMerge, conflicts, failedChecks, finished } from './lifecycle';
 import { isDry, log, nowSec, withDry } from './log';
@@ -257,6 +258,8 @@ export function startLoop(): void {
   stopLoop();
   const c = cfg();
   if (!c.configured) return;
+  // The state directory is this instance's alone; on one another Sloth holds, nothing is scheduled at all.
+  if (!claimState()) return;
   state.running = true;
   log(
     `watching ${c.repo} · ${c.project.provider === 'trello' ? `Trello board ${c.project.title}` : `board #${c.project.number}`} · pickup "${c.statusField.columns.pickup.name}" · board ${c.boardSeconds}s / comments ${c.commentSeconds}s (${c.fallbackCommentSeconds}s without the webhook) / machine ${c.machineSeconds}s${c.autoUpdate ? ` / auto-update ${c.updateSeconds}s` : ''}`,
@@ -269,6 +272,7 @@ export function startLoop(): void {
 }
 
 export function stopLoop(): void {
+  releaseState();
   if (state.running) log('watcher stopped');
   state.running = false;
   // Whatever these timers had in flight belongs to the set being torn down; nothing of it re-arms.

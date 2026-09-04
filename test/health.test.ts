@@ -44,7 +44,7 @@ describe('checkHealth', () => {
   it('asks gh, git, the browser and sudo, and says what each one answered', async () => {
     allWell();
     const health = await checkHealth();
-    expect(health.checks.map((c) => c.id)).toEqual(['gh', 'git', 'chrome', 'sudo']);
+    expect(health.checks.map((c) => c.id)).toEqual(['gh', 'git', 'chrome', 'sudo', 'state']);
     expect(health.at).toBeGreaterThan(0);
     expect(of(health, 'gh').ok).toBe(true);
     expect(of(health, 'gh').detail).toContain('Logged in to github.com');

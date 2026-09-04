@@ -268,6 +268,14 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `publicUrl` | — | Where the UI is already reachable — your own tunnel or domain. Set, no tunnel is started |
 | `stack` | `"auto"` | What the sessions' app needs on this machine, out of the stack Sloth can install: `postgresql`, `redis`, `node`, `python`, `java` (see *Stack* below). `auto` reads the checkout at every start; a list pins it |
 
+**One instance, one home.** Everything an instance owns — state, sessions, worktrees, runners, its log, its
+Trello credentials — defaults to the directory its config file is in: `~/.sloth` for the default config,
+and whatever directory `SLOTH_CONFIG` names for another. So a second Sloth on the same machine (another
+project, another client) is `SLOTH_CONFIG=~/.sloth-other/config.json SLOTH_PORT=4401 pnpm dev`, and the
+two never see each other's sessions or answer on each other's cards. Each instance writes `state/owner.json`
+when it starts watching and refuses to run on a state directory another live instance holds under a
+different config — the header's health chip says so (*state dir*) until it is given directories of its own.
+
 Environment: `SLOTH_CONFIG`, `SLOTH_PORT` (default `4400`), `SLOTH_DRY_RUN=1` to log what every
 tick *would* do without doing it, and `SLOTH_TRELLO_KEY` / `SLOTH_TRELLO_TOKEN` / `SLOTH_TRELLO_SECRET` for a Trello board. A `.env` in the project root works too.
 

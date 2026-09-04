@@ -1,16 +1,10 @@
 import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { writeAtomic } from './atomic';
+import { SLOTH_HOME_LABEL, expandPath } from './env';
 import { AGENT_ROLES, BOARD_PROVIDERS, CONFIG_DEFAULTS, DEFAULT_MODELS, MERGE_METHODS, STACK, WEBHOOK_EVENTS, defaultDirs, type AgentModels, type AgentRole, type BoardProvider, type ColumnRef, type MergeMethod, type QaConfig, type Roles, type SlothConfig, type StackChoice, type StackId, type WebhookEvent } from './config-types';
 import { sameLogin } from './roles';
 
-const home = os.homedir();
-
-/** `~/x` → `$HOME/x`; everything else resolved against the process cwd. */
-export const expandPath = (p: string) => (p === '~' ? home : p.startsWith('~/') ? path.join(home, p.slice(2)) : path.resolve(p));
-
-export const DEFAULT_CONFIG_PATH = '~/.sloth/config.json';
+export { DEFAULT_CONFIG_PATH, expandPath } from './env';
 
 export function readConfigFile(file: string): SlothConfig | undefined {
   try {
@@ -154,7 +148,8 @@ export function normalizeConfig(input: unknown): SlothConfig {
   const columns = (b.statusField?.columns ?? {}) as Record<string, unknown>;
   const provider = providerOf(b.project?.provider);
   const d = CONFIG_DEFAULTS;
-  const dirs = defaultDirs(name);
+  // Every directory beside this instance's config file: a second Sloth on the machine gets a home of its own.
+  const dirs = defaultDirs(name, SLOTH_HOME_LABEL);
   return {
     version: 1,
     repo,
@@ -183,11 +178,11 @@ export function normalizeConfig(input: unknown): SlothConfig {
       },
     },
     runnerRoot: expandPath(text(b.runnerRoot) ?? dirs.runnerRoot),
-    runnersDir: text(b.runnersDir) ?? d.runnersDir,
+    runnersDir: text(b.runnersDir) ?? dirs.runnersDir,
     worktreesDir: text(b.worktreesDir) ?? dirs.worktreesDir,
     sessionsDir: text(b.sessionsDir) ?? dirs.sessionsDir,
-    stateDir: text(b.stateDir) ?? d.stateDir,
-    watcherLog: text(b.watcherLog) ?? d.watcherLog,
+    stateDir: text(b.stateDir) ?? dirs.stateDir,
+    watcherLog: text(b.watcherLog) ?? dirs.watcherLog,
     roles: roles(b.roles, b.orderLogin),
     mention: text(b.mention) ?? d.mention,
     botPrefix: text(b.botPrefix) ?? d.botPrefix,
