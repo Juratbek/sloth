@@ -113,6 +113,8 @@ export async function cards(boardId: string): Promise<TrelloCard[]> {
 
 export const moveCard = (cardId: string, listId: string) => trello<TrelloCard>('PUT', `/cards/${cardId}`, { idList: listId, pos: 'top' });
 
+export const describe = (cardId: string, desc: string) => trello<TrelloCard>('PUT', `/cards/${cardId}`, { desc });
+
 export const attach = (cardId: string, link: string, name: string) => trello('POST', `/cards/${cardId}/attachments`, { url: link, name });
 
 export const commentCard = (cardId: string, text: string) => trello('POST', `/cards/${cardId}/actions/comments`, { text });

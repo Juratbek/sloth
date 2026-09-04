@@ -159,6 +159,17 @@ describe('fetchBoard on Trello', () => {
     expect(called(/issue create/)).toHaveLength(0);
     expect(readLog().at(-1)).toMatch(/dry-run: would open an issue for Trello card "Card c1"/);
   });
+  it('reuses the issue it opened before when the card was left unlinked, and falls back to the description when attaching fails', async () => {
+    answers[`GET /boards/${BOARD}/cards`] = [trelloCard('c1', 'l-todo')];
+    answers['POST /cards/c1/attachments'] = new Error('no attachments for you');
+    onGh(/issue list .*in:body/, '41\n');
+    onGh(/api graphql/, { data: { repository: { i41: { state: 'OPEN', labels: { nodes: [] } } } } });
+    expect((await fetchBoard())?.map((i) => i.number)).toEqual([41]);
+    expect(called(/issue create/)).toHaveLength(0);
+    expect(called(/issue list/)[0].args.join(' ')).toMatch(/"https:\/\/trello\.com\/c\/c1" in:body/);
+    expect(trelloCalls(/PUT \/cards\/c1/)[0].params.get('desc')).toBe('GitHub issue: https://github.com/acme/widgets/issues/41');
+    expect(trelloCalls(/POST \/cards\/c1\/actions\/comments/)).toHaveLength(1);
+  });
   it('is undefined when Trello or GitHub will not answer', async () => {
     answers[`GET /boards/${BOARD}/cards`] = new Error('down');
     expect(await fetchBoard()).toBeUndefined();

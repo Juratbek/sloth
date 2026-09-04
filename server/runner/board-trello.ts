@@ -40,6 +40,27 @@ export function issueOf(card: TrelloCard, repo = cfg().repo): number | undefined
 
 const labelNames = (card: TrelloCard) => card.labels.map((l) => l.name).filter(Boolean);
 
+/**
+ * The issue already opened for this card, when the attaching failed last time: every issue Sloth opens
+ * names the card's URL in its body, so the repository is asked before a second one is opened.
+ */
+async function issueFor(card: TrelloCard): Promise<number | undefined> {
+  const r = await gh(['issue', 'list', '--repo', cfg().repo, '--state', 'all', '--search', `"${card.shortUrl}" in:body`, '--json', 'number', '--jq', '.[0].number']);
+  const number = Number(r.out.trim());
+  return r.ok && number ? number : undefined;
+}
+
+/** Puts the issue's URL on the card — an attachment, or the description when Trello refuses that — with a comment saying where to talk. */
+async function linkCard(card: TrelloCard, number: number, link: string): Promise<void> {
+  try {
+    await trello.attach(card.id, link, `GitHub issue #${number}`);
+  } catch (e) {
+    log(`Trello card "${card.name}": issue #${number} not attached, writing it into the description — ${e instanceof Error ? e.message : String(e)}`);
+    await trello.describe(card.id, `${card.desc?.trim() ? `${card.desc.trim()}\n\n` : ''}GitHub issue: ${link}`);
+  }
+  await trello.commentCard(card.id, `Sloth opened ${link} for this card. Talk to Sloth in that issue's comments; the card follows the work.`);
+}
+
 /** Opens the issue a pickup card stands for and links the two, or says it would. Returns the number, or nothing when it could not. */
 async function openIssue(card: TrelloCard): Promise<number | undefined> {
   const c = cfg();
@@ -47,20 +68,23 @@ async function openIssue(card: TrelloCard): Promise<number | undefined> {
     log(`dry-run: would open an issue for Trello card "${card.name}"`);
     return undefined;
   }
-  const body = `${card.desc?.trim() ? `${card.desc.trim()}\n\n` : ''}---\nTrello card: ${card.shortUrl}`;
-  const r = await gh(['issue', 'create', '--repo', c.repo, '--title', card.name, '--body', body]);
-  const number = Number(/\/issues\/(\d+)\s*$/.exec(r.out.trim())?.[1]);
-  if (!r.ok || !number) {
-    log(`Trello card "${card.name}": issue not opened — ${(r.err || r.out).split('\n')[0]}`);
-    return undefined;
+  let number = await issueFor(card);
+  if (!number) {
+    const body = `${card.desc?.trim() ? `${card.desc.trim()}\n\n` : ''}---\nTrello card: ${card.shortUrl}`;
+    const r = await gh(['issue', 'create', '--repo', c.repo, '--title', card.name, '--body', body]);
+    number = Number(/\/issues\/(\d+)\s*$/.exec(r.out.trim())?.[1]);
+    if (!r.ok || !number) {
+      log(`Trello card "${card.name}": issue not opened — ${(r.err || r.out).split('\n')[0]}`);
+      return undefined;
+    }
   }
   const link = `https://github.com/${c.repo}/issues/${number}`;
   try {
-    await trello.attach(card.id, link, `GitHub issue #${number}`);
-    await trello.commentCard(card.id, `Sloth opened ${link} for this card. Talk to Sloth in that issue's comments; the card follows the work.`);
+    await linkCard(card, number, link);
   } catch (e) {
-    // The issue is open with the card's URL in its body, so the next read links the two again by that: no second issue.
-    log(`Trello card "${card.name}": issue #${number} opened but not attached — ${e instanceof Error ? e.message : String(e)}`);
+    // Left unlinked on the card; the next read finds the issue by the card's URL in its body and tries again.
+    log(`Trello card "${card.name}": issue #${number} opened but not linked — ${e instanceof Error ? e.message : String(e)}`);
+    return undefined;
   }
   log(`Trello card "${card.name}" → issue #${number}`);
   return number;
