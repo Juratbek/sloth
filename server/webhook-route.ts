@@ -3,7 +3,7 @@ import { cfg } from './config';
 import { tick } from './runner/loop';
 import { log } from './runner/log';
 import { HOOK_PATH } from './webhook-gh';
-import { deliveryUrl, recordDelivery, recordPing, verifySignature } from './webhook';
+import { deliveryUrl, markUnverified, recordDelivery, recordPing, verifySignature } from './webhook';
 import { TRELLO_HOOK_PATH, verifyTrelloSignature, type TrelloDelivery } from './webhook-trello';
 
 /**
@@ -109,6 +109,7 @@ async function deliverTrello(req: IncomingMessage, res: ServerResponse): Promise
   const body = await rawBody(req);
   if (!verifyTrelloSignature(body, header(req, 'x-trello-webhook'), deliveryUrl())) {
     log('webhook: a Trello delivery arrived unsigned or signed with the wrong secret — rejected');
+    markUnverified('Trello signs its deliveries with a different secret than the one set here — check the secret in Settings → Board; the board is polled meanwhile');
     return end(res, 401);
   }
   let payload: TrelloDelivery;

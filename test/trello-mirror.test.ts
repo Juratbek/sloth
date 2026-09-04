@@ -7,7 +7,7 @@ import { fetchBoard, moveCard } from '../server/runner/board';
 import { comments } from '../server/runner/comments';
 import { setDry } from '../server/runner/log';
 import { mirrorAuthor, mirrorComments } from '../server/runner/trello-mirror';
-import { ensureWebhook, forgetWebhook, isWebhookLive } from '../server/webhook';
+import { ensureWebhook, forgetWebhook, isWebhookLive, webhookStatus } from '../server/webhook';
 import { webhookMiddleware } from '../server/webhook-route';
 import { verifyTrelloSignature } from '../server/webhook-trello';
 import { resetSpawn, spawned } from './child-process-mock';
@@ -289,6 +289,8 @@ describe('the Trello delivery route', () => {
     expect(await send('HEAD')).toBe(200);
     const body = JSON.stringify({ action: { type: 'commentCard', data: { text: 'hello', card: { id: 'c4', name: 'Card c4' } } } });
     expect(await send('POST', body)).toBe(401);
+    expect(webhookStatus()).toMatchObject({ state: 'failed', reason: expect.stringMatching(/different secret/) });
+    expect(isWebhookLive()).toBe(false);
     const sign = (b: string) => crypto.createHmac('sha1', 'shh').update(`${b}https://sloth.example/api/hooks/trello`).digest('base64');
     expect(await send('POST', body, { 'x-trello-webhook': sign(body) })).toBe(200);
     expect(h.ticks).toEqual([{ comments: true }]);

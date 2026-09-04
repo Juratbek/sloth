@@ -187,6 +187,16 @@ const markDown = (reason: string): void => {
   if (load().state !== 'off') settle({ state: 'off', reason });
 };
 
+/**
+ * A delivery that fails the signature check is a hook that is *not* delivering, whatever its state says:
+ * the poll drops to `fallbackCommentSeconds` at once, and the page names the secret as the thing to fix.
+ * Once per state, not per delivery — a board of card moves would otherwise rewrite the status on every one.
+ */
+export function markUnverified(reason: string): void {
+  if (load().state === 'failed') return;
+  settle({ state: 'failed', reason });
+}
+
 const ensure = (): void => {
   void ensureWebhook().catch((e) => log(`webhook: ${(e instanceof Error ? e.message : String(e)).split('\n')[0]}`));
 };
