@@ -215,7 +215,7 @@ describe('the Trello webhook', () => {
     configure({ project: { provider: 'trello', id: BOARD, number: 0, owner: 'friend', title: 'Widgets' }, statusField: { id: BOARD, columns: LISTS }, publicUrl: 'https://sloth.example' });
     const status = await ensureWebhook();
     expect(status.state).toBe('failed');
-    expect(status.reason).toMatch(/SLOTH_TRELLO_SECRET is not set/);
+    expect(status.reason).toMatch(/no Trello secret is set/);
     expect(isWebhookLive()).toBe(false);
   });
   it('creates the board’s webhook at the public address, then repoints it when the address moves', async () => {

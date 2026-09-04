@@ -1,12 +1,12 @@
 import type { SetupCheck } from '../../server/config-types';
 import { Button, Error, Loading } from './ui';
+import TrelloConnect from './TrelloConnect';
 import { useSetupEnv } from './use-setup';
 
 const HINTS: Record<string, { label: string; hint: string; href: string }> = {
   claude: { label: 'Claude Code', hint: 'Install Claude Code', href: 'https://docs.claude.com/en/docs/claude-code/quickstart' },
   gh: { label: 'GitHub CLI', hint: 'Install the gh CLI', href: 'https://cli.github.com' },
   ghAuth: { label: 'GitHub login', hint: 'Run `gh auth login`', href: 'https://cli.github.com/manual/gh_auth_login' },
-  trello: { label: 'Trello login', hint: 'Get a key and token', href: 'https://trello.com/power-ups/admin' },
 };
 
 function Row({ id, check }: { id: string; check: SetupCheck }) {
@@ -41,11 +41,10 @@ export default function StepEnv({ onContinue }: { onContinue: () => void }) {
           {(['claude', 'gh', 'ghAuth'] as const).map((id) => (
             <Row key={id} id={id} check={data[id]} />
           ))}
-          {data.trello && <Row id="trello" check={data.trello} />}
-          <p className="text-xs text-zinc-500">
-            To watch a Trello board instead of a GitHub one, put SLOTH_TRELLO_KEY and SLOTH_TRELLO_TOKEN in Sloth's environment (its .env
-            works) and re-check.
-          </p>
+          <div className="rounded-md border border-zinc-800 px-3 py-2">
+            <p className="mb-2 text-xs text-zinc-500">Optional — only for a Trello board instead of a GitHub Projects one.</p>
+            <TrelloConnect compact />
+          </div>
         </div>
       )}
       <div className="flex gap-2">

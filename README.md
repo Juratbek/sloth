@@ -163,13 +163,16 @@ cards are the issues, the lists are the columns, the card's comments are the con
 PRs and the reviews live in the GitHub repository as always — every card Sloth works has a GitHub issue
 behind it, opened and kept in step by Sloth, which the team on Trello need not look at.
 
-- **Credentials.** Put `SLOTH_TRELLO_KEY` and `SLOTH_TRELLO_TOKEN` in Sloth's environment (`.env` in the
-  project root works). A key comes from [trello.com/power-ups/admin](https://trello.com/power-ups/admin)
-  (a Power-Up of your own, *API key*); the token from the *Token* link beside the key, authorised for the
-  account the board is on. The key's *Secret* on the same page is `SLOTH_TRELLO_SECRET` — it is what makes
-  the webhook possible (below). The wizard and Settings → *Board* then list the Trello boards beside the
-  GitHub ones, and the columns step shows the board's lists — missing ones are created on save, like
-  Status options. The Trello login is checked with the rest of the machine's health.
+- **Connecting.** The wizard's first step (and Settings → *Board*) has a **Trello** block: paste the API
+  key, the token and the secret there and press *Connect* — Sloth tries them against Trello and keeps
+  them, owner-readable only, in `trello.json` beside `config.json`; nothing typed is ever shown back.
+  A key comes from [trello.com/power-ups/admin](https://trello.com/power-ups/admin) (a Power-Up of your
+  own, *API key*); the token from the *Token* link beside the key, authorised for the account the board is
+  on; the *Secret* on the same page is what makes the webhook possible (below). The environment —
+  `SLOTH_TRELLO_KEY` / `SLOTH_TRELLO_TOKEN` / `SLOTH_TRELLO_SECRET`, `.env` included — wins over the file
+  field by field, for whoever prefers it. Once connected, the wizard and Settings → *Board* list the Trello
+  boards beside the GitHub ones, the columns step shows the board's lists — missing ones are created on
+  save, like Status options — and the Trello login is checked with the rest of the machine's health.
 - **Cards and issues.** A card in the watched list gets a GitHub issue opened for it — the card's name as
   the title, its description as the body — and the issue's URL attached to the card; a card that already
   carries an issue's URL (attached, or in its description) is that issue's card. A comment that mentions
@@ -183,7 +186,7 @@ behind it, opened and kept in step by Sloth, which the team on Trello need not l
   session's inbox while it waits), and Sloth's questions, park notes, status replies and the "ready to
   test" link all appear on the card. The team in `roles` are **Trello usernames** on a Trello board.
   A comment older than an hour, or older than the first time the mirror ran, is not copied.
-- **The webhook.** With `SLOTH_TRELLO_SECRET` set and a public address (see *Remote access*), Sloth
+- **The webhook.** With the secret set and a public address (see *Remote access*), Sloth
   points a Trello webhook for the board at `/api/hooks/trello` itself and verifies every delivery against
   the secret; a comment on a card is then read within seconds. Without the secret there is no webhook and
   the comments are polled every `fallbackCommentSeconds`, as on GitHub without one.

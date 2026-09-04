@@ -96,7 +96,7 @@ export function sudoCheck(by: Installer): HealthCheck {
 /** On a Trello board: whether the key and token still open the account the board is on. Not a check at all elsewhere. */
 async function trelloCheck(): Promise<HealthCheck | undefined> {
   if (cfg().project.provider !== 'trello') return undefined;
-  if (!trelloReady()) return { id: 'trello', ok: false, detail: 'SLOTH_TRELLO_KEY or SLOTH_TRELLO_TOKEN is not set — the board cannot be read' };
+  if (!trelloReady()) return { id: 'trello', ok: false, detail: 'no Trello key and token — set them in Settings → Board; the board cannot be read without them' };
   try {
     return { id: 'trello', ok: true, detail: `signed in as ${(await trelloMe()).username}` };
   } catch (e) {

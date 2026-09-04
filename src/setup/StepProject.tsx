@@ -20,8 +20,8 @@ export default function StepProject({
     <div className="space-y-4">
       <p className="text-sm text-zinc-400">Which board should Sloth watch?</p>
       <p className="text-xs text-zinc-500">
-        A GitHub Projects (v2) board, or a Trello board — the Trello ones appear once SLOTH_TRELLO_KEY and SLOTH_TRELLO_TOKEN are in
-        Sloth's environment. On Trello the lists are the columns, and every card Sloth works gets a GitHub issue opened for it.
+        A GitHub Projects (v2) board, or a Trello board — the Trello ones appear once Trello is connected on the previous step. On Trello the
+        lists are the columns, the cards the work, the card comments the conversation; nobody on the board needs GitHub.
       </p>
       {error && <Error>{String(error)}</Error>}
       {!data && isFetching && <Loading what="projects" />}

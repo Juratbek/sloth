@@ -1,19 +1,14 @@
-import { envValue } from './config';
+import { trelloCredentials } from './trello-credentials';
 
 /**
- * The Trello REST API, as much of it as a board provider needs: lists, cards, labels, attachments and
- * comments. Authenticated with an API key and a token from the environment Sloth runs in
- * (`SLOTH_TRELLO_KEY` / `SLOTH_TRELLO_TOKEN`, `.env` works too) — a board is only offered in the wizard,
- * and only watched, while both are there. Every call is one `fetch`, retried once the way `gh` is.
+ * The Trello REST API, as much of it as a board provider needs: lists, cards, labels, attachments,
+ * comments and webhooks. Authenticated with the key and token in force (`trello-credentials.ts` — set
+ * in the UI, or in the environment) — a board is only offered in the wizard, and only watched, while
+ * both are there. Every call is one `fetch`, retried once the way `gh` is.
  */
 
-export const TRELLO_KEY = 'SLOTH_TRELLO_KEY';
-export const TRELLO_TOKEN = 'SLOTH_TRELLO_TOKEN';
-/** The key's OAuth secret — what Trello signs webhook deliveries with; without it there is no webhook, only the poll. */
-export const TRELLO_SECRET = 'SLOTH_TRELLO_SECRET';
+export { TRELLO_KEY, TRELLO_SECRET, TRELLO_TOKEN, trelloReady } from './trello-credentials';
 const API = 'https://api.trello.com/1';
-
-export const trelloReady = (): boolean => !!envValue(TRELLO_KEY)?.trim() && !!envValue(TRELLO_TOKEN)?.trim();
 
 export interface TrelloList {
   id: string;
@@ -76,9 +71,10 @@ export class TrelloError extends Error {
 type Params = Record<string, string | number | boolean | undefined>;
 
 function url(path: string, params: Params): string {
+  const { key, token } = trelloCredentials();
   const u = new URL(`${API}${path}`);
-  u.searchParams.set('key', envValue(TRELLO_KEY) ?? '');
-  u.searchParams.set('token', envValue(TRELLO_TOKEN) ?? '');
+  u.searchParams.set('key', key);
+  u.searchParams.set('token', token);
   for (const [k, v] of Object.entries(params)) if (v !== undefined) u.searchParams.set(k, String(v));
   return u.toString();
 }
@@ -155,7 +151,7 @@ export async function boardComments(boardId: string, since: string): Promise<Tre
 }
 
 /** The webhooks this token owns. */
-export const webhooks = () => trello<TrelloWebhook[]>('GET', `/tokens/${envValue(TRELLO_TOKEN) ?? ''}/webhooks`);
+export const webhooks = () => trello<TrelloWebhook[]>('GET', `/tokens/${trelloCredentials().token}/webhooks`);
 export const createWebhook = (boardId: string, callbackURL: string) => trello<TrelloWebhook>('POST', '/webhooks', { idModel: boardId, callbackURL, description: 'Sloth' });
 export const updateWebhook = (id: string, boardId: string, callbackURL: string) => trello<TrelloWebhook>('PUT', `/webhooks/${id}`, { idModel: boardId, callbackURL, active: true });
 

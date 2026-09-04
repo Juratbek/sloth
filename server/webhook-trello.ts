@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
-import { envValue } from './config';
-import { TRELLO_SECRET, createWebhook, updateWebhook, webhooks } from './trello';
+import { createWebhook, updateWebhook, webhooks } from './trello';
+import { trelloCredentials } from './trello-credentials';
 
 /**
  * The Trello side of the comment webhook: the board's webhook, pointed at this Sloth, and the check on
@@ -11,11 +11,11 @@ import { TRELLO_SECRET, createWebhook, updateWebhook, webhooks } from './trello'
 
 export const TRELLO_HOOK_PATH = '/api/hooks/trello';
 
-export const trelloSecret = (): string | undefined => envValue(TRELLO_SECRET)?.trim() || undefined;
+export const trelloSecret = (): string | undefined => trelloCredentials().secret || undefined;
 
 /** The board's webhook Sloth owns — the one delivering to `/api/hooks/trello` — repointed at today's address, or created. */
 export async function ensureTrelloHook(boardId: string, url: string): Promise<string> {
-  if (!trelloSecret()) throw new Error('SLOTH_TRELLO_SECRET is not set — deliveries could not be verified, so the board is polled instead');
+  if (!trelloSecret()) throw new Error('no Trello secret is set — deliveries could not be verified, so the board is polled instead (Settings → Board)');
   const mine = (await webhooks()).find((h) => h.callbackURL.endsWith(TRELLO_HOOK_PATH));
   if (mine) {
     if (mine.callbackURL !== url || mine.idModel !== boardId || !mine.active) await updateWebhook(mine.id, boardId, url);

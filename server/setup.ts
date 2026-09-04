@@ -8,6 +8,8 @@ import { ensureTrelloLists } from './runner/board-trello';
 import { ensureColumns } from './runner/columns';
 import * as trello from './trello';
 import { trelloReady } from './trello';
+import { credentialsFile, forgetTrelloCredentials, saveTrelloCredentials, trelloInfo } from './trello-credentials';
+import type { TrelloCredentials, TrelloInfo } from './trello-credentials';
 import { graphql as ghGraphql } from './runner/gh';
 import { startTunnel } from './remote';
 import { betweenTicks, startLoop } from './runner/loop';
@@ -165,10 +167,35 @@ async function withColumns(body: unknown): Promise<unknown> {
   return { ...b, statusField: { ...b.statusField, columns: await ensure(b.statusField.id, wanted) } };
 }
 
+/**
+ * The Trello key, token and secret, typed into the wizard or Settings: tried against Trello first, saved
+ * only when they open an account, and never echoed back. A blank key and token forget what was saved.
+ */
+async function connectTrello(body: unknown): Promise<TrelloInfo & { username?: string; error?: string }> {
+  const b = (body ?? {}) as Partial<TrelloCredentials>;
+  const creds = { key: String(b.key ?? '').trim(), token: String(b.token ?? '').trim(), secret: String(b.secret ?? '').trim() };
+  if (!creds.key && !creds.token) {
+    forgetTrelloCredentials();
+    return trelloInfo();
+  }
+  if (!creds.key || !creds.token) return { ...trelloInfo(), error: 'both the API key and the token are needed' };
+  const before = fs.existsSync(credentialsFile()) ? fs.readFileSync(credentialsFile(), 'utf8') : undefined;
+  saveTrelloCredentials(creds);
+  try {
+    const who = await trello.me();
+    return { ...trelloInfo(), username: who.username };
+  } catch (e) {
+    if (before === undefined) forgetTrelloCredentials();
+    else fs.writeFileSync(credentialsFile(), before, { mode: 0o600 });
+    return { ...trelloInfo(), error: `Trello did not accept them: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
 /** Routes under /api/setup/*. Returns undefined for "404" (including "no config saved yet"). */
 export async function handleSetup(pathname: string, method: string, body: unknown): Promise<unknown> {
   const fields = /^\/api\/setup\/projects\/([\w-]+)\/fields$/.exec(pathname);
   if (pathname === '/api/setup/env') return environment();
+  if (pathname === '/api/setup/trello') return method === 'POST' ? connectTrello(body) : trelloInfo();
   if (pathname === '/api/setup/projects') return projects();
   if (fields) return TRELLO_ID.test(fields[1]) ? trelloFields(fields[1]) : projectFields(fields[1]);
   if (pathname === '/api/setup/clone' && method === 'POST') return clone(body);

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { DEFAULT_COLUMN_NAMES } from '../../server/config-types';
 import type { ColumnRole, ConfigColumns } from '../../server/config-types';
+import TrelloConnect from '../setup/TrelloConnect';
 import { boardLabel } from '../setup/board-label';
 import { OTHERS, columnFor, pickColumn } from '../setup/column-roles';
 import { Error, Loading, Select } from '../setup/ui';
@@ -42,11 +43,12 @@ export default function BoardSection({ draft, patch }: SectionProps) {
 
   return (
     <>
-      <Row
-        label="Project board"
-        hint="The GitHub Projects (v2) or Trello board Sloth watches — Trello boards are listed once SLOTH_TRELLO_KEY and SLOTH_TRELLO_TOKEN are in Sloth's environment. Picking another board re-guesses the columns below."
-        wide
-      >
+      <Row label="Trello" hint="A Trello board can stand in for a GitHub Projects one: its lists are the columns, its cards the work, its comments the conversation. Connect the account the board is on, and the board appears in the list below." wide>
+        <div className="w-full">
+          <TrelloConnect compact />
+        </div>
+      </Row>
+      <Row label="Project board" hint="The GitHub Projects (v2) or Trello board Sloth watches. Picking another board re-guesses the columns below." wide>
         <div className="w-full space-y-1">
           <Choose
             label="Project board"
