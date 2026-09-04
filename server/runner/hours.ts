@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { cfg } from '../config';
 import { billable, type HoursEnding, type HoursEntry, type HoursKind } from '../hours-types';
 import { isDry, log, nowSec, readFile, readNumber, write } from './log';
 import { statePath } from './markers';
@@ -21,6 +22,9 @@ import { waitedSeconds } from './waiting';
  * Sessions are never told the file exists: it is not in their environment, not in the plugin, not in the
  * skill that reads their session directory.
  */
+
+/** Extra time past its budget before `reap` kills a session — the most any unmarked end can lie beyond the budget. */
+export const KILL_GRACE = 5 * 60;
 
 export const ledgerFile = () => statePath('hours.jsonl');
 /** Set when the ledger has lines the branch copy has not; `hours-copy.ts` clears it after the push. */
@@ -92,16 +96,32 @@ export const runSeconds = (dir: string, until = nowSec()): number => Math.max(0,
 export const issueOfRun = (kind: HoursKind, target: number, dir: string): number | undefined =>
   kind === 'issue' || kind === 'qa' ? target : readNumber(path.join(dir, 'issue')) || undefined;
 
+/** The last time the run wrote to its own log — it was alive at least until then, and not much after. */
+function lastWrote(dir: string): number {
+  try {
+    return Math.floor(fs.statSync(path.join(dir, 'run.log')).mtimeMs / 1000);
+  } catch {
+    return 0;
+  }
+}
+
 /**
- * When a run ended. One that marked itself `done` (or gave up asking) or `waiting` ended when it said so —
- * `since` in its state — and the tick that noticed may be a long way behind that, a whole outage even. Any
- * other ending has no mark of its own, so it ended when it was noticed. A `since` outside the run's life
- * is not trusted.
+ * When a run ended. The tick that notices an end may be five minutes behind it — a whole outage, even —
+ * and every one of those minutes would be billed, so the earliest honest mark wins. A run that marked
+ * itself `done` (or gave up asking) or `waiting` ended when it said so: `since` in its state. One that
+ * ended without a word has the moment its process exited, written by the server that spawned it
+ * (`exited`), and the last time it wrote to its log. A run Sloth killed ended now, by definition. A mark
+ * outside the run's life — before the launch, in the future — is not trusted. With no mark at all (the
+ * server was down, the log is gone) the end is now, but never later than the run could have lived: past
+ * its budget and the kill grace `reap` would have stopped it, so nothing beyond that is its own.
  */
-function endedAt(dir: string, ending: HoursEnding, startedAt: number, now: number): number {
-  if (ending !== 'done' && ending !== 'noResponse' && ending !== 'waiting') return now;
-  const since = Number(stateOf(dir).since) || 0;
-  return since >= startedAt && since <= now ? since : now;
+function endedAt(dir: string, kind: HoursKind, ending: HoursEnding, startedAt: number, now: number): number {
+  if (ending === 'stopped' || ending === 'budget') return now;
+  const said = ending === 'done' || ending === 'noResponse' || ending === 'waiting' ? Number(stateOf(dir).since) || 0 : 0;
+  const marks = [said, readNumber(path.join(dir, 'exited')), lastWrote(dir)].filter((t) => t >= startedAt && t <= now);
+  if (marks.length) return Math.min(...marks);
+  const budget = (kind === 'qa' ? cfg().qa.budgetMinutes : cfg().budgetMinutes) * 60;
+  return Math.min(now, startedAt + budget + KILL_GRACE);
 }
 
 /**
@@ -117,7 +137,7 @@ export function bookRun(kind: HoursKind, target: number, dir: string, ending: Ho
     return undefined;
   }
   const startedAt = launchedAt(dir);
-  const ended = endedAt(dir, ending, startedAt, nowSec());
+  const ended = endedAt(dir, kind, ending, startedAt, nowSec());
   const paused = pausedSeconds(dir);
   const waited = waitedSeconds(dir, ended);
   const last = lastLine();
@@ -134,6 +154,7 @@ export function bookRun(kind: HoursKind, target: number, dir: string, ending: Ho
     seconds: Math.max(0, ended - startedAt - paused - waited),
     ending,
     billable: billable(ending),
+    ...(fs.existsSync(path.join(dir, 'started_fresh')) ? { fresh: true } : {}),
     prev: last.hash,
     hash: '',
   };

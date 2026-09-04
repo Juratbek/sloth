@@ -25,11 +25,14 @@ const REMOTE = `refs/remotes/origin/${ASSETS_BRANCH}`;
 /** How often the copy is compared when nothing is waiting to be pushed. */
 const CHECK_EVERY = 3600;
 const PUSH_TRIES = 3;
+/** How long the branch may stay out of reach before that is raised like a tampered copy. */
+const UNREACHABLE_ALARM = 24 * 3600;
 
 const statusFile = () => statePath('hours_copy.json');
 const noticeFile = () => statePath('notified', 'hoursTampered');
 
-type CopyStatus = Pick<HoursIntegrity, 'copy' | 'checkedAt'> & { problem?: string };
+/** `lines` is the most lines the branch was ever seen to hold: a copy shorter than that, or gone, was rewritten. */
+type CopyStatus = Pick<HoursIntegrity, 'copy' | 'checkedAt'> & { problem?: string; unreachableSince?: number; lines?: number };
 
 /** What the last comparison found; `unchecked` until the tick has done one. */
 export function copyStatus(): CopyStatus {
@@ -100,10 +103,14 @@ export async function publishHours(): Promise<boolean> {
     if (parent) {
       const theirs = await git(['show', `${parent}:${LEDGER_PATH}`]);
       const standing = compare(readFile(ledgerFile()) ?? '', theirs.ok ? theirs.out : '');
-      if (standing.copy === 'diverged') {
-        log(`hours: the ledger is not pushed over its copy — ${standing.problem}`);
+      if (standing.copy === 'diverged' || (standing.lines ?? 0) < (copyStatus().lines ?? 0)) {
+        log(`hours: the ledger is not pushed over its copy — ${standing.problem ?? `the copy on ${ASSETS_BRANCH} is shorter than it was`}`);
         return false;
       }
+    } else if (copyStatus().lines) {
+      // A branch that held the copy and is gone was deleted: recreating it would bury that. The tick raises it.
+      log(`hours: the ledger is not pushed — the copy on ${ASSETS_BRANCH} is gone, and a new branch would hide that`);
+      return false;
     }
     const commit = await commitLedger(parent, `hours: run ${booked} booked`);
     if (!commit) {
@@ -126,10 +133,10 @@ function compare(local: string, remote: string): CopyStatus {
   const mine = local.split('\n').filter(Boolean);
   const theirs = remote.split('\n').filter(Boolean);
   for (const [i, line] of theirs.entries()) {
-    if (i >= mine.length) return { copy: 'diverged', problem: `the copy on ${ASSETS_BRANCH} has ${theirs.length - mine.length} line(s) the ledger no longer has` };
-    if (line !== mine[i]) return { copy: 'diverged', problem: `line ${i + 1} of the ledger differs from its copy on ${ASSETS_BRANCH}` };
+    if (i >= mine.length) return { copy: 'diverged', problem: `the copy on ${ASSETS_BRANCH} has ${theirs.length - mine.length} line(s) the ledger no longer has`, lines: theirs.length };
+    if (line !== mine[i]) return { copy: 'diverged', problem: `line ${i + 1} of the ledger differs from its copy on ${ASSETS_BRANCH}`, lines: theirs.length };
   }
-  return { copy: theirs.length === mine.length ? 'ok' : 'behind' };
+  return { copy: theirs.length === mine.length ? 'ok' : 'behind', lines: theirs.length };
 }
 
 /** Raises `hoursTampered` once per problem, and forgets it once the record is whole again. */
@@ -149,24 +156,46 @@ async function raise(problem: string | undefined): Promise<void> {
  * something to push, and once an hour otherwise, so a quiet week costs a fetch an hour. A file whose own
  * chain is broken is raised here too, whatever the copy says. A file the push refused — broken, or diverged
  * from the branch — keeps its marker and is tried every tick: it is not pushed until a human has put the
- * record right, and the moment they have, the next tick sees it.
+ * record right, and the moment they have, the next tick sees it. A branch out of reach for a day is
+ * raised too: an absent witness is exactly what a tamperer would arrange.
  */
 export async function checkCopy(): Promise<void> {
   const pending = fs.existsSync(unpublishedFile());
   const last = copyStatus();
-  if (!pending && nowSec() - (last.checkedAt ?? 0) < CHECK_EVERY) return;
+  const now = nowSec();
+  // The status file is on the same disk as everything else: a `checkedAt` in the future would put the
+  // next comparison off for ever, so it counts as no check at all.
+  const recent = last.checkedAt !== undefined && last.checkedAt <= now && now - last.checkedAt < CHECK_EVERY;
+  if (recent && !pending) return;
   if (pending) await publishHours();
   const local = readFile(ledgerFile()) ?? '';
   const head = await remoteHead();
   let status: CopyStatus;
-  if (head === null) status = { copy: 'unreachable', problem: 'origin could not be reached to compare the copy' };
-  else if (head === undefined) status = { copy: local ? 'behind' : 'ok' };
-  else {
+  if (head === null) {
+    // Since when the witness has been out of reach: an hour of it is the network, a day of it is raised.
+    const since = last.copy === 'unreachable' ? Math.min(last.unreachableSince ?? now, now) : now;
+    status = { copy: 'unreachable', problem: 'origin could not be reached to compare the copy', unreachableSince: since, lines: last.lines };
+  } else if (head === undefined) {
+    // No branch. Before the first push that is the normal state; after one it is a witness that was deleted.
+    status = last.lines ? { copy: 'diverged', problem: `the copy on ${ASSETS_BRANCH} is gone — the branch held ${last.lines} line(s)`, lines: last.lines } : { copy: local ? 'behind' : 'ok', lines: 0 };
+  } else {
     const shown = await git(['show', `${head}:${LEDGER_PATH}`]);
     status = compare(local, shown.ok ? shown.out : '');
+    // A copy with fewer lines than it once had was rewritten — together with the local file, or `compare`
+    // would have said so. What the branch once held is never forgotten.
+    if (status.copy !== 'diverged' && (status.lines ?? 0) < (last.lines ?? 0)) status = { copy: 'diverged', problem: `the copy on ${ASSETS_BRANCH} held ${last.lines} line(s) and now holds ${status.lines}`, lines: last.lines };
   }
-  status.checkedAt = nowSec();
+  status.checkedAt = now;
   if (!isDry()) write(statusFile(), JSON.stringify(status));
   const chain = readLedger().problem;
-  await raise(chain ? `${chain} (local file)` : status.copy === 'diverged' ? status.problem : undefined);
+  const outOfReach = status.unreachableSince !== undefined && now - status.unreachableSince >= UNREACHABLE_ALARM;
+  await raise(
+    chain
+      ? `${chain} (local file)`
+      : status.copy === 'diverged'
+        ? status.problem
+        : outOfReach
+          ? `the copy on ${ASSETS_BRANCH} has been out of reach for more than a day`
+          : undefined,
+  );
 }

@@ -43,6 +43,8 @@ export interface HoursEntry {
   seconds: number;
   ending: HoursEnding;
   billable: boolean;
+  /** The run started over — a pickup, a QA fail — and took up nothing a failed run before it left. */
+  fresh?: boolean;
   prev: string;
   hash: string;
 }
