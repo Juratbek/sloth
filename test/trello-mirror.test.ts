@@ -323,10 +323,12 @@ describe('the Trello delivery route', () => {
     expect(await send('HEAD')).toBe(200);
     const body = JSON.stringify({ action: { type: 'commentCard', data: { text: 'hello', card: { id: 'c4', name: 'Card c4' } } } });
     expect(await send('POST', body)).toBe(401);
-    expect(webhookStatus()).toMatchObject({ state: 'failed', reason: expect.stringMatching(/different secret/) });
-    expect(isWebhookLive()).toBe(false);
+    expect(webhookStatus()).toMatchObject({ rejected: 1, lastRejected: expect.any(Number) });
+    expect(webhookStatus().state).not.toBe('failed');
+    expect(exists(statePath('trello-rejected.json'))).toBe(true);
     const sign = (b: string) => crypto.createHmac('sha1', 'shh').update(`${b}https://sloth.example/api/hooks/trello`).digest('base64');
     expect(await send('POST', body, { 'x-trello-webhook': sign(body) })).toBe(200);
+    expect(webhookStatus().rejected).toBe(0);
     expect(h.ticks).toEqual([{ comments: true }]);
     const other = JSON.stringify({ action: { type: 'updateCard', data: {} } });
     expect(await send('POST', other, { 'x-trello-webhook': sign(other) })).toBe(204);

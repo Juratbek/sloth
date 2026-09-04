@@ -134,7 +134,13 @@ export const recordPing = (): void => {
   persist();
 };
 export const recordDelivery = (): void => {
-  status = { ...load(), lastDelivery: Date.now() };
+  status = { ...load(), lastDelivery: Date.now(), rejected: 0 };
+  persist();
+};
+/** A delivery that did not verify. Counted and shown, not acted on: the hook stays as it is, exactly as GitHub's route does. */
+export const recordRejection = (): void => {
+  const s = load();
+  status = { ...s, rejected: (s.rejected ?? 0) + 1, lastRejected: Date.now() };
   persist();
 };
 
@@ -192,11 +198,6 @@ const markDown = (reason: string): void => {
  * the poll drops to `fallbackCommentSeconds` at once, and the page names the secret as the thing to fix.
  * Once per state, not per delivery — a board of card moves would otherwise rewrite the status on every one.
  */
-export function markUnverified(reason: string): void {
-  if (load().state === 'failed') return;
-  settle({ state: 'failed', reason });
-}
-
 const ensure = (): void => {
   void ensureWebhook().catch((e) => log(`webhook: ${(e instanceof Error ? e.message : String(e)).split('\n')[0]}`));
 };

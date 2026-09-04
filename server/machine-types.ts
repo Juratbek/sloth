@@ -61,6 +61,9 @@ export interface WebhookStatus {
   /** The last `ping` GitHub sent, and the last mention that started a comments tick. */
   lastPing?: number;
   lastDelivery?: number;
+  /** Deliveries that failed the signature check since the last verified one — a wrong secret, or a stranger at the address. Never a reason to call the hook failed: one forged request must not take the poll down. */
+  rejected?: number;
+  lastRejected?: number;
 }
 
 /** The status as the settings page reads it: whether it is really live, and which poll that puts in force. */

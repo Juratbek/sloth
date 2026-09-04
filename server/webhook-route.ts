@@ -5,7 +5,7 @@ import { cfg } from './config';
 import { tick } from './runner/loop';
 import { log } from './runner/log';
 import { HOOK_PATH } from './webhook-gh';
-import { deliveryUrl, markUnverified, recordDelivery, recordPing, verifySignature, webhookStatus } from './webhook';
+import { deliveryUrl, recordDelivery, recordPing, recordRejection, verifySignature, webhookStatus } from './webhook';
 import { TRELLO_HOOK_PATH, trelloSecret, verifyTrelloSignature, type TrelloDelivery } from './webhook-trello';
 
 /**
@@ -97,10 +97,13 @@ async function deliver(req: IncomingMessage, res: ServerResponse): Promise<void>
   void tick({ comments: true });
 }
 
+/** How much of a rejected body is kept: enough of a real delivery to check the signature by hand, not a stranger's megabyte. */
+const KEPT_BODY = 8 << 10;
+
 /** The last rejected delivery, kept under the state directory so a signature that will not verify can be looked at. */
 function keepRejected(body: Buffer, signature: string | undefined, url: string): void {
   try {
-    fs.writeFileSync(path.join(cfg().stateDir, 'trello-rejected.json'), JSON.stringify({ at: new Date().toISOString(), url, signature, body: body.toString('base64') }));
+    fs.writeFileSync(path.join(cfg().stateDir, 'trello-rejected.json'), JSON.stringify({ at: new Date().toISOString(), url, signature, length: body.length, body: body.subarray(0, KEPT_BODY).toString('base64') }));
   } catch {
     /* diagnostics only */
   }
@@ -126,9 +129,11 @@ async function deliverTrello(req: IncomingMessage, res: ServerResponse): Promise
   // not always the address of the moment: a tunnel that just moved has a hook still pointing at the old one.
   const registered = webhookStatus().url || deliveryUrl();
   if (!verifyTrelloSignature(body, header(req, 'x-trello-webhook'), registered)) {
+    // Logged, counted and 401ed — never held against the hook: anyone who finds the address can send this, and
+    // one forged request must not push the comments poll onto the fallback. Settings shows the count.
     log('webhook: a Trello delivery arrived unsigned or signed with the wrong secret — rejected');
     keepRejected(body, header(req, 'x-trello-webhook'), registered);
-    markUnverified('Trello signs its deliveries with a different secret than the one set here — check the secret in Settings → Board; the board is polled meanwhile');
+    recordRejection();
     return end(res, 401);
   }
   let payload: TrelloDelivery;
