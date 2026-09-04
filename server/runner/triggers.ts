@@ -5,7 +5,7 @@ import { freeIn, moveCard, pickupOrder, wiredPrs } from './board';
 import type { BoardItem, Verdict } from './board';
 import { comment, gh } from './gh';
 import { isDry, log, remove, write } from './log';
-import { APPROVED_LABEL, MARKERS, skipped, statePath, unapprove } from './markers';
+import { APPROVED_LABEL, MARKERS, OWN_BRANCH, skipped, statePath, unapprove } from './markers';
 import { exitReport, exitsOf, forgetExits } from './exits';
 import { previewLink } from './preview';
 import { park } from './run-control';
@@ -53,6 +53,14 @@ export { park, pausedUntil, reap, stop } from './run-control';
  * tick. And the verdict decides where a card lives, not the marker: a Code Review card whose current head
  * already has a verdict on the PR and nobody working on it is put where that verdict says (`heal`), which
  * unsticks a card left behind by any such race, including ones from before this one was closed.
+ *
+ * With `resolveConflicts` on, an unreviewed Code Review head of Sloth's own that conflicts with its base is
+ * trigger 10's first: the round-trip rewrites the head, and a review of the old one would be a second review paid
+ * for nothing — and a verdict on a head nobody can merge. The head is left unmarked, so it keeps its turn
+ * and is reviewed as soon as it merges. A human's PR and a skipped card are not resolved, so they are
+ * reviewed as they are — and so is a head whose round-trip already ran and left it conflicting
+ * (`state/conflicts/<pr>-<sha>` with no session on the issue): trigger 10 will not try that head again,
+ * and a card nobody reviews and nobody works on would sit in Code Review for good.
  */
 export async function reviews(board: BoardItem[]): Promise<void> {
   const col = cfg().statusField.columns;
@@ -60,12 +68,16 @@ export async function reviews(board: BoardItem[]): Promise<void> {
   const cards = board.filter((i) => i.status === col.codeReview.name || inApproved(i));
   const perTick = Math.max(1, cfg().maxActive);
   let started = 0;
-  for (const { issue, pr, sha, checks, verdict } of await wiredPrs(cards.map((i) => i.number))) {
+  for (const { issue, pr, sha, head, checks, mergeable, verdict } of await wiredPrs(cards.map((i) => i.number))) {
     const marker = statePath(MARKERS.approved, `${pr}-${sha}`);
     const card = cards.find((i) => i.number === issue);
     if (dirAlive(approvedDir(pr))) continue;
     if (fs.existsSync(marker)) {
       if (card && !inApproved(card) && verdict && !issueAlive(issue)) await heal(card, pr, sha, verdict);
+      continue;
+    }
+    if (cfg().resolveConflicts && mergeable === 'CONFLICTING' && OWN_BRANCH.test(head) && card && !inApproved(card) && !skipped(card) && !fs.existsSync(statePath('conflicts', `${pr}-${sha}`))) {
+      log(`review PR #${pr} waits: head ${sha.slice(0, 7)} conflicts with its base, and the conflicts are resolved first`);
       continue;
     }
     if (issueAlive(issue)) {

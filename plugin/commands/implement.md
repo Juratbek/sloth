@@ -107,8 +107,10 @@ gh issue view "$ISSUE" --repo "$SLOTH_REPO" --json comments \
 - **Existing PR.** Look up the wired PR (`board`). If one is open **and it is Sloth's** (its head branch is
   `sloth/issue-$ISSUE-*`, or `state.json` names it), this run is a **review round-trip**: reuse that branch
   (Step 2), read the PR's review comments and unresolved threads, fix each one — or reply with the reasoning
-  when it is wrong — and continue from Step 4. An open PR that is **not** Sloth's, with no order saying what
-  to do about it, is Step Q.
+  when it is wrong — and continue from Step 4. If GitHub reports the PR as conflicting with its base
+  (`gh pr view <pr> --repo "$SLOTH_REPO" --json mergeable --jq .mergeable` says `CONFLICTING`, or the order
+  says so), the round-trip also merges the base in: see Step 2. An open PR that is **not** Sloth's, with no
+  order saying what to do about it, is Step Q.
 - Locate the code with Grep/Glob/Read, or an `Explore`-style subagent on `$SLOTH_MODEL`. **Orchestrator:**
   read only what you need to brief the implementor and to judge its work — the issue, the thread, the
   project's rules, the design; locating and reading the code is the implementor's job.
@@ -130,6 +132,11 @@ cd "$WT"
 
 For a review round-trip check the PR's branch out instead: `git -C "$WT" fetch origin "$BRANCH" &&
 git -C "$WT" checkout -q --ignore-other-worktrees -B "$BRANCH" "origin/$BRANCH"`, then the same `clean`.
+A PR that conflicts with its base is merged up to date here, before any other change: `git -C "$WT" fetch
+origin "$BASE" && git -C "$WT" merge --no-edit "origin/$BASE"`, then resolve every conflicted file keeping
+what both sides meant — the base's change and the branch's — and commit the merge. **Merge only**: never
+rebase the branch and never force-push, the PR's review comments are pinned to its commits. A conflict you
+cannot resolve without guessing is Step Q.
 From here on work **only inside `$WT`** — never the checkout at `$SLOTH_RUNNER_ROOT`, never another slot.
 
 Install dependencies the way the repo does — `CLAUDE.md` wins; otherwise detect from the lockfile:

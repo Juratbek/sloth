@@ -15,7 +15,7 @@ import { COLUMNS, alivePid, calmMachine, card, configure, exists, makeSession, r
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
 
-const wired = (prs: Record<number, { pr: number; sha: string; head: string; draft?: boolean; approved?: boolean; checks?: string; verdict?: 'passed' | 'failed' }[]>) =>
+const wired = (prs: Record<number, { pr: number; sha: string; head: string; draft?: boolean; approved?: boolean; checks?: string; mergeable?: string; verdict?: 'passed' | 'failed' }[]>) =>
   onGh(/api graphql .*closedByPullRequestsReferences/, {
     data: {
       repository: Object.fromEntries(
@@ -29,6 +29,7 @@ const wired = (prs: Record<number, { pr: number; sha: string; head: string; draf
                 isDraft: !!p.draft,
                 headRefOid: p.sha,
                 headRefName: p.head,
+                mergeable: p.mergeable ?? 'MERGEABLE',
                 reviewDecision: p.approved ? 'APPROVED' : null,
                 ...(p.checks ? { commits: { nodes: [{ commit: { statusCheckRollup: { state: p.checks } } }] } } : {}),
                 // What `/sloth:review … final` posted on this head, as the server reads it off the PR.
@@ -394,6 +395,27 @@ describe('reviews (trigger 4)', () => {
     await reviews([card(1, 'Code Review')]);
     expect(called(/item-edit|issue edit/)).toHaveLength(0);
     expect(readLog().at(-1)).toMatch(/dry-run: would move #1 to opt-approved/);
+  });
+
+  it('waits for a conflicting head of its own to be resolved when resolveConflicts is on — not a human\'s, a skipped card\'s, or one already tried', async () => {
+    configure({ resolveConflicts: true, maxActive: 4 });
+    fs.mkdirSync(statePath('conflicts'), { recursive: true });
+    fs.writeFileSync(statePath('conflicts', '13-ddd'), '');
+    wired({
+      1: [{ pr: 10, sha: 'aaa', head: 'sloth/issue-1-x', mergeable: 'CONFLICTING' }],
+      2: [{ pr: 11, sha: 'bbb', head: 'feature/x', mergeable: 'CONFLICTING' }],
+      3: [{ pr: 12, sha: 'ccc', head: 'sloth/issue-3-x', mergeable: 'CONFLICTING' }],
+      4: [{ pr: 13, sha: 'ddd', head: 'sloth/issue-4-x', mergeable: 'CONFLICTING' }],
+    });
+    await reviews([card(1, 'Code Review'), card(2, 'Code Review'), card(3, 'Code Review', { labels: ['Sloth: skip'] }), card(4, 'Code Review')]);
+    expect(launches()).toEqual(['/sloth:review 11 final', '/sloth:review 12 final', '/sloth:review 13 final']);
+    expect(exists(statePath('approved', '10-aaa'))).toBe(false);
+    expect(readLog().some((l) => /review PR #10 waits: head aaa conflicts with its base/.test(l))).toBe(true);
+    // The setting off, a conflicting head is reviewed as it is.
+    configure({ resolveConflicts: false, maxActive: 4 });
+    resetSpawn();
+    await reviews([card(1, 'Code Review')]);
+    expect(launches()).toEqual(['/sloth:review 10 final']);
   });
 
   it('still reviews Code Review without an Approved column', async () => {

@@ -153,15 +153,12 @@ export interface SlothConfig {
   /** One model per agent; a config from before this had `model` for every session and `approvedModel` for the final review. */
   models: AgentModels;
   /**
-   * Run implement sessions as an orchestrator on `models.orchestrator` that delegates every code change
-   * to an implementor subagent on `models.implement` (the default); off, the session on `models.implement` writes the
+   * Run implement sessions as an orchestrator on `models.orchestrator` that delegates every code change to an
+   * implementor subagent on `models.implement` (the default); off, the session on `models.implement` writes the
    * code itself. Either way the tester and the reviewer are subagents on their own models.
    */
   orchestrator: boolean;
-  /**
-   * Give implement sessions a headless Chrome (Playwright MCP), so a tester subagent can click through the
-   * change and screenshot it for the PR. Needs Google Chrome (or Chromium) on this machine.
-   */
+  /** Give implement sessions a headless Chrome (Playwright MCP) for the tester subagent's screenshots. Needs Google Chrome (or Chromium) here. */
   chrome: boolean;
   /** Start Sloth when this machine is logged into, through a macOS launch agent (`server/service.ts`). */
   autostart: boolean;
@@ -210,9 +207,13 @@ export interface SlothConfig {
    */
   autoMerge: MergeMethod;
   /**
-   * Comment a "follow it live" link to the session's monitor page on the issue a run starts for. The
-   * link is on the public address, in a thread everyone with read access to the repository can see —
-   * so off by default, even when a tunnel or `publicUrl` makes the UI reachable.
+   * Trigger 10 (`runner/lifecycle.ts`): a PR Sloth wrote that conflicts with its base, its card in Code Review, gets its
+   * session sent back to merge the base in and resolve the conflicts, once per head; the review waits for the resolved head.
+   */
+  resolveConflicts: boolean;
+  /**
+   * Comment a "follow it live" link to the session's monitor page on the issue a run starts for. The link is on
+   * the public address, in a thread everyone with read access can see — so off by default, tunnel or `publicUrl` or not.
    */
   liveLinks: boolean;
   /** The argv Sloth runs to reach the UI from outside; `{port}` is the UI's port. The first bare https URL it prints is the address. */
@@ -278,6 +279,7 @@ export const CONFIG_DEFAULTS = {
   helpWebhook: '',
   webhookEvents: ['needsHelp'] as WebhookEvent[],
   autoMerge: '' as MergeMethod,
+  resolveConflicts: false,
   liveLinks: false,
   tunnel: DEFAULT_TUNNEL,
   publicUrl: '',

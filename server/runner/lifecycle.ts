@@ -13,9 +13,10 @@ import { park } from './run-control';
 
 /**
  * The end of a card's life: what Sloth does once the work is over or the PR turns out not to be done
- * after all. Triggers 6, 7 and 8 — a closed issue is filed away and its leftovers swept up, a red check
- * on Sloth's own PR goes back to the session that wrote it, and a PR that passed its review is merged
- * when the user asked for that.
+ * after all. Triggers 6, 7, 8 and 10 — a closed issue is filed away and its leftovers swept up, a red check
+ * on Sloth's own PR goes back to the session that wrote it, a PR that passed its review is merged when the
+ * user asked for that, and a Code Review PR that no longer merges is sent back to be made mergeable when
+ * the user asked for that too.
  */
 
 /** The columns Sloth still has something to do in — a card outside them is nobody's business here. */
@@ -137,6 +138,40 @@ export async function failedChecks(board: BoardItem[]): Promise<void> {
     const order =
       `The checks on PR #${pr} fail on commit ${sha.slice(0, 7)}: this is a review round-trip — ` +
       'check the branch out, make the checks pass, push, keep the PR.';
+    if (!(await launch(issue, order))) break;
+    if (!isDry()) write(marker, '');
+  }
+}
+
+/**
+ * Trigger 10 — a PR Sloth wrote conflicts with its base, its card in Code Review. Every PR Sloth opens
+ * moves the base for every other one still open, so with a few of them in flight the older ones stop
+ * merging; a human resolving them by hand is the work this trigger takes over, when `resolveConflicts`
+ * says so. The same round-trip as trigger 7: the implement session goes back to the branch, merges the
+ * base in, resolves the conflicts, gets the checks green and pushes — the PR keeps its number — and the
+ * card comes back to Code Review on a new head, which trigger 4 then reviews. Once per `<pr>-<sha>`, so a
+ * head the session could not resolve is not tried again until the branch moves. Code Review only: an
+ * Approved card's conflict is a human's to see before the merge (trigger 8 says so, once), and a card
+ * still In Progress has its session on it. A human's PR, a `Sloth: skip` card, a live session on the
+ * issue and a review still running on the PR are all left alone — one actor owns a card at a time, and
+ * the review's own verdict would otherwise land on a head this run is rewriting. `UNKNOWN` is GitHub
+ * still computing: worth waiting a tick for.
+ */
+export async function conflicts(board: BoardItem[]): Promise<void> {
+  const c = cfg();
+  if (!c.resolveConflicts) return;
+  const column = c.statusField.columns.codeReview.name;
+  const cards = board.filter((i) => i.status === column && !skipped(i));
+  if (!cards.length) return;
+  for (const { issue, pr, sha, head, base, mergeable } of await wiredPrs(cards.map((i) => i.number))) {
+    if (!OWN_BRANCH.test(head) || mergeable !== 'CONFLICTING') continue;
+    const marker = statePath('conflicts', `${pr}-${sha}`);
+    if (fs.existsSync(marker) || issueAlive(issue) || dirAlive(approvedDir(pr))) continue;
+    const into = base ? `\`origin/${base}\`` : 'its base branch';
+    const order =
+      `PR #${pr} conflicts with its base on commit ${sha.slice(0, 7)}: this is a review round-trip — ` +
+      `check the branch out, merge ${into} into it, resolve every conflict keeping what both sides meant, ` +
+      'make the checks pass, push, keep the PR. Merge only: never rebase, never force-push.';
     if (!(await launch(issue, order))) break;
     if (!isDry()) write(marker, '');
   }

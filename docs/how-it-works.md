@@ -37,7 +37,11 @@ board. When it finds work, it starts a Claude Code session to do it. That is all
    Problems: it comments inline on each one and moves the card back to *In Progress*, and the session that
    wrote the PR is started again on the same branch to address them — a round-trip, the PR keeps its number.
    Clean: the issue gets the label `Fable: approved` and the card moves to *Approved*. No human reads code
-   here unless they want to.
+   here unless they want to. With several PRs open at once the older ones stop merging as the newer ones
+   land; turn on *Resolve merge conflicts* in Settings → General (`resolveConflicts`, off by default) and a
+   PR of Sloth's that conflicts with its base while its card sits in *Code Review* gets the same round-trip:
+   the session merges the base into the branch, resolves the conflicts, pushes, and the review waits for
+   that head instead of reading one that cannot merge. Once per version of the PR, only Sloth's own PRs.
 6. **A human tests it in *Approved*.** Sloth comments on the issue that the card is ready to test, with the
    preview link (the sign-in notes are on the PR); with no preview — your own PR, previews off — it points at
    the PR to check out. That head is not reviewed again. A push to the branch after the pass takes the label

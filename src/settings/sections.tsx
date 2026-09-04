@@ -60,6 +60,12 @@ export function General({ draft, patch }: SectionProps) {
           options={MERGE_OPTIONS}
         />
       </Row>
+      <Row
+        label="Resolve merge conflicts"
+        hint="Keep the PRs in Code Review mergeable: when a PR Sloth wrote conflicts with its base, the session goes back to the branch, merges the base in and resolves the conflicts — once per commit, keeping the PR — and the review waits for the resolved head. Only Sloth's own PRs, only cards in Code Review. Off leaves conflicts to a human."
+      >
+        <Toggle checked={draft.resolveConflicts} onChange={(resolveConflicts) => patch({ resolveConflicts })} label="Resolve merge conflicts" />
+      </Row>
     </>
   );
 }
