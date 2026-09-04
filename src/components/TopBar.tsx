@@ -56,7 +56,7 @@ function TickButton({ busy }: { busy: boolean }) {
 }
 
 /** What each check is called where a person reads it, rather than the id the server uses. */
-const CHECK_NAMES: Record<HealthId, string> = { gh: 'gh', git: 'git', chrome: 'browser', sudo: 'sudo' };
+const CHECK_NAMES: Record<HealthId, string> = { gh: 'gh', git: 'git', chrome: 'browser', sudo: 'sudo', trello: 'Trello' };
 
 /** Every check on one line each, for the chip's tooltip — the failing ones are named on the chip itself. */
 const healthTitle = (health: Health): string =>

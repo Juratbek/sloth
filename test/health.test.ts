@@ -178,6 +178,6 @@ describe('the cache and the ten-minute gate', () => {
     // …and says so again when the machine changes its mind.
     onExecFile(/gh auth status/, { stdout: 'Logged in' });
     await refreshHealth();
-    expect(readLog().filter((l) => l.includes('all in order'))).toHaveLength(1);
+    expect(readLog().filter((l) => l.includes('every check is in order'))).toHaveLength(1);
   });
 });

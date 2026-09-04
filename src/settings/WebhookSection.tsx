@@ -19,7 +19,7 @@ export default function WebhookBlock() {
   const failed = w?.state === 'failed';
   return (
     <Row
-      label="GitHub webhook"
+      label="Comment webhook"
       hint={
         <>
           Sloth points the repository's webhook at its own public address, so an <code>@sloth</code> comment is read the moment it is

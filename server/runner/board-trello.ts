@@ -1,7 +1,6 @@
 import { SKIP_LABEL } from '../board-types';
 import { cfg } from '../config';
-import { DEFAULT_COLUMN_NAMES, OPTIONAL_COLUMNS, OPT_IN_COLUMNS } from '../config-types';
-import type { ColumnRef, ColumnRole, ConfigColumns } from '../config-types';
+import type { ColumnRef } from '../config-types';
 import * as trello from '../trello';
 import type { TrelloCard, TrelloList } from '../trello';
 import type { BoardItem } from './board';
@@ -18,10 +17,11 @@ import { isDry, log } from './log';
  * one query for every linked card, so a label on either side counts.
  */
 
-const ROLES: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved', 'qa', 'done'];
-
-/** The card of each linked issue, from the last read — what a move needs and the read already knows. */
+/** The card of each linked issue and the issue of each linked card, from the last read — what a move and the comment mirror need. */
 let cardIds = new Map<number, string>();
+let issueIds = new Map<string, number>();
+export const cardIdOf = (issue: number): string | undefined => cardIds.get(issue);
+export const issueOfCard = (cardId: string): number | undefined => issueIds.get(cardId);
 
 const boardId = () => cfg().project.id;
 
@@ -58,7 +58,18 @@ async function linkCard(card: TrelloCard, number: number, link: string): Promise
     log(`Trello card "${card.name}": issue #${number} not attached, writing it into the description — ${e instanceof Error ? e.message : String(e)}`);
     await trello.describe(card.id, `${card.desc?.trim() ? `${card.desc.trim()}\n\n` : ''}GitHub issue: ${link}`);
   }
-  await trello.commentCard(card.id, `Sloth opened ${link} for this card. Talk to Sloth in that issue's comments; the card follows the work.`);
+  await trello.commentCard(card.id, `Sloth is on this card. Comment here to talk to it — mention ${cfg().mention} to ask or to give an order — and it answers here.`);
+}
+
+/** A card the mirror met before the board read did — someone commented on it: linked to its issue, opened now when it has none. */
+export async function linkCardToIssue(cardId: string): Promise<number | undefined> {
+  const card = await trello.card(cardId);
+  const issue = issueOf(card) ?? (labelNames(card).includes(SKIP_LABEL) ? undefined : await openIssue(card));
+  if (issue) {
+    cardIds.set(issue, card.id);
+    issueIds.set(card.id, issue);
+  }
+  return issue;
 }
 
 /** Opens the issue a pickup card stands for and links the two, or says it would. Returns the number, or nothing when it could not. */
@@ -143,6 +154,7 @@ export async function fetchTrelloBoard(): Promise<BoardItem[] | undefined> {
     return undefined;
   }
   cardIds = new Map(linked.map((l) => [l.issue, l.card.id]));
+  issueIds = new Map(linked.map((l) => [l.card.id, l.issue]));
   const rank = new Map<string, number>();
   return linked.map(({ card, issue }) => {
     const at = rank.get(card.idList) ?? 0;
@@ -153,7 +165,7 @@ export async function fetchTrelloBoard(): Promise<BoardItem[] | undefined> {
       title: card.name,
       status: listName.get(card.idList) ?? '',
       labels: [...new Set([...labelNames(card), ...(f?.labels ?? [])])],
-      assignees: [],
+      assignees: (card.members ?? []).map((m) => m.username).filter(Boolean),
       closed: f?.closed ?? false,
       priority: at,
     };
@@ -165,8 +177,27 @@ async function cardOf(issue: number): Promise<string | undefined> {
   const known = cardIds.get(issue);
   if (known) return known;
   const found = (await trello.cards(boardId())).find((c) => issueOf(c) === issue);
-  if (found) cardIds.set(issue, found.id);
+  if (found) {
+    cardIds.set(issue, found.id);
+    issueIds.set(found.id, issue);
+  }
   return found?.id;
+}
+
+/** An issue with no card gets one, in the list it is being moved to — an issue opened on GitHub and ordered there is work like any other. */
+async function cardFor(issue: number, listId: string): Promise<string | undefined> {
+  const c = cfg();
+  const r = await gh(['issue', 'view', String(issue), '--repo', c.repo, '--json', 'title', '--jq', '.title']);
+  if (!r.ok) {
+    log(`#${issue} has no Trello card and its title could not be read: ${r.err.split('\n')[0]}`);
+    return undefined;
+  }
+  const link = `https://github.com/${c.repo}/issues/${issue}`;
+  const card = await trello.createCard(listId, r.out.trim() || `#${issue}`, `GitHub issue: ${link}`, link);
+  cardIds.set(issue, card.id);
+  issueIds.set(card.id, issue);
+  log(`#${issue} -> new Trello card "${card.name}"`);
+  return card.id;
 }
 
 /** Moves an issue's card to a list, at the top of it. */
@@ -176,11 +207,8 @@ export async function moveTrelloCard(issue: number, listId: string): Promise<boo
     return true;
   }
   try {
-    const card = await cardOf(issue);
-    if (!card) {
-      log(`#${issue} move failed: no Trello card is linked to it`);
-      return false;
-    }
+    const card = (await cardOf(issue)) ?? (await cardFor(issue, listId));
+    if (!card) return false;
     await trello.moveCard(card, listId);
     return true;
   } catch (e) {
@@ -188,6 +216,8 @@ export async function moveTrelloCard(issue: number, listId: string): Promise<boo
     return false;
   }
 }
+
+export { ensureTrelloLists } from './board-trello-lists';
 
 /** Every open list on the board, left to right, as the columns a session may move a card to. */
 export async function trelloColumns(): Promise<ColumnRef[]> {
@@ -206,41 +236,4 @@ export async function ensureTrelloSkipLabel(): Promise<void> {
   } catch (e) {
     log(`label "${SKIP_LABEL}" not created on the Trello board: ${e instanceof Error ? e.message : String(e)}`);
   }
-}
-
-const asked = (role: ColumnRole, wanted: Record<ColumnRole, ColumnRef>) => !OPT_IN_COLUMNS.includes(role) || !!(wanted[role].id || wanted[role].name);
-const byName = (lists: TrelloList[], name: string) => lists.find((l) => l.name.toLowerCase() === name.toLowerCase());
-
-/**
- * Resolves the column roles to real lists, creating the missing ones — the flow lists right after the
- * pickup list, Done at the far right — the way `ensureColumns` does for a Status field.
- */
-export async function ensureTrelloLists(board: string, wanted: Record<ColumnRole, ColumnRef>): Promise<ConfigColumns> {
-  let lists = await trello.lists(board);
-  const resolve = (role: ColumnRole): TrelloList | undefined =>
-    asked(role, wanted) ? (lists.find((l) => l.id === wanted[role].id) ?? byName(lists, wanted[role].name || DEFAULT_COLUMN_NAMES[role])) : undefined;
-  const pickup = resolve('pickup');
-  if (!pickup) throw new Error(`the watched list "${wanted.pickup.name}" is not on this board`);
-  const nameOf = (role: ColumnRole) => wanted[role].name || DEFAULT_COLUMN_NAMES[role];
-  const middle = (['inProgress', 'needsHelp', 'codeReview', 'approved', 'qa'] as ColumnRole[]).filter((role) => asked(role, wanted) && !resolve(role));
-  const last = (['done'] as ColumnRole[]).filter((role) => asked(role, wanted) && !resolve(role));
-  if (middle.length || last.length) {
-    log(`creating Trello lists: ${[...middle, ...last].map(nameOf).join(', ')}`);
-    const after = lists.find((l) => l.pos > pickup.pos);
-    const gap = after ? (after.pos - pickup.pos) / (middle.length + 1) : 1024;
-    for (const [i, role] of middle.entries()) await trello.createList(board, nameOf(role), pickup.pos + gap * (i + 1));
-    for (const role of last) await trello.createList(board, nameOf(role), 'bottom');
-    lists = await trello.lists(board);
-  }
-  const out = {} as ConfigColumns;
-  for (const role of ROLES) {
-    const found = resolve(role);
-    if (!found && OPTIONAL_COLUMNS.includes(role) && !asked(role, wanted)) {
-      out[role] = { id: '', name: '' };
-      continue;
-    }
-    if (!found) throw new Error(`could not resolve the ${role} list`);
-    out[role] = { id: found.id, name: found.name };
-  }
-  return out;
 }

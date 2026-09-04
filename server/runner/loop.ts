@@ -6,6 +6,7 @@ import type { BoardItem } from './board';
 import { setSnapshot } from './board-snapshot';
 import { refreshColumns } from './columns';
 import { comments } from './comments';
+import { mirrorComments } from './trello-mirror';
 import { autoMerge, conflicts, failedChecks, finished } from './lifecycle';
 import { isDry, log, nowSec, withDry } from './log';
 import { boardEvents } from './notify-events';
@@ -133,6 +134,8 @@ async function tickSteps({ board = false, comments: wantComments = false }: Tick
     else await step('machine', readMachine);
     if (wantComments) {
       state.lastComment = Date.now();
+      // On a Trello board the card's comments come onto the issue first, so trigger 3 reads them like any other.
+      await step('mirror', mirrorComments);
       await step('comments', comments);
     }
     if (!board) return;

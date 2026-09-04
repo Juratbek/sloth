@@ -9,6 +9,8 @@ import { envValue } from './config';
 
 export const TRELLO_KEY = 'SLOTH_TRELLO_KEY';
 export const TRELLO_TOKEN = 'SLOTH_TRELLO_TOKEN';
+/** The key's OAuth secret — what Trello signs webhook deliveries with; without it there is no webhook, only the poll. */
+export const TRELLO_SECRET = 'SLOTH_TRELLO_SECRET';
 const API = 'https://api.trello.com/1';
 
 export const trelloReady = (): boolean => !!envValue(TRELLO_KEY)?.trim() && !!envValue(TRELLO_TOKEN)?.trim();
@@ -34,6 +36,22 @@ export interface TrelloCard {
   shortUrl: string;
   labels: TrelloLabel[];
   attachments?: { url: string; name: string }[];
+  members?: TrelloMember[];
+}
+/** One comment on a card — a `commentCard` action of the board. */
+export interface TrelloComment {
+  id: string;
+  date: string;
+  cardId: string;
+  memberId: string;
+  username: string;
+  text: string;
+}
+export interface TrelloWebhook {
+  id: string;
+  callbackURL: string;
+  idModel: string;
+  active: boolean;
 }
 export interface TrelloBoard {
   id: string;
@@ -106,10 +124,40 @@ export async function cards(boardId: string): Promise<TrelloCard[]> {
     fields: 'id,name,desc,idList,pos,closed,shortUrl,labels',
     attachments: true,
     attachment_fields: 'url,name',
+    members: true,
+    member_fields: 'id,username',
     filter: 'open',
   });
   return all.filter((c) => !c.closed).sort((a, b) => a.pos - b.pos);
 }
+
+/** One card, with what `cards` reads of every card. */
+export const card = (cardId: string) =>
+  trello<TrelloCard>('GET', `/cards/${cardId}`, { fields: 'id,name,desc,idList,pos,closed,shortUrl,labels', attachments: true, attachment_fields: 'url,name', members: true, member_fields: 'id,username' });
+
+/** A new card at the top of a list, with `link` attached to it. */
+export const createCard = (listId: string, name: string, desc: string, link: string) => trello<TrelloCard>('POST', '/cards', { idList: listId, name, desc, urlSource: link, pos: 'top' });
+
+interface RawAction {
+  id: string;
+  date: string;
+  data?: { card?: { id?: string }; text?: string };
+  memberCreator?: { id?: string; username?: string };
+}
+
+/** Every comment written on the board since `since` (ISO), oldest first — one call for the whole board. */
+export async function boardComments(boardId: string, since: string): Promise<TrelloComment[]> {
+  const raw = await trello<RawAction[]>('GET', `/boards/${boardId}/actions`, { filter: 'commentCard', since, limit: 1000, fields: 'id,date,data', memberCreator_fields: 'id,username' });
+  return raw
+    .filter((a) => a.data?.card?.id && typeof a.data.text === 'string')
+    .map((a) => ({ id: a.id, date: a.date, cardId: a.data!.card!.id!, memberId: a.memberCreator?.id ?? '', username: a.memberCreator?.username ?? '', text: a.data!.text! }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** The webhooks this token owns. */
+export const webhooks = () => trello<TrelloWebhook[]>('GET', `/tokens/${envValue(TRELLO_TOKEN) ?? ''}/webhooks`);
+export const createWebhook = (boardId: string, callbackURL: string) => trello<TrelloWebhook>('POST', '/webhooks', { idModel: boardId, callbackURL, description: 'Sloth' });
+export const updateWebhook = (id: string, boardId: string, callbackURL: string) => trello<TrelloWebhook>('PUT', `/webhooks/${id}`, { idModel: boardId, callbackURL, active: true });
 
 export const moveCard = (cardId: string, listId: string) => trello<TrelloCard>('PUT', `/cards/${cardId}`, { idList: listId, pos: 'top' });
 

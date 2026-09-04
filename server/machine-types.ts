@@ -50,9 +50,10 @@ export interface StackStatus {
  */
 export interface WebhookStatus {
   state: 'off' | 'active' | 'failed';
-  /** The address GitHub was given — `<public URL>/api/hooks/github`. */
+  /** The address the provider was given — `<public URL>/api/hooks/github`, or `/api/hooks/trello` on a Trello board. */
   url?: string;
-  hookId?: number;
+  /** GitHub numbers its hooks; Trello names them. */
+  hookId?: number | string;
   /** Why it is not delivering; absent while it is. */
   reason?: string;
   /** When the state above was last decided. */
@@ -117,7 +118,7 @@ export interface ServiceStatus {
 }
 
 /** One thing the runner needs in order to do any work at all — see `server/health.ts`. */
-export type HealthId = 'gh' | 'git' | 'chrome' | 'sudo';
+export type HealthId = 'gh' | 'git' | 'chrome' | 'sudo' | 'trello';
 export interface HealthCheck {
   id: HealthId;
   ok: boolean;

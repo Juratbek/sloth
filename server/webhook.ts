@@ -6,6 +6,7 @@ import { cfg } from './config';
 import { onRemoteChange, remoteStatus } from './remote';
 import { isDry, log } from './runner/log';
 import { HOOK_PATH, createHook, firstLine, listHooks, updateHook } from './webhook-gh';
+import { TRELLO_HOOK_PATH, ensureTrelloHook } from './webhook-trello';
 import type { WebhookInfo, WebhookStatus } from './machine-types';
 
 /**
@@ -60,10 +61,13 @@ function persist(): void {
 
 /** Where the outside world reaches this Sloth: the tunnel's address, or the one the config names. */
 const publicBase = (): string => remoteStatus().url || cfg().publicUrl || '';
-/** The address GitHub should be delivering to right now; empty when Sloth is not reachable at all. */
-const deliveryUrl = (): string => {
+const onTrello = () => cfg().project.provider === 'trello';
+/** The path the board's provider delivers to — GitHub's hook and Trello's are told apart by it. */
+const hookPath = (): string => (onTrello() ? TRELLO_HOOK_PATH : HOOK_PATH);
+/** The address the provider should be delivering to right now; empty when Sloth is not reachable at all. */
+export const deliveryUrl = (): string => {
   const base = publicBase();
-  return base ? `${base.replace(/\/+$/, '')}${HOOK_PATH}` : '';
+  return base ? `${base.replace(/\/+$/, '')}${hookPath()}` : '';
 };
 
 /**
@@ -148,8 +152,19 @@ export async function ensureWebhook(): Promise<WebhookStatus> {
   const url = deliveryUrl();
   if (!url) return settle({ state: 'off', reason: 'no public URL (remote access is off or the tunnel is down)' });
   if (isDry()) {
-    log(`dry-run: would point the ${cfg().repo} webhook at ${url}`);
-    return settle({ state: 'off', reason: 'dry run — the repository webhook is left alone' });
+    log(`dry-run: would point the ${onTrello() ? 'Trello board' : cfg().repo} webhook at ${url}`);
+    return settle({ state: 'off', reason: 'dry run — the webhook is left alone' });
+  }
+  if (onTrello()) {
+    try {
+      const hookId = await ensureTrelloHook(cfg().project.id, url);
+      log(`webhook: Trello board ${cfg().project.title} delivers card comments to ${url}`);
+      return settle({ state: 'active', url, hookId });
+    } catch (e) {
+      const reason = firstLine(e instanceof Error ? e.message : String(e));
+      log(`webhook: not configured — ${reason}`);
+      return settle({ state: 'failed', reason });
+    }
   }
   try {
     const repo = cfg().repo;
@@ -190,7 +205,7 @@ export function startWebhook(): void {
     wired = true;
     onRemoteChange((remote) => {
       if (remote.url) ensure();
-      else if (!cfg().publicUrl) markDown('the tunnel is down — GitHub cannot reach Sloth');
+      else if (!cfg().publicUrl) markDown('the tunnel is down — nothing can reach Sloth');
     });
   }
   ensure();

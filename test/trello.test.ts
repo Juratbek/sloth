@@ -9,7 +9,7 @@ import { setDry } from '../server/runner/log';
 import { ensureSkipLabel } from '../server/runner/markers';
 import { sessionEnv } from '../server/runner/session-env';
 import type { TrelloCard } from '../server/trello';
-import { called, onGh, resetGh } from './gh-mock';
+import { called, fail, onGh, resetGh } from './gh-mock';
 import { COLUMNS, baseConfig, card, configure, readLog, sessionDir } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
@@ -148,7 +148,7 @@ describe('fetchBoard on Trello', () => {
     const attach = trelloCalls(/POST \/cards\/c1\/attachments/);
     expect(attach).toHaveLength(1);
     expect(attach[0].params.get('url')).toBe('https://github.com/acme/widgets/issues/41');
-    expect(trelloCalls(/POST \/cards\/c1\/actions\/comments/)[0].params.get('text')).toMatch(/opened https:\/\/github\.com\/acme\/widgets\/issues\/41/);
+    expect(trelloCalls(/POST \/cards\/c1\/actions\/comments/)[0].params.get('text')).toMatch(/Sloth is on this card\. Comment here to talk to it — mention @sloth/);
     expect(readLog().at(-1)).toMatch(/Trello card "Add a login page" → issue #41/);
 
     resetGh();
@@ -191,8 +191,9 @@ describe('moveCard on Trello', () => {
     expect(await moveCard(6, 'l-wip')).toBe(true);
     expect(trelloCalls(/PUT \/cards\/c6/)).toHaveLength(1);
     answers[`GET /boards/${BOARD}/cards`] = [];
+    onGh(/issue view 7/, fail('no such issue'));
     expect(await moveCard(7, 'l-wip')).toBe(false);
-    expect(readLog().at(-1)).toMatch(/#7 move failed: no Trello card is linked to it/);
+    expect(readLog().at(-1)).toMatch(/#7 has no Trello card and its title could not be read: no such issue/);
     setDry(true);
     expect(await moveCard(8, 'l-wip')).toBe(true);
     expect(readLog().at(-1)).toMatch(/dry-run: would move #8 to Trello list l-wip/);

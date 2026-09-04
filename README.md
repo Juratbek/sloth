@@ -158,29 +158,42 @@ rides the 5-minute poll (`GET /api/health`, `POST /api/health/check`).
 
 ## Trello boards
 
-A Trello board works in place of a GitHub Projects one: its lists are Sloth's columns, its cards the
-work. The code, the comments, the PRs and the reviews stay on GitHub — a Trello card is *linked* to a
-GitHub issue, and the sessions work the issue as they always have:
+A Trello board works in place of a GitHub Projects one, and a person on it never touches GitHub: the
+cards are the issues, the lists are the columns, the card's comments are the conversation. The code, the
+PRs and the reviews live in the GitHub repository as always — every card Sloth works has a GitHub issue
+behind it, opened and kept in step by Sloth, which the team on Trello need not look at.
 
 - **Credentials.** Put `SLOTH_TRELLO_KEY` and `SLOTH_TRELLO_TOKEN` in Sloth's environment (`.env` in the
   project root works). A key comes from [trello.com/power-ups/admin](https://trello.com/power-ups/admin)
   (a Power-Up of your own, *API key*); the token from the *Token* link beside the key, authorised for the
-  account the board is on. The wizard and Settings → *Board* then list the Trello boards beside the GitHub
-  ones, and the columns step shows the board's lists — missing ones are created on save, like Status options.
-- **Linking.** A card that carries the issue's URL (attached to the card, or in its description) is that
-  issue's card. A card in the watched list that carries none gets an issue opened for it — the card's
-  name as the title, its description as the body, the card's URL at the end — and the issue's URL attached
-  to the card, with a comment saying where to talk to Sloth. A card outside the watched list with no issue
-  is a note, not work, and is left alone.
-- **Order.** Cards are picked up top to bottom within the watched list; drag one up to have it taken first.
-  `priorityField` does nothing on Trello.
-- **Labels.** `Sloth: skip` on the card (Sloth creates the label on the board) or on the issue holds a card back; `Fable: approved`
-  lives on the issue as before. Trigger 6 files a card away by the issue's close, as before.
+  account the board is on. The key's *Secret* on the same page is `SLOTH_TRELLO_SECRET` — it is what makes
+  the webhook possible (below). The wizard and Settings → *Board* then list the Trello boards beside the
+  GitHub ones, and the columns step shows the board's lists — missing ones are created on save, like
+  Status options. The Trello login is checked with the rest of the machine's health.
+- **Cards and issues.** A card in the watched list gets a GitHub issue opened for it — the card's name as
+  the title, its description as the body — and the issue's URL attached to the card; a card that already
+  carries an issue's URL (attached, or in its description) is that issue's card. A comment that mentions
+  Sloth on a card in any list opens its issue too. An issue that reaches the board from GitHub's side (an
+  `@sloth` order on an issue nobody made a card for) gets a card. A card outside the watched list with no
+  issue and no mention is a note, not work.
+- **Comments, both ways.** Every comment on a linked card is copied onto its issue under the author's
+  Trello name, and every comment on the issue is copied onto the card — Sloth's own words as they are, a
+  person's under their GitHub login. So `@sloth` on the card is an order or a question exactly as on an
+  issue (trigger 3), an answer on the card is the answer a parked card waits for (trigger 6, and the
+  session's inbox while it waits), and Sloth's questions, park notes, status replies and the "ready to
+  test" link all appear on the card. The team in `roles` are **Trello usernames** on a Trello board.
+  A comment older than an hour, or older than the first time the mirror ran, is not copied.
+- **The webhook.** With `SLOTH_TRELLO_SECRET` set and a public address (see *Remote access*), Sloth
+  points a Trello webhook for the board at `/api/hooks/trello` itself and verifies every delivery against
+  the secret; a comment on a card is then read within seconds. Without the secret there is no webhook and
+  the comments are polled every `fallbackCommentSeconds`, as on GitHub without one.
+- **Order and labels.** Cards are picked up top to bottom within the watched list; drag one up to have it
+  taken first (`priorityField` does nothing on Trello). `Sloth: skip` on the card — Sloth creates the label
+  on the board — or on the issue holds a card back; `Fable: approved` lives on the issue. Card members are
+  shown on the board page as the card's assignees. Trigger 6 files a card away by its issue's close.
 - **Sessions.** A session reads and moves its card through Sloth (`SLOTH_BOARD_API`, `GET /api/board/card/<issue>`
   and `POST /api/board/move`, from this machine only) instead of `gh project`; the plugin's `board` skill has the
-  calls. Everything else a session does is unchanged.
-- **Comments.** Conversation with Sloth happens on the GitHub issue; a comment on the Trello card is not read
-  (yet). The comment webhook and the mention polls are GitHub's.
+  calls. Everything else a session does is unchanged — it reads and writes the issue, and the mirror carries it.
 
 In `config.json` a Trello board is `project.provider: "trello"` with the board id in `project.id` (and in
 `statusField.id`), the list ids as the columns' ids. A config without `provider` is a GitHub board.
@@ -223,7 +236,7 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | Key | Default | Means |
 |---|---|---|
 | `runnersDir` / `worktreesDir` / `sessionsDir` / `stateDir` / `watcherLog` | under `~/.sloth/` | Where checkouts, worktrees, session directories, markers and the log live |
-| `roles` | `{admin, developers, testers}` | The team: the one login that orders anything, the logins that order within an issue, the logins that answer and ask. A config from before roles keeps its `orderLogin` as the admin |
+| `roles` | `{admin, developers, testers}` | The team: the one login that orders anything, the logins that order within an issue, the logins that answer and ask — GitHub logins, or Trello usernames on a Trello board. A config from before roles keeps its `orderLogin` as the admin |
 | `mention` / `botPrefix` | `@sloth` / `**Sloth:**` | The keyword that wakes Sloth; the first line of every comment it writes |
 | `maxActive` / `maxAlive` | `2` / `3` | Session caps — `maxActive` is also the size of the worktree pool |
 | `minFreeMemory` / `minIdleCpu` / `minIdleDisk` | `10` / `5` / `10` | No new session while less of the machine's memory is available / of its CPU is idle / of its busiest disk is idle (percent, the last one being 100 minus Task Manager's *Disk*), and the lowest-priority running session is paused while it stays that way; `0` turns a check off. `minIdleDisk` does nothing on macOS, which exposes no busy-time counter to read it from — see *Machine limits* |
@@ -253,7 +266,7 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `stack` | `"auto"` | What the sessions' app needs on this machine, out of the stack Sloth can install: `postgresql`, `redis`, `node`, `python`, `java` (see *Stack* below). `auto` reads the checkout at every start; a list pins it |
 
 Environment: `SLOTH_CONFIG`, `SLOTH_PORT` (default `4400`), `SLOTH_DRY_RUN=1` to log what every
-tick *would* do without doing it, and `SLOTH_TRELLO_KEY` / `SLOTH_TRELLO_TOKEN` for a Trello board. A `.env` in the project root works too.
+tick *would* do without doing it, and `SLOTH_TRELLO_KEY` / `SLOTH_TRELLO_TOKEN` / `SLOTH_TRELLO_SECRET` for a Trello board. A `.env` in the project root works too.
 
 ## Model providers
 
