@@ -6,7 +6,7 @@ import { tick } from './runner/loop';
 import { log } from './runner/log';
 import { HOOK_PATH } from './webhook-gh';
 import { deliveryUrl, markUnverified, recordDelivery, recordPing, verifySignature, webhookStatus } from './webhook';
-import { TRELLO_HOOK_PATH, verifyTrelloSignature, type TrelloDelivery } from './webhook-trello';
+import { TRELLO_HOOK_PATH, trelloSecret, verifyTrelloSignature, type TrelloDelivery } from './webhook-trello';
 
 /**
  * Where GitHub's deliveries land. This is the one route that is *not* behind `remote.ts`'s guard:
@@ -114,9 +114,13 @@ function keepRejected(body: Buffer, signature: string | undefined, url: string):
  * is an order or a question, anything else may be the answer a parked card waits for.
  */
 async function deliverTrello(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  // Off Trello the route does not exist; with no secret no hook was ever registered, so a delivery is
+  // nobody's and says nothing about the webhook that is live.
+  if (cfg().project.provider !== 'trello') return end(res, 404);
   const method = req.method ?? 'GET';
   if (method === 'HEAD' || method === 'GET') return end(res, 200);
   if (method !== 'POST') return end(res, 405);
+  if (!trelloSecret()) return end(res, 401);
   const body = await rawBody(req);
   // Signed over the body and the callback URL the hook was registered with — the address Trello was given, which is
   // not always the address of the moment: a tunnel that just moved has a hook still pointing at the old one.

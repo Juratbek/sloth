@@ -10,6 +10,8 @@ export interface SetupCheck {
   error?: string;
 }
 export interface SetupEnv {
+  /** Where this instance's directories default to — `~/.sloth`, or beside a config file given by `SLOTH_CONFIG`. */
+  home: string;
   claude: SetupCheck;
   gh: SetupCheck;
   ghAuth: SetupCheck;

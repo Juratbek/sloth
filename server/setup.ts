@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { CONFIG_PATH, reloadConfig } from './config';
+import { SLOTH_HOME_LABEL } from './env';
 import { run } from './exec';
 import { expandPath, normalizeConfig, readConfigFile, writeConfigFile } from './config-file';
 import { watchAll } from './events';
@@ -42,7 +43,7 @@ async function trelloAuth(): Promise<SetupCheck> {
 
 async function environment(): Promise<SetupEnv> {
   const [claude, gh, auth, trelloCheck] = await Promise.all([version('claude'), version('gh'), ghAuth(), trelloReady() ? trelloAuth() : undefined]);
-  return { claude, gh, ghAuth: auth, ...(trelloCheck ? { trello: trelloCheck } : {}) };
+  return { home: SLOTH_HOME_LABEL, claude, gh, ghAuth: auth, ...(trelloCheck ? { trello: trelloCheck } : {}) };
 }
 
 /**

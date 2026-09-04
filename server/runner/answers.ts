@@ -42,7 +42,7 @@ async function answerOn(issue: number): Promise<Answer | undefined> {
       continue;
     }
     // A comment the Trello mirror copied onto the issue is its Trello author's answer, not the login that copied it.
-    const { login } = mirrorAuthor({ login: author, body });
+    const { login } = mirrorAuthor({ id: Number(id), login: author, body });
     const role = roleOf(c.roles, login);
     if (asked && role && canAnswer(role)) answer ??= { id: Number(id), login, role };
   }

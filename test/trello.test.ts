@@ -251,12 +251,17 @@ describe('columns and labels on Trello', () => {
 });
 
 describe('the board API for sessions', () => {
-  it('answers a card’s column from the last read, and moves by column name', async () => {
-    expect(cardInfo(4)).toEqual({ issue: 4, column: '', asOf: expect.any(String) });
+  it('answers a card’s column live from Trello, from the last read when the card is unknown, and moves by column name', async () => {
+    expect(await cardInfo(4)).toEqual({ issue: 4, column: '', asOf: expect.any(String) });
     setSnapshot([card(4, 'Todo')]);
-    expect(cardInfo(4).column).toBe('Todo');
+    expect((await cardInfo(4)).column).toBe('Todo');
     await refreshColumns();
     answers[`GET /boards/${BOARD}/cards`] = [linked('c4', 'l-todo', 4)];
+    await fetchBoard();
+    answers['GET /cards/c4'] = linked('c4', 'l-review', 4);
+    expect((await cardInfo(4)).column).toBe('Code Review');
+    answers['GET /cards/c4'] = new Error('Trello is down');
+    expect((await cardInfo(4)).column).toBe('Todo');
     expect(await moveFromSession({ issue: 4, column: 'in progress' })).toEqual({ ok: true, issue: 4, column: 'In Progress' });
     expect(trelloCalls(/PUT \/cards\/c4/)[0].params.get('idList')).toBe('l-wip');
     expect(await moveFromSession({ issue: 4, column: 'Planning' })).toMatchObject({ ok: false, error: expect.stringMatching(/no such column: Planning — the board has Backlog, Todo/) });

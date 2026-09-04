@@ -1,15 +1,20 @@
 import { cfg } from './config';
+import * as trello from './trello';
 import { moveCard } from './runner/board';
 import { snapshot } from './runner/board-snapshot';
+import { cardIdOf } from './runner/board-trello';
 import { knownColumns } from './runner/columns';
+import { log } from './runner/log';
 import { serial } from './runner/loop';
 
 /**
  * The board for a session: which column an issue's card is in, and a move. A session on a GitHub board
  * has `gh project` for both; on any other board it has this — `SLOTH_BOARD_API` in its environment,
  * reached from the machine Sloth runs on, so the plugin's `board` skill needs to know one shape of board
- * and not each provider's API. The column read is the last board tick's (`board-snapshot.ts`), never a
- * fetch of its own; the move goes on the tick chain like every other mutation.
+ * and not each provider's API. The column read is the card's list as Trello has it now — a session
+ * decides on it (whether the card is still in progress before it hands over), and a human's move of five
+ * minutes ago must count; the last board tick's (`board-snapshot.ts`) answers when Trello does not. The
+ * move goes on the tick chain like every other mutation.
  */
 
 export interface CardInfo {
@@ -21,8 +26,18 @@ export interface CardInfo {
 
 const columnByName = (name: string) => knownColumns().find((c) => c.id === name || c.name.toLowerCase() === name.toLowerCase());
 
-/** `GET /api/board/card/<issue>` — the card's column from the last read. */
-export function cardInfo(issue: number): CardInfo {
+/** `GET /api/board/card/<issue>` — the card's column: live from Trello when the card is known, else from the last read. */
+export async function cardInfo(issue: number): Promise<CardInfo> {
+  const cardId = cfg().project.provider === 'trello' ? cardIdOf(issue) : undefined;
+  if (cardId) {
+    try {
+      const listId = (await trello.card(cardId)).idList;
+      const column = knownColumns().find((c) => c.id === listId);
+      if (column) return { issue, column: column.name, asOf: new Date().toISOString() };
+    } catch (e) {
+      log(`#${issue} card read from Trello failed, answering from the last board read — ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
+    }
+  }
   const last = snapshot();
   const item = last?.items.find((i) => i.number === issue);
   return { issue, column: item?.status ?? '', asOf: last ? new Date(last.at).toISOString() : '' };

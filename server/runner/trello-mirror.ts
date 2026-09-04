@@ -8,7 +8,7 @@ import { cardIdOf, issueOfCard, linkCardToIssue } from './board-trello';
 import { deliver } from './comments';
 import { gh } from './gh';
 import { isDry, log, write } from './log';
-import { issueAlive } from './session-dirs';
+import { issueDir, stateOf } from './session-dirs';
 
 /**
  * The card's comments and the issue's are one conversation. A person on a Trello board writes on the
@@ -19,6 +19,10 @@ import { issueAlive } from './session-dirs';
  * linked issue that is not such a copy is copied onto the card: Sloth's own words as they are, a
  * person's under their GitHub login. Once each way, remembered under `state/mirrored/`; the window is
  * the last hour, like the mention search, and nothing older than the first run of the mirror is copied.
+ *
+ * The header is honoured only on a comment this mirror wrote (`c-<comment id>` under `state/mirrored/`):
+ * anyone who can write on the issue can type `**@admin on Trello:**`, and without the marker that line
+ * would make them the admin. Off Trello no comment is ever a copy.
  */
 
 const LOOKBACK = 60 * 60;
@@ -48,10 +52,30 @@ function floor(): number {
 
 const since = () => new Date(Math.max(Date.now() - LOOKBACK * 1000, floor())).toISOString().replace(/\.\d+Z$/, 'Z');
 
-/** A copied comment as trigger 3 should see it: the Trello author's name and their own words, or the comment as it is. */
-export function mirrorAuthor<T extends { login: string; body: string }>(c: T): T {
+/** A copy this mirror made, as trigger 3 should see it: the Trello author's name and their own words. Any other comment as it is, header or not. */
+export function mirrorAuthor<T extends { id: number; login: string; body: string }>(c: T): T {
+  if (cfg().project.provider !== 'trello' || !seen(`c-${c.id}`)) return c;
   const m = HEADER.exec(c.body);
   return m ? { ...c, login: m[1], body: c.body.slice(m[0].length) } : c;
+}
+
+const PRUNE_AFTER = 30 * 24 * 60 * 60 * 1000;
+let pruned = false;
+/** The markers outlive the window they guard by a month, then go — one file per comment for ever is not a state directory. */
+function prune(): void {
+  if (pruned) return;
+  pruned = true;
+  const dir = mirrorDir();
+  const cutoff = Date.now() - PRUNE_AFTER;
+  for (const name of fs.readdirSync(dir)) {
+    if (name === 'started') continue;
+    const file = path.join(dir, name);
+    try {
+      if (fs.statSync(file).mtimeMs < cutoff) fs.rmSync(file, { force: true });
+    } catch {
+      /* gone already */
+    }
+  }
 }
 
 /** The issues the mirror just wrote on: trigger 3 reads them this very tick, ahead of the search index. */
@@ -96,10 +120,11 @@ async function cardsToIssues(): Promise<void> {
     log(`#${issue} <- Trello comment by ${c.username}`);
     mark(key);
     const id = Number(copied.out.trim());
+    if (id) mark(`c-${id}`);
     const role = roleOf(cfg().roles, c.username);
-    // Trigger 3 reads a mention and decides; anything else written to a live session — an answer to its
-    // question, a remark — is delivered as the session's own thread poll would find it, without the wait.
-    if (mention.test(c.text) || !role || !issueAlive(issue) || !id) pending.add(issue);
+    // Trigger 3 reads a mention and decides; anything else written to a session that is waiting for an
+    // answer is delivered as the session's own thread poll would find it, without the wait.
+    if (mention.test(c.text) || !role || !id || stateOf(issueDir(issue)).state !== 'waiting') pending.add(issue);
     else {
       deliver({ number: issue, issue }, { id, login: c.username, body: c.text }, role);
       write(path.join(cfg().stateDir, 'seen', String(id)), '');
@@ -156,6 +181,7 @@ async function issuesToCards(): Promise<void> {
 export async function mirrorComments(): Promise<void> {
   if (cfg().project.provider !== 'trello') return;
   fs.mkdirSync(mirrorDir(), { recursive: true });
+  prune();
   try {
     await cardsToIssues();
   } catch (e) {

@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -96,9 +97,19 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('mirrorAuthor', () => {
-  it('gives a copied comment back its Trello author and their words, and leaves any other comment alone', () => {
-    expect(mirrorAuthor({ login: 'gh-login', body: '**@friend on Trello:**\n\n@sloth start over' })).toEqual({ login: 'friend', body: '@sloth start over' });
-    expect(mirrorAuthor({ login: 'gh-login', body: 'plain' })).toEqual({ login: 'gh-login', body: 'plain' });
+  const copy = { id: 900, login: 'gh-login', body: '**@friend on Trello:**\n\n@sloth start over' };
+  it('gives a comment the mirror copied back its Trello author and their words, and leaves any other comment alone', () => {
+    fs.mkdirSync(statePath('mirrored'), { recursive: true });
+    fs.writeFileSync(statePath('mirrored', 'c-900'), '');
+    expect(mirrorAuthor(copy)).toEqual({ id: 900, login: 'friend', body: '@sloth start over' });
+    expect(mirrorAuthor({ id: 901, login: 'gh-login', body: 'plain' })).toEqual({ id: 901, login: 'gh-login', body: 'plain' });
+  });
+  it('does not let a header typed by hand make its author someone else — not without the mirror’s marker, and never off Trello', () => {
+    expect(mirrorAuthor({ ...copy, id: 777 })).toEqual({ ...copy, id: 777 });
+    fs.mkdirSync(statePath('mirrored'), { recursive: true });
+    fs.writeFileSync(statePath('mirrored', 'c-900'), '');
+    configure({ roles: { admin: 'friend', developers: ['dev'], testers: ['tess'] } });
+    expect(mirrorAuthor(copy)).toEqual(copy);
   });
 });
 
@@ -137,9 +148,20 @@ describe('card comments onto the issue', () => {
     expect(inbox).toMatch(/author: tess\nrole: tester\ncomment: 900/);
     expect(inbox).toMatch(/Use the blue button/);
     expect(exists(statePath('seen', '900'))).toBe(true);
+    expect(exists(statePath('mirrored', 'c-900'))).toBe(true);
+  });
+  it('leaves a plain remark to a session that is working for trigger 3, as on GitHub', async () => {
+    await fetchBoard();
+    makeSession('issue', 4, { pid: alivePid(), 'state.json': { state: 'working' } });
+    answers[`GET /boards/${BOARD}/actions`] = [cardComment('a1', 'c4', 'tess', 'Looks good so far.')];
+    await mirrorComments();
+    expect(exists(`${sessionDir('issue', 4)}/inbox/900.md`)).toBe(false);
+    expect(exists(statePath('seen', '900'))).toBe(false);
   });
   it('is the answer trigger 6 relaunches a parked card on', async () => {
     await fetchBoard();
+    fs.mkdirSync(statePath('mirrored'), { recursive: true });
+    fs.writeFileSync(statePath('mirrored', 'c-900'), '');
     onGh(/api repos\/acme\/widgets\/issues\/4\/comments --paginate/, [[800, 'gh-login', Buffer.from('**Sloth:** Which colour?').toString('base64')].join('\t'), [900, 'gh-login', Buffer.from('**@tess on Trello:**\n\nBlue.').toString('base64')].join('\t')].join('\n'));
     await answered([{ number: 4, title: 'Card c4', status: 'Sloth needs help', labels: [], assignees: [], closed: false }]);
     expect(spawned).toHaveLength(1);
@@ -282,6 +304,18 @@ describe('the Trello delivery route', () => {
       req.end(body);
     });
 
+  it('is no route off Trello, and without a secret refuses a delivery without blaming the webhook', async () => {
+    delete process.env.SLOTH_TRELLO_SECRET;
+    configure({ project: { provider: 'github', id: 'PVT_1', number: 1, owner: 'acme', title: 'Widgets' } });
+    const body = JSON.stringify({ action: { type: 'commentCard', data: { text: 'hello', card: { id: 'c4', name: 'Card c4' } } } });
+    expect(await send('HEAD')).toBe(404);
+    expect(await send('POST', body)).toBe(404);
+    expect(webhookStatus().state).not.toBe('failed');
+    configure({ project: { provider: 'trello', id: BOARD, number: 0, owner: 'friend', title: 'Widgets' }, statusField: { id: BOARD, columns: LISTS } });
+    expect(await send('POST', body)).toBe(401);
+    expect(webhookStatus().state).not.toBe('failed');
+    expect(exists(statePath('trello-rejected.json'))).toBe(false);
+  });
   it('answers Trello’s HEAD, rejects an unsigned POST, and starts a comments tick on a signed card comment', async () => {
     process.env.SLOTH_TRELLO_SECRET = 'shh';
     configure({ project: { provider: 'trello', id: BOARD, number: 0, owner: 'friend', title: 'Widgets' }, statusField: { id: BOARD, columns: LISTS }, publicUrl: 'https://sloth.example' });
