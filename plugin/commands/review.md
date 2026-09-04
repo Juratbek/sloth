@@ -72,6 +72,15 @@ ambiguous.
    **violations of the project's own rules** — read the repo's `CLAUDE.md` / `AGENTS.md` and the rule files
    relevant to the changed code before citing one. A divergence from the project's documented behaviour is a
    bug.
+   **A code comment is a bug** — Sloth's code carries none: not a line or block comment, not a docstring or
+   JSDoc, not commented-out code, not a `TODO`. Only a directive the toolchain reads (`eslint-disable`,
+   `# type: ignore`, `"use client"`, a shebang, a licence header the repo already carries) or a comment the
+   project's `CLAUDE.md` explicitly requires may stay. For every other comment the diff **adds**, the
+   inline comment names the fix: delete it, and if the code needed it, rename the variable, function or
+   constant so it does not — or extract a function named for what the stretch does. A comment already in
+   the file before this PR is not a finding. Names that hide what they hold or do (`d`, `tmp`, `check`,
+   `handle`, `data2`, a bare number where a named constant belongs) are findings for the same reason:
+   the code must read without explanation.
 3. **Scope** — changes unrelated to the wired issue: drive-by refactors, formatting churn in untouched code,
    features nobody asked for. A small refactor that directly enables the fix is fine, not "unnecessary".
 4. **Checks** — `gh pr checks <N> --repo "$SLOTH_REPO"`; a failing required check is a bug: "OK to merge" is

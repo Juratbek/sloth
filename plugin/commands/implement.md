@@ -154,7 +154,19 @@ only when the lockfile changed since — a "Lockfile is up to date" install is a
 Scope tightly to the issue plus any order or extra instructions. Follow the project's rules and conventions
 exactly. Do not add tests unless the issue asks or the repo requires them with the change.
 
-**Name the cause of a reported bug**, in the code, before fixing it. When the order, the extra instructions
+**No code comments.** Write no comment in any file you touch — no line comment, no block comment, no
+docstring, no JSDoc, no commented-out code, no `TODO` — and remove the ones you would have written. The
+code says what it does through its names: a variable named for what it holds (`retryDelayMs`, not `d`), a
+function named for what it does (`isExpired(token)`, not `check(t)`), a boolean that reads as a fact
+(`hasUnsavedChanges`), a magic number bound to a named constant (`MAX_REVIEW_ROUNDS = 4`). When a stretch
+of code needs explaining, split it into a well-named function instead of annotating it. The only exceptions
+are the ones the file cannot do without: a directive the toolchain reads (`// eslint-disable-next-line`,
+`# type: ignore`, `"use client"`, a shebang, a licence header the repo already carries) and comments the
+project's own `CLAUDE.md` explicitly requires. An existing comment in code you did not otherwise change
+stays — no drive-by deletions.
+
+**Name the cause of a reported bug** — where in the code it is and why it breaks — in your notes and the
+PR's `## Why`, never as a comment in the code, before fixing it. When the order, the extra instructions
 or the fix you chose remove the symptom and leave that cause standing, carry it into the PR's `## Why` as
 one line — `Root cause left: <what it is, what still breaks because of it>`. The order stands: this is a
 statement in the PR, not a Step Q question. Never ship a symptom fix silently.
@@ -183,9 +195,12 @@ Its brief carries everything it cannot read for itself, and nothing it can:
 - where the project's rules are (`CLAUDE.md` / `AGENTS.md`, the rules and skills they point at) — it reads
   and follows them itself;
 - the scope: tightly the issue, no unrelated cleanup, no tests unless the issue or the repo asks;
+- **no code comments** — the rule above, quoted in full: names carry the meaning, a stretch that needs
+  explaining becomes a well-named function, only toolchain directives and comments the project's
+  `CLAUDE.md` requires are allowed;
 - the time it has: `$SLOTH_DEADLINE` minus what Steps 4–6 need (`session` skill);
-- what to return: the files changed and why, on a reported bug its cause in the code and whether the change
-  removes it, the exact checks it ran (the repo's `test` / `lint` / `build` / `typecheck` scripts scoped to
+- what to return: the files changed and why, on a reported bug where in the code its cause is and whether
+  the change removes it, the exact checks it ran (the repo's `test` / `lint` / `build` / `typecheck` scripts scoped to
   its change, per Step 4) with their outcome, the design-fidelity walk when
   there is a design, and anything it could not do or found ambiguous — **as a question for you, never a
   guess**. It writes no commits, no comments, no PR, no board moves: those are yours.
