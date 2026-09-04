@@ -10,26 +10,33 @@ import { rateLimit, titleFor } from './watcher';
  * by issue, the failed runs listed with how they ended, and the runs still going. Hours only — the rate
  * is the invoice's business, not Sloth's. Months are UTC, so an invoice reads the same wherever it is read.
  *
- * A failed run is in one of two places. When a later run took the card up — one booked after it on the
- * same issue, or one running on it now — its hours are **continued**: they went into work that went on,
- * and the invoice charges them at half rate; they are summed apart from the billable hours so the invoice
- * can. When nobody took the card up they are **excluded**: booked with their reason, billed nothing. Which
- * of the two a run is depends on what came after it, so it is decided here at read time over the whole
- * ledger, never written into the line.
+ * A failed run is in one of two places. When a later run took its work up, its hours are **continued**:
+ * they went into work that went on, and the invoice charges them at half rate; they are summed apart from
+ * the billable hours so the invoice can. When nobody took the work up they are **excluded**: booked with
+ * their reason, billed nothing. Taking up means a *billable* run on the same issue, started within
+ * `CONTINUE_DAYS` of the failure, that did not start over (`fresh`: a pickup, a QA fail). A failure
+ * followed only by more failures is charged nothing — the work never reached the client — and a run still
+ * going counts for nothing until it is booked, since it may yet fail too. Which of the two a run is depends
+ * on what came after it, so it is decided here at read time, never written into the line; the window is
+ * what makes a month's figures final once it has passed.
  */
+
+/** How long after a failure a billable run on the same issue still counts as taking its work up. */
+export const CONTINUE_DAYS = 30;
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const monthOf = (sec: number) => new Date(sec * 1000).toISOString().slice(0, 7);
 /** `YYYY-MM` of now, or of the argument when it is one. */
 export const monthArg = (wanted: string | null | undefined): string => (wanted && MONTH.test(wanted) ? wanted : monthOf(nowSec()));
 
-/** The failed entries a later run — booked after them, or alive now — took up, by their line number. */
-function continuedLines(entries: HoursEntry[], alive: HoursLive[]): Set<number> {
+/** The failed entries a later billable run took up, by their line number. */
+function continuedLines(entries: HoursEntry[]): Set<number> {
   const out = new Set<number>();
-  const liveIssues = new Set(alive.map((l) => l.issue).filter((i): i is number => !!i));
+  const window = CONTINUE_DAYS * 24 * 3600;
   for (const [i, e] of entries.entries()) {
     if (e.billable || !e.issue) continue;
-    if (liveIssues.has(e.issue) || entries.slice(i + 1).some((later) => later.issue === e.issue)) out.add(e.n);
+    const takenUp = entries.slice(i + 1).some((later) => later.issue === e.issue && later.billable && !later.fresh && later.startedAt >= e.endedAt && later.startedAt <= e.endedAt + window);
+    if (takenUp) out.add(e.n);
   }
   return out;
 }
@@ -88,7 +95,7 @@ export async function hoursReport(wanted?: string | null): Promise<HoursReport> 
   const coreRemaining = (await rateLimit())?.core?.remaining;
   const { entries, problem } = readLedger();
   const alive = live();
-  const continued = continuedLines(entries, alive);
+  const continued = continuedLines(entries);
   const shown = entries.filter((e) => monthOf(e.endedAt) === month);
   const copy = copyStatus();
   const sum = (list: HoursEntry[], of: (e: HoursEntry) => boolean) => list.reduce((n, e) => (of(e) ? n + e.seconds : n), 0);

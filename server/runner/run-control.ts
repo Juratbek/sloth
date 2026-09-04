@@ -4,7 +4,7 @@ import { cfg } from '../config';
 import { moveCard, reviewVerdict } from './board';
 import { cleanup, cleanupRun, keepWarm } from './cleanup';
 import type { HoursEnding } from '../hours-types';
-import { bookRun } from './hours';
+import { bookRun, KILL_GRACE } from './hours';
 import { exitLine, exitReport, forgetExits, recordExit } from './exits';
 import { comment } from './gh';
 import { killTree } from './kill';
@@ -24,7 +24,6 @@ import { ANSWER_MINUTES, answeredAt, forgetWaiting, trackWaiting, waitedSeconds 
  * a session once it is Sloth's, and the two only meet at `park`, which every bad ending goes through.
  */
 
-const KILL_GRACE = 5 * 60; // extra time before Sloth kills a session that is past its budget
 const LIMIT_PAUSE = 30 * 60; // how long the whole watcher sleeps after a usage-limit exit
 /** The reason `reap` stops a hung run with — the one stop the ledger books as `budget` rather than `stopped`. */
 export const BUDGET_REASON = 'hung past the budget';
@@ -83,7 +82,14 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
       log(`dry-run: would end parked ${name}: ${reason}`);
       return true;
     }
-    remove(path.join(dir, 'pid'));
+    // A pid file still here means `reap` has not booked this run yet — it stopped to ask, and is billed as
+    // such. Reap takes the file with the booking, so a run it already booked is not booked a second time.
+    if (fs.existsSync(path.join(dir, 'pid'))) {
+      bookRun(kind, target, dir, 'waiting');
+      remove(path.join(dir, 'pid'));
+      forgetPause(dir);
+      forgetWaiting(dir);
+    }
     await cleanup(target);
     write(path.join(dir, 'state.json'), JSON.stringify({ ...state, state: 'done', since: nowSec(), note: `parked run ended: ${reason}` }));
     log(`#${target} parked run ended: ${reason}`);
@@ -181,15 +187,21 @@ export async function reap(): Promise<void> {
     const name = `${kind}-${target}`;
     if (!dirAlive(dir)) {
       const limit = usageLimit(dir);
-      const { state = 'working', step } = stateOf(dir);
+      const { state, step } = stateOf(dir);
       // The run's hours are booked before its files go: how it ended decides whether they are billed. A
       // run `done` at the question step (`Q`) asked and gave up when `waitHours` passed with no answer.
-      const finished = state !== 'working' || (!limit && (await verdictPosted(kind, target, dir)));
-      const ending: HoursEnding = limit ? 'usageLimit' : state === 'done' ? (step === 'Q' ? 'noResponse' : 'done') : state !== 'working' ? 'waiting' : finished ? 'verdict' : predatesBoot(pidFile) ? 'rebooted' : 'died';
+      // Only the two states the skill defines count as finished: anything else a session wrote is a run
+      // that ended working — never billed on a word nobody defined.
+      const said = state === 'done' || state === 'waiting';
+      const finished = said || (!limit && (await verdictPosted(kind, target, dir)));
+      const ending: HoursEnding = limit ? 'usageLimit' : state === 'done' ? (step === 'Q' ? 'noResponse' : 'done') : state === 'waiting' ? 'waiting' : finished ? 'verdict' : predatesBoot(pidFile) ? 'rebooted' : 'died';
       bookRun(kind, target, dir, ending);
-      remove(pidFile);
-      forgetPause(dir);
-      forgetWaiting(dir);
+      // A dry tick booked nothing, so it forgets nothing: the real tick after it books the run once.
+      if (!isDry()) {
+        remove(pidFile);
+        forgetPause(dir);
+        forgetWaiting(dir);
+      }
       if (!limit) {
         if (!finished) {
           if (kind === 'issue') {
@@ -223,7 +235,8 @@ export async function reap(): Promise<void> {
       await sweepDead(kind, target);
       continue;
     }
-    trackWaiting(dir);
+    // An issue run's card is the board's word on whether it is parked; a review or QA run never parks.
+    trackWaiting(dir, kind === 'issue' ? target : undefined);
     const budget = (kind === 'qa' ? cfg().qa.budgetMinutes : cfg().budgetMinutes) * 60;
     // The time a run spent paused for the machine, or parked waiting for an answer, is not its own: the
     // budget clock stands still meanwhile. And a run that got its answer keeps the skill's promise — the

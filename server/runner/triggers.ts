@@ -181,7 +181,9 @@ export async function pickup(board: BoardItem[]): Promise<void> {
       remove(path.join(issueDir(issue), 'retries'));
       forgetExits(issueDir(issue));
       // A pickup is a start-over, so the dead run's handoff note goes too — only a retry continues from it.
+      // The ledger hears the same: this run took nothing up, so no failed run before it is charged for.
       remove(path.join(issueDir(issue), 'handoff.md'));
+      write(path.join(issueDir(issue), 'started_fresh'), '1');
     }
   }
 }

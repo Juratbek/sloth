@@ -10,7 +10,7 @@ import { moveCard } from './board';
 import { mcpConfig } from './browser';
 import { runHeader } from './exits';
 import { run } from './gh';
-import { isDry, log, remove, write } from './log';
+import { isDry, log, readFile, remove, write } from './log';
 import { cleanup } from './cleanup';
 import { stopPreview } from './preview';
 import { APPEND_PROMPT, sessionEnv, type SessionExtras, type Target } from './session-env';
@@ -85,10 +85,19 @@ export function start(bookDir: string, sessionDir: string, prompt: string, targe
     { cwd: c.runnerRoot, detached: true, stdio: ['ignore', fd, fd], env: { ...sessionEnv(sessionDir, target, model, !!mcp, extras), ...options.env } },
   );
   fs.closeSync(fd);
-  if (child.pid) write(path.join(bookDir, 'pid'), String(child.pid));
-  // When this run began, in Sloth's hand. The session writes its own `state.json` and rewrites `since`
-  // at every step; this it never touches, so the time budget has something it cannot move (`launchedAt`).
-  write(path.join(bookDir, 'started'), String(Math.floor(Date.now() / 1000)));
+  const pid = child.pid;
+  if (pid) {
+    write(path.join(bookDir, 'pid'), String(pid));
+    // When this run began, in Sloth's hand. The session writes its own `state.json` and rewrites `since`
+    // at every step; this it never touches, so the time budget has something it cannot move (`launchedAt`).
+    write(path.join(bookDir, 'started'), String(Math.floor(Date.now() / 1000)));
+    // …and when it ended, to the second, for the hours ledger: the tick that reaps it may be minutes behind.
+    // Only while this is still the run in `pid` — a relaunch after a kill must not inherit the old exit.
+    remove(path.join(bookDir, 'exited'));
+    child.on('exit', () => {
+      if (readFile(path.join(bookDir, 'pid'))?.trim() === String(pid)) write(path.join(bookDir, 'exited'), String(Math.floor(Date.now() / 1000)));
+    });
+  } else log(`${prompt.split(' ')[0]} did not start: claude could not be spawned — the previous run's files are left as they were`);
   child.unref();
   // A run on an issue tells the issue where to watch it; a status reply borrows the directory and is
   // not a run of its own (`bookDir` differs), and the stack install has no issue.
@@ -116,6 +125,13 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
   fs.mkdirSync(path.join(dir, 'inbox'), { recursive: true });
   remove(path.join(dir, 'state.json'));
   remove(path.join(dir, 'blocked'));
+  // A start-over ordered before this launch (a QA fail) becomes this run's own mark, read by the ledger
+  // when it is booked: a run that took nothing up continues no failed run before it. A pickup writes the
+  // mark itself, after the launch.
+  if (fs.existsSync(path.join(dir, 'fresh'))) {
+    write(path.join(dir, 'started_fresh'), '1');
+    remove(path.join(dir, 'fresh'));
+  } else remove(path.join(dir, 'started_fresh'));
   // `handoff.md` stays on purpose: it is the dead run's note to the run launched here, and a retry that
   // reads it continues where the last one stopped instead of re-deriving everything. A fresh start —
   // pickup, a QA fail — removes it before calling launch.
