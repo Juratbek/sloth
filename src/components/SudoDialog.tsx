@@ -41,8 +41,8 @@ export default function SudoDialog({ root, ids, onClose }: { root?: string; ids:
       <form className="space-y-3" onSubmit={submit}>
         <p className="text-xs leading-relaxed text-zinc-400">
           The password of the user Sloth runs as is used <b className="text-zinc-200">once, right now</b>, to write{' '}
-          <code className="text-zinc-300">/etc/sudoers.d/sloth</code> — the line that lets Sloth run <code>apt-get</code>,{' '}
-          <code>service</code>, <code>systemctl</code> and <code>createuser</code> without a password, and nothing else. It is
+          <code className="text-zinc-300">/etc/sudoers.d/sloth</code> — the exact <code>apt-get</code>, <code>service</code>,{' '}
+          <code>systemctl</code> and <code>createuser</code> lines the install runs, argument for argument, and nothing else. It is
           then forgotten: never stored, never logged, never written to disk, never given to a session. An AI session then
           installs what is missing, here on this page.
         </p>

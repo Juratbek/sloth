@@ -35,7 +35,7 @@ export const TOOLS: Record<StackId, Tool> = {
     command: 'redis-server',
     version: ['--version'],
     brew: { formula: 'redis' },
-    apt: { packages: ['redis-server'] },
+    apt: { packages: ['redis-server'], service: 'redis-server' },
     pattern: /redis|bullmq/i,
   },
   node: {

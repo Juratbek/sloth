@@ -13,18 +13,21 @@ You are not in a checkout's worktree — do not touch the repository you happen 
 
 ## Sudo
 
-On Linux, exactly these run under sudo and only with `-n` (never a password prompt):
+On Linux the sudoers rule Sloth wrote (`/etc/sudoers.d/sloth`) allows **exactly these command lines**, argument
+for argument, and `sudo -n` refuses every other line — a different flag, a different order, an extra option, a
+package not in the table. Run them verbatim, always with `-n` (never a password prompt):
 
 ```bash
-sudo -n apt-get update -q
-sudo -n apt-get install -y -q <packages>
-sudo -n service <name> start          # or sudo -n systemctl start <name>
+DEBIAN_FRONTEND=noninteractive sudo -n apt-get update -q
+DEBIAN_FRONTEND=noninteractive sudo -n apt-get install -y -q <packages>   # the tool's packages, in the table's order
+sudo -n service <service> start        # or: sudo -n systemctl start <service>; `restart` is allowed the same way
 sudo -n -u postgres createuser -s "$USER"
 ```
 
 **Never** ask anyone for a password, never read one from a file or the environment, never run `sudo` without
-`-n`, never run any other command through sudo. If `sudo -n` is refused, stop: report that the sudoers rule
-is missing and that the Stack page can write it.
+`-n`, never run any other command through sudo — it is refused, and a refusal is not a problem to work around.
+If a line above is refused, stop: report that the sudoers rule is missing or stale and that the Stack page can
+write it again.
 
 On macOS use `brew install …` / `brew services start …` with no sudo at all.
 
@@ -38,8 +41,9 @@ On macOS use `brew install …` / `brew services start …` with no sudo at all.
 | `python` | `python3 python3-pip python3-venv` | `python` | — | `python3 --version` |
 | `java` | `default-jdk` | `openjdk` (link it) | — | `java --version` |
 
-`DEBIAN_FRONTEND=noninteractive` on every apt call. With PostgreSQL, make the user Sloth runs as a superuser
-(`createuser -s "$USER"`) so a session can `createdb` — it may already exist, which is fine.
+`DEBIAN_FRONTEND=noninteractive` in front of every apt call (the rule lets that one variable through). With
+PostgreSQL, make the user Sloth runs as a superuser (`createuser -s "$USER"`) so a session can `createdb` — it may
+already exist, which is fine.
 
 ## How to go about it
 

@@ -1,3 +1,4 @@
+import os from 'node:os';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /** The executables this fake machine has; `which` is the only thing standing between the code and a real box. */
@@ -9,7 +10,7 @@ vi.mock('../server/install', async (importOriginal) => ({
 vi.mock('node:child_process', () => import('./child-process-mock'));
 
 import { setDry } from '../server/runner/log';
-import { installer, handleStack } from '../server/stack';
+import { installer, installSteps, handleStack } from '../server/stack';
 import { sudoersRule } from '../server/sudo';
 import { executed, onExecFile, resetSpawn, spawned } from './child-process-mock';
 import { configure, readLog, wipe } from './harness';
@@ -34,12 +35,50 @@ beforeEach(() => {
 });
 
 describe('sudoersRule', () => {
-  it('grants apt-get, service, systemctl and createuser by absolute path, and nothing else', () => {
-    expect(sudoersRule('sloth', PATHS)).toBe(
-      "# Written by Sloth so it can install the project's stack without a password.\n" +
-        'sloth ALL=(root) NOPASSWD: /usr/bin/apt-get, /usr/sbin/service, /usr/bin/systemctl\n' +
-        'sloth ALL=(postgres) NOPASSWD: /usr/bin/createuser\n',
+  it('grants the exact install lines by absolute path and argument, and nothing else', () => {
+    const rule = sudoersRule('sloth', PATHS);
+    expect(rule).toBe(
+      "# Written by Sloth so it can install the project's stack without a password: these exact command lines, nothing else.\n" +
+        'Defaults:sloth env_keep += "DEBIAN_FRONTEND"\n' +
+        'sloth ALL=(root) NOPASSWD: /usr/bin/apt-get update -q, \\\n' +
+        '    /usr/bin/apt-get install -y -q postgresql, \\\n' +
+        '    /usr/sbin/service postgresql start, \\\n' +
+        '    /usr/sbin/service postgresql restart, \\\n' +
+        '    /usr/bin/systemctl start postgresql, \\\n' +
+        '    /usr/bin/systemctl restart postgresql, \\\n' +
+        '    /usr/bin/apt-get install -y -q redis-server, \\\n' +
+        '    /usr/sbin/service redis-server start, \\\n' +
+        '    /usr/sbin/service redis-server restart, \\\n' +
+        '    /usr/bin/systemctl start redis-server, \\\n' +
+        '    /usr/bin/systemctl restart redis-server, \\\n' +
+        '    /usr/bin/apt-get install -y -q nodejs npm, \\\n' +
+        '    /usr/bin/apt-get install -y -q python3 python3-pip python3-venv, \\\n' +
+        '    /usr/bin/apt-get install -y -q default-jdk\n' +
+        'sloth ALL=(postgres) NOPASSWD: /usr/bin/createuser -s sloth\n',
     );
+  });
+  it('never names a program without its arguments — the lines that would be root with an argument of their own', () => {
+    const rule = sudoersRule('sloth', PATHS);
+    for (const line of rule.split('\n').filter((l) => /NOPASSWD/.test(l) || /^\s+\//.test(l))) {
+      for (const cmd of line.replace(/^.*NOPASSWD: /, '').split(/, \\?$|, /).filter(Boolean)) {
+        expect(cmd.trim().split(' ').length, cmd).toBeGreaterThan(1);
+      }
+    }
+    expect(rule).not.toMatch(/NOPASSWD: ALL/);
+    expect(rule).not.toMatch(/apt-get(, |\n)/);
+    expect(rule).not.toMatch(/systemctl(, |\n)/);
+  });
+  it('runs the same lines it grants: every apt install step is one of the rule\'s entries', () => {
+    const user = os.userInfo().username;
+    const granted = sudoersRule(user, PATHS).replace(/\\\n\s+/g, '').split('\n');
+    const entries = granted.filter((l) => l.includes('NOPASSWD')).flatMap((l) => l.replace(/^.*NOPASSWD: /, '').split(', '));
+    const bin = (cmd: string) => PATHS[cmd === 'apt-get' ? 'apt' : (cmd as keyof typeof PATHS)];
+    for (const id of ['postgresql', 'redis', 'node', 'python', 'java'] as const) {
+      for (const step of installSteps(id, { kind: 'apt', sudo: true })) {
+        const argv = step.args.slice(1).filter((a, i, all) => !(a === '-u' || (i > 0 && all[i - 1] === '-u')));
+        expect(entries, `${id}: ${argv.join(' ')}`).toContain([bin(argv[0]), ...argv.slice(1)].join(' '));
+      }
+    }
   });
   it('refuses a user name that could carry a rule of its own', () => {
     for (const bad of ['', 'Root', '-x', 'ro ot', 'sloth ALL=(ALL) NOPASSWD: ALL', 'sloth\nevil ALL=(ALL) NOPASSWD: ALL'])
@@ -48,7 +87,10 @@ describe('sudoersRule', () => {
   });
   it('resolves what this machine has, and falls back to the Debian paths for what it does not', () => {
     bins.map = { 'apt-get': '/opt/bin/apt-get' };
-    expect(sudoersRule('sloth')).toContain('/opt/bin/apt-get, /usr/sbin/service, /usr/bin/systemctl');
+    const rule = sudoersRule('sloth');
+    expect(rule).toContain('/opt/bin/apt-get update -q');
+    expect(rule).toContain('/usr/sbin/service postgresql start');
+    expect(rule).toContain('/usr/bin/systemctl start postgresql');
   });
 });
 
@@ -56,7 +98,7 @@ describe('installer', () => {
   it('takes a sudo that may run apt-get — the scoped rule as well as a full NOPASSWD line', async () => {
     debian();
     expect(await installer()).toEqual({ kind: 'apt', sudo: true });
-    expect(executed.map((e) => e.line)).toEqual(['/usr/bin/sudo -n -l /usr/bin/apt-get']);
+    expect(executed.map((e) => e.line)).toEqual(['/usr/bin/sudo -n -l /usr/bin/apt-get update -q']);
   });
   it('says a password would unlock it when that probe is refused', async () => {
     debian();

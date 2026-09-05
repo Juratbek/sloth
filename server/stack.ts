@@ -6,7 +6,7 @@ import { installStatus, runJob, which, type Step } from './install';
 import { isDry, log } from './runner/log';
 import { startStackSession, withStackSession } from './stack-session';
 import { TOOLS, detectStack, requiredStack } from './stack-detect';
-import { canSudoApt, unlockSudo } from './sudo';
+import { APT_UPDATE, aptInstall, canSudoApt, createUser, serviceControl, sudoUser, unlockSudo } from './sudo';
 import type { StackStatus, StackTool } from './types';
 
 export { detectStack, requiredStack } from './stack-detect';
@@ -65,11 +65,12 @@ export function installSteps(id: StackId, by: Installer): Step[] {
     return steps;
   }
   if (by.kind === 'apt') {
+    // The exact lines `sudo.ts` grants — the rule names their arguments, so a step spelled any other way is refused.
     const sudo = (args: string[]): Step => (by.sudo ? { cmd: 'sudo', args: ['-n', ...args] } : { cmd: args[0], args: args.slice(1) });
-    const steps: Step[] = [sudo(['apt-get', 'update', '-q']), sudo(['apt-get', 'install', '-y', '-q', ...t.apt.packages])];
-    if (t.apt.service) steps.push({ ...sudo(['service', t.apt.service, 'start']), optional: true });
+    const steps: Step[] = [sudo(APT_UPDATE), sudo(aptInstall(id))];
+    if (t.apt.service) steps.push({ ...sudo(serviceControl(t.apt.service)[0]), optional: true });
     // The sessions create databases as the user Sloth runs as; apt's PostgreSQL only knows `postgres`.
-    if (id === 'postgresql' && !isRoot()) steps.push({ ...sudo(['-u', 'postgres', 'createuser', '-s', process.env.USER ?? 'sloth']), optional: true });
+    if (id === 'postgresql' && !isRoot()) steps.push({ ...sudo(['-u', 'postgres', ...createUser(sudoUser())]), optional: true });
     return steps;
   }
   return [];
