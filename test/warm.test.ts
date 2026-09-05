@@ -12,7 +12,7 @@ import { reap } from '../server/runner/triggers';
 import { warmOf } from '../server/runner/warm';
 import { resetSpawn, spawned } from './child-process-mock';
 import { called, onCommand, resetGh } from './gh-mock';
-import { alivePid, calmMachine, configure, exists, makeSession, read, sessionDir, statePath, wipe } from './harness';
+import { alivePid, calmMachine, configure, exists, makeSession, read, ref, runRef, sessionDir, statePath, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
@@ -64,11 +64,11 @@ afterEach(() => {
 describe('handing a stack over', () => {
   it('a finished run leaves its pids and database to the slot — nothing killed, nothing dropped', async () => {
     makeSession('issue', 1, { 'dev.pid': `${alivePid()}\n`, 'redis.pid': `${alivePid()}\n`, 'demo.db': 'demo_1\n' });
-    await leaseSlot('issue', 1);
+    await leaseSlot(runRef('issue', 1));
     fs.mkdirSync(slotDir(1), { recursive: true });
     onCommand(/rev-parse --abbrev-ref HEAD/, 'sloth/issue-1-fix\n');
     onCommand(/rev-parse HEAD/, 'abc123\n');
-    await cleanupRun('issue', 1);
+    await cleanupRun(runRef('issue', 1));
     const w = warmOf('slot-1')!;
     expect(w.run).toBe('issue-1');
     expect(w.dev).toEqual([Number(alivePid())]);
@@ -85,7 +85,7 @@ describe('handing a stack over', () => {
 
   it('reap keeps a cleanly ended run warm and returns its slot to the pool', async () => {
     makeSession('issue', 2, { pid: '2000000000', 'state.json': { state: 'done' }, 'dev.pid': `${alivePid()}\n`, 'demo.db': 'demo_2\n' });
-    await leaseSlot('issue', 2);
+    await leaseSlot(runRef('issue', 2));
     fs.mkdirSync(slotDir(1), { recursive: true });
     await reap();
     expect(warmOf('slot-1')?.run).toBe('issue-2');
@@ -96,11 +96,11 @@ describe('handing a stack over', () => {
   it('a run that ends behind a preview hands nothing over — the preview owns that stack', async () => {
     const pid = sleeper();
     makeSession('issue', 3, { 'dev.pid': `${pid}\n`, 'demo.db': 'demo_3\n', 'preview.json': { url: 'http://localhost:3000' } });
-    await leaseSlot('issue', 3);
-    await keepWarm('issue', 3);
+    await leaseSlot(runRef('issue', 3));
+    await keepWarm(runRef('issue', 3));
     expect(warmOf('slot-1')).toBeUndefined();
     // When the preview comes down, its cleanup kills and drops as it always has.
-    await cleanupRun('issue', 3);
+    await cleanupRun(runRef('issue', 3));
     expect(warmOf('slot-1')).toBeUndefined();
     expect(called(/dropdb --if-exists demo_3/)).toHaveLength(1);
     expect(await waitDead(pid)).toBe(true);
@@ -110,8 +110,8 @@ describe('handing a stack over', () => {
     configure({ maxActive: 2, warmSlots: false });
     const pid = sleeper();
     makeSession('issue', 4, { 'dev.pid': `${pid}\n`, 'demo.db': 'demo_4\n' });
-    await leaseSlot('issue', 4);
-    await cleanupRun('issue', 4);
+    await leaseSlot(runRef('issue', 4));
+    await cleanupRun(runRef('issue', 4));
     expect(warmOf('slot-1')).toBeUndefined();
     expect(called(/dropdb --if-exists demo_4/)).toHaveLength(1);
     expect(await waitDead(pid)).toBe(true);
@@ -121,13 +121,13 @@ describe('handing a stack over', () => {
 describe('claiming a stack', () => {
   it('the next run on the same issue and head inherits everything and is told so', async () => {
     makeSession('issue', 5, { 'dev.pid': `${alivePid()}\n`, 'demo.db': 'demo_5\n' });
-    await leaseSlot('issue', 5);
+    await leaseSlot(runRef('issue', 5));
     fs.mkdirSync(slotDir(1), { recursive: true });
     onCommand(/rev-parse --abbrev-ref HEAD/, 'sloth/issue-5-fix\n');
     onCommand(/rev-parse origin\/sloth\/issue-5-fix/, 'abc123\n');
     onCommand(/rev-parse HEAD/, 'abc123\n');
-    await cleanupRun('issue', 5);
-    expect(await launch(5)).toBe(true);
+    await cleanupRun(runRef('issue', 5));
+    expect(await launch(ref(5))).toBe(true);
     const env = spawned[0].options.env;
     expect(env.SLOTH_WARM).toBe('1');
     expect(env.SLOTH_WARM_SAME).toBe('1');
@@ -140,13 +140,13 @@ describe('claiming a stack', () => {
 
   it('the same stack on a moved head is inherited as warm, not as same', async () => {
     makeSession('issue', 6, { 'dev.pid': `${alivePid()}\n`, 'demo.db': 'demo_6\n' });
-    await leaseSlot('issue', 6);
+    await leaseSlot(runRef('issue', 6));
     fs.mkdirSync(slotDir(1), { recursive: true });
     onCommand(/rev-parse --abbrev-ref HEAD/, 'sloth/issue-6-fix\n');
     onCommand(/rev-parse origin\/sloth\/issue-6-fix/, 'def456\n'); // the branch moved since the stack was built
     onCommand(/rev-parse HEAD/, 'abc123\n');
-    await cleanupRun('issue', 6);
-    expect(await launch(6)).toBe(true);
+    await cleanupRun(runRef('issue', 6));
+    expect(await launch(ref(6))).toBe(true);
     const env = spawned[0].options.env;
     expect(env.SLOTH_WARM).toBe('1');
     expect(env.SLOTH_WARM_SAME).toBeUndefined();
@@ -154,14 +154,14 @@ describe('claiming a stack', () => {
 
   it('a killed run warms the slot tainted — inherited on the same head as warm, never as same', async () => {
     makeSession('issue', 9, { 'dev.pid': `${alivePid()}\n`, 'demo.db': 'demo_9\n' });
-    await leaseSlot('issue', 9);
+    await leaseSlot(runRef('issue', 9));
     fs.mkdirSync(slotDir(1), { recursive: true });
     onCommand(/rev-parse --abbrev-ref HEAD/, 'sloth/issue-9-fix\n');
     onCommand(/rev-parse origin\/sloth\/issue-9-fix/, 'abc123\n');
     onCommand(/rev-parse HEAD/, 'abc123\n'); // the head never moved — only the kill taints it
-    await cleanupRun('issue', 9, true); // what `stop` does for a hung or stopped run
+    await cleanupRun(runRef('issue', 9), true); // what `stop` does for a hung or stopped run
     expect(warmOf('slot-1')?.head).toBeUndefined();
-    expect(await launch(9)).toBe(true);
+    expect(await launch(ref(9))).toBe(true);
     const env = spawned[0].options.env;
     expect(env.SLOTH_WARM).toBe('1');
     expect(env.SLOTH_WARM_SAME).toBeUndefined(); // the retry reseeds instead of trusting the interrupted data
@@ -172,7 +172,7 @@ describe('claiming a stack', () => {
     fs.mkdirSync(slotDir(1), { recursive: true });
     fs.mkdirSync(statePath('slots'), { recursive: true });
     fs.writeFileSync(warmFile(1), JSON.stringify({ run: 'qa-7', head: 'abc123', dev: [2_000_000_000], redis: [pid], db: 'demo_7', at: 0 }));
-    expect(await launchQa(7, 'abc123', 'qa')).toBe(true);
+    expect(await launchQa(ref(7), 'abc123', 'qa')).toBe(true);
     expect(called(/dropdb --if-exists demo_7/)).toHaveLength(1);
     expect(await waitDead(pid)).toBe(true);
     const env = spawned[0].options.env;

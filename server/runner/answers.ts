@@ -1,5 +1,7 @@
 import path from 'node:path';
 import { cfg } from '../config';
+import { label } from '../repos';
+import type { IssueRef } from '../repo-types';
 import { canAnswer, roleOf } from '../roles';
 import type { Role } from '../roles';
 import { freeIn } from './board';
@@ -21,14 +23,14 @@ interface Answer {
  * parked card waits for. Undefined when Sloth never wrote there (a human parked the card by hand) or
  * nobody on the team replied since; a comment from a login with no role does not count.
  */
-async function answerOn(issue: number): Promise<Answer | undefined> {
+async function answerOn(issue: IssueRef): Promise<Answer | undefined> {
   const c = cfg();
   const r = await gh([
-    'api', `repos/${c.repo}/issues/${issue}/comments`, '--paginate',
+    'api', `repos/${issue.repo}/issues/${issue.number}/comments`, '--paginate',
     '--jq', '.[] | [.id, .user.login, (.body | @base64)] | @tsv',
   ]);
   if (!r.ok) {
-    log(`#${issue} thread read failed: ${r.err.split('\n')[0]}`);
+    log(`${label(issue)} thread read failed: ${r.err.split('\n')[0]}`);
     return undefined;
   }
   let answer: Answer | undefined;

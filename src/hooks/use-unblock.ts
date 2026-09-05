@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import type { IssueRef } from '../../server/repo-types';
 import { postJson } from '../lib/api';
 import { queryKeys } from '../lib/query-keys';
 
@@ -11,7 +12,7 @@ import { queryKeys } from '../lib/query-keys';
 export default function useUnblock() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (issue: number) => postJson<{ ok: boolean; issue: number }>(`/api/issues/${issue}/unblock`, {}),
+    mutationFn: (issue: IssueRef) => postJson<{ ok: boolean; issue: number }>(`/api/issues/${issue.number}/unblock?repo=${encodeURIComponent(issue.repo)}`, {}),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.overview }),
   });
 }

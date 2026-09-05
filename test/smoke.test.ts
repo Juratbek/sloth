@@ -8,7 +8,7 @@ import { localDate } from '../server/runner/qa';
 import { daysBetween, requestSmoke, smokeDue, smokeTick, smokeVerdicts } from '../server/runner/smoke';
 import { FAKE_PID, resetSpawn, spawned } from './child-process-mock';
 import { onGh, resetGh } from './gh-mock';
-import { alivePid, baseConfig, configure, exists, makeSession, read, readLog, sessionDir, statePath, wipe } from './harness';
+import { alivePid, baseConfig, configure, exists, makeSession, read, readLog, runRef, sessionDir, statePath, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
@@ -175,7 +175,7 @@ describe('smokeTick, when the run is due', () => {
     await smokeTick();
     expect(spawned).toHaveLength(0);
     expect(exists(statePath('smoke_ran'))).toBe(false);
-    expect(log()).toMatch(/smoke test: the head of release could not be read: HTTP 404/);
+    expect(log()).toMatch(/smoke test: the head of release in acme\/widgets could not be read: HTTP 404/);
   });
 });
 
@@ -304,7 +304,7 @@ describe('a smoke run, in reap and stop', () => {
     const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
     try {
       makeSession('smoke', 2, { pid: '12345', 'state.json': { state: 'working', step: '3' } });
-      expect(await stop('smoke', 2, 'stopped from the monitor', 'unused')).toBe(true);
+      expect(await stop(runRef('smoke', 2), 'stopped from the monitor', 'unused')).toBe(true);
       expect(exists(sessionDir('smoke', 2), 'pid')).toBe(false);
       expect(log()).toMatch(/smoke test 2 stopped: stopped from the monitor/);
       expect(log()).not.toMatch(/park/);
@@ -316,13 +316,13 @@ describe('a smoke run, in reap and stop', () => {
 
 describe('the smoke config', () => {
   it('defaults to off, early morning, two hours', () => {
-    expect(normalizeConfig(baseConfig()).smoke).toEqual({ everyDays: 0, at: '06:00', branch: '', budgetMinutes: 120, brief: '' });
+    expect(normalizeConfig(baseConfig()).smoke).toEqual({ everyDays: 0, at: '06:00', branch: '', repo: '', budgetMinutes: 120, brief: '' });
     expect(normalizeConfig(baseConfig()).models.smoke).toBe('fable');
   });
 
   it('keeps what was set, trims the brief, and floors the days at 0', () => {
     const smoke = normalizeConfig(baseConfig({ smoke: { everyDays: 2, at: '07:30', branch: 'release', budgetMinutes: 45, brief: '  A: x\nB: y  ' } })).smoke;
-    expect(smoke).toEqual({ everyDays: 2, at: '07:30', branch: 'release', budgetMinutes: 45, brief: 'A: x\nB: y' });
+    expect(smoke).toEqual({ everyDays: 2, at: '07:30', branch: 'release', repo: '', budgetMinutes: 45, brief: 'A: x\nB: y' });
     expect(normalizeConfig(baseConfig({ smoke: { everyDays: -3 } })).smoke.everyDays).toBe(0);
   });
 

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from './config';
 import { STACK, type StackChoice, type StackId } from './config-types';
+import { repos } from './repos';
 
 /**
  * The stack table and what a checkout looks like it needs. `stack.ts` does the checking and the
@@ -120,6 +121,9 @@ export function detectStack(root: string): StackId[] {
   });
 }
 
-/** The stack this configuration wants: the saved list, or what the checkout shows when it says `auto`. */
-export const requiredStack = (choice: StackChoice = cfg().stack, root = cfg().runnerRoot): StackId[] =>
-  choice === 'auto' ? detectStack(root) : choice;
+/** What every configured checkout shows together — a tool one of them needs is a tool the machine needs. */
+export const detectStackOfAll = (roots: string[] = repos().map((r) => r.root)): StackId[] => STACK.filter((id) => roots.some((root) => detectStack(root).includes(id)));
+
+/** The stack this configuration wants: the saved list, or what the checkouts show when it says `auto` — one checkout's when `root` names it. */
+export const requiredStack = (choice: StackChoice = cfg().stack, root?: string): StackId[] =>
+  choice === 'auto' ? (root ? detectStack(root) : detectStackOfAll()) : choice;

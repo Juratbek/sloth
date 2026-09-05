@@ -15,7 +15,7 @@ export default function StepStack({ draft, onBack, onContinue }: { draft: Draft;
         Ubuntu); every start of Sloth installs whatever is still missing. On Linux it asks for the sudo password once, keeps none
         of it, and installs through an AI session you can watch here.
       </p>
-      <StackPanel root={draft.runnerRoot} value={stack} onChange={setStack} />
+      <StackPanel root={draft.repos[0]?.root} value={stack} onChange={setStack} />
       <div className="flex gap-2">
         <Button onClick={onBack}>Back</Button>
         <Button variant="primary" onClick={() => onContinue({ stack })}>

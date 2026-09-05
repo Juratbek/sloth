@@ -29,6 +29,8 @@ export default function BoardPage({ board, onSelect, onClose }: { board?: BoardV
   const columns = board?.columns ?? [];
   // On a phone one column shows at a time: the chosen one, else the first with work on it.
   const active = columns.find((c) => c.role === tab) ?? columns.find((c) => c.cards.length) ?? columns[0];
+  // Once the cards span two repositories every number says which; with one, `#12` is enough.
+  const several = new Set(columns.flatMap((c) => c.cards.map((card) => card.repo))).size > 1;
 
   return (
     <div className="flex h-full flex-col">
@@ -66,13 +68,13 @@ export default function BoardPage({ board, onSelect, onClose }: { board?: BoardV
 
           {active && (
             <div className="flex min-h-0 flex-1 flex-col p-3 md:hidden">
-              <Column column={active} onSelect={onSelect} />
+              <Column column={active} several={several} onSelect={onSelect} />
             </div>
           )}
 
           <div className="hidden min-h-0 flex-1 gap-3 overflow-x-auto p-4 md:flex">
             {columns.map((c) => (
-              <Column key={c.role} column={c} onSelect={onSelect} />
+              <Column key={c.role} column={c} several={several} onSelect={onSelect} />
             ))}
           </div>
         </>

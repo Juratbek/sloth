@@ -11,10 +11,10 @@ pnpm install
 pnpm dev            # http://localhost:4400 — UI and watcher in one process
 ```
 
-One Sloth watches one board. Everything it owns lives under `~/.sloth/`. Watching stops when the
+One Sloth watches one board, for one or several repositories (see *Several repositories*). Everything it owns lives under `~/.sloth/`. Watching stops when the
 process stops — there is no daemon. The first time you open the UI a **Get started** wizard checks
-`claude` and `gh` (a **Log in** button runs `gh auth login` for you, showing the one-time code), lets you pick the board, its columns, the repository and the checkout the sessions
-run from, then writes `~/.sloth/config.json`. The gear in the header opens **Settings**, where every value in
+`claude` and `gh` (a **Log in** button runs `gh auth login` for you, showing the one-time code), lets you pick the board, its columns, the repositories and where their checkouts go,
+then writes `~/.sloth/config.json`. The gear in the header opens **Settings**, where every value in
 that file — the board, the team, the caps, which model each agent runs on — can be changed; the wizard can be
 re-run from there. Its **About** section shows the version and commit Sloth runs (`major.minor` from `package.json`,
 the patch the number of PRs merged into the branch, so it goes up with every merge by itself), how far behind `origin` it is,
@@ -149,13 +149,46 @@ rides the 5-minute poll (`GET /api/health`, `POST /api/health/check`).
 ~/.sloth/
 ├── config.json                     the whole configuration
 ├── watcher.log                     one line per event — the log the UI tails (rotated to .1 past 5 MB)
-├── runners/<repo>/                 the checkout the sessions run from
-├── worktrees/<repo>/slot-1/        the pool of worktrees the runs work in — maxActive of them, made once, reused (their node_modules survive)
+├── runners/<repo>/                 the checkout the sessions run from — one per repository
+├── worktrees/<repo>/slot-1/        the pool of worktrees the runs work in — maxActive of them, made once, reused (their node_modules survive);
+│                                   slot-1@owner~name/ beside it is the worktree of a second repository in the same slot
 ├── sessions/<repo>/                issue-42/, approved-91/, qa-42/ — pid, state.json, inbox/, run.log, preview.json, verdict …
+│                                   (issue-42@owner~name/ for a card in a second repository)
 └── state/                          seen/, approved/, handed/, notified/, finished/, closed/, checks/, merged/,
                                     merge-failed/, qa/ dedupe markers; blocked/ the cards Sloth gave up on;
                                     paused, paused_until, pruned_at, qa_sweep, qa_ran; slots/ which run holds which worktree slot, and slot-<n>.warm for the stack a slot keeps warm
 ```
+
+## Several repositories
+
+One board, several repositories: the wizard's repository step (and Settings → *Repository*) takes a list —
+the board's linked repositories as toggles, any other typed as `owner/repo` — each with its own checkout and
+a one-line **note** saying what it is. Everything Sloth does is then keyed on *repository and number*, never
+the number alone: two repositories both have an issue 12, and their cards, runs, markers and hours are kept
+apart.
+
+- **Which repository a card is in.** A Projects board says: its issue's repository. A card whose repository
+  is not one of Sloth's is left alone (and said once in the log). A Trello card names no issue, so the issue
+  Sloth opens for it goes where the card belongs: the repository the card names (`owner/name`, or a bare name
+  that only one repository has), else the one the status model picks from the notes and the repositories'
+  GitHub descriptions, else the first — the reason is written into the issue.
+- **On disk.** The first repository's files keep the names they always had (`sessions/<repo>/issue-42`,
+  `state/finished/42`, `worktrees/<repo>/slot-1`), so a Sloth that watched one repository upgrades without
+  moving anything; a second repository's carry `@owner~name` on the end (`issue-42@acme~api`,
+  `slot-1@acme~api`). A slot is one number and holds one worktree per repository; the lease covers them all.
+  A warm stack (`warmSlots`) is one repository's app, and a slot leased to a run of another repository kills it.
+- **Sessions.** A run works in its issue's repository (`SLOTH_REPO`, `SLOTH_RUNNER_ROOT`, `SLOTH_WORKTREE`
+  all point there) and is told about every repository in `SLOTH_REPOS`. A fix that spans two — an API and its
+  client — gets a second worktree in the same slot and a second PR whose body says `Closes owner/name#12`;
+  the server wires both PRs to the card (`closedByPullRequestsReferences` crosses repositories), reviews both,
+  moves the card on when both have passed, and with `autoMerge` merges both or neither. The plugin's
+  `session` skill has the recipe.
+- **What runs where.** The smoke test qualifies one app: `smoke.repo`, the first repository unless chosen.
+  The stack install reads every checkout and installs the union. The hours ledger's branch copy and the
+  launch agent's name are the first repository's. The QA sweep pins the QA branch's head in every repository
+  that has it, and a repository without that branch has its cards left alone.
+- **The webhook** is one per repository, all pointed at the same address; the health chip's git check covers
+  every checkout and names the first one that is not in order.
 
 ## Trello boards
 
@@ -237,12 +270,14 @@ Sessions get the list as `SLOTH_STACK`. `GET /api/stack` (`?root=` for another c
 ## Configuration
 
 `~/.sloth/config.json` (path overridable with `SLOTH_CONFIG`). The wizard asks about the board, the
-columns, who to notify when a card needs help, `repo`, `runnerRoot`, the team (`roles`) and the caps; **Settings** (the
+columns, who to notify when a card needs help, `repos`, the team (`roles`) and the caps; **Settings** (the
 gear in the header) edits every key, by section; whatever is left out defaults:
 
 | Key | Default | Means |
 |---|---|---|
-| `runnerRoot` | `~/.sloth/runners/<repo>` | The checkout the sessions fetch in and the worktree slots are made from. Sloth clones the repository there itself — at boot, after a config save and at the top of every board tick — when the path is not there yet or is an empty folder; a folder with other files in it is left alone and the health chip says why. Until the checkout is there nothing that starts a session runs; a clone that failed is tried again after ten minutes |
+| `repos` | — | The repositories Sloth works in, in the order they were picked: `[{slug, note, root}]` — `owner/repo`, one line saying what it is (what a Trello card that names no repository is placed by), and its checkout (`<runnersDir>/<name>` when left out). The first is where a run with no card of its own — the smoke test, the stack install — works. A config from before there were several has `repo` and `runnerRoot` instead, and loads as a list of one |
+| `legacyRepo` | the migrated `repo`, else the first of `repos` | The repository whose files on disk carry no repository tag — the one an older single-repository config named, so nothing under `~/.sloth` has to move when a second repository is added; a new config's first repository otherwise. Written once and kept; not something to set by hand |
+| *(a repository's `root`)* | `~/.sloth/runners/<name>` | The checkout its sessions fetch in and its worktree slots are made from. Sloth clones the repository there itself — at boot, after a config save and at the top of every board tick — when the path is not there yet or is an empty folder; a folder with other files in it is left alone and the health chip says why. Until the checkout is there nothing that starts a session in that repository runs; a clone that failed is tried again after ten minutes |
 | `runnersDir` / `worktreesDir` / `sessionsDir` / `stateDir` / `watcherLog` | under `~/.sloth/` | Where checkouts, worktrees, session directories, markers and the log live |
 | `roles` | `{admin, developers, testers}` | The team: the one login that orders anything, the logins that order within an issue, the logins that answer and ask — GitHub logins, or Trello usernames on a Trello board. A config from before roles keeps its `orderLogin` as the admin |
 | `mention` / `botPrefix` | `@sloth` / `**Sloth:**` | The keyword that wakes Sloth; the first line of every comment it writes |
@@ -254,7 +289,7 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `fallbackCommentSeconds` | `30` | The comments poll while the webhook is **not** live: no public address, a tunnel that moved, a `gh` token that may not write webhooks. Then polling is the only way a mention is read at all, so it runs shorter. At least 10 (Settings → *General*, beside the webhook's status) |
 | `machineSeconds` | `15` | Seconds between two readings of memory, CPU and disk. The three limits above and the pausing of a running session can only act on a reading Sloth has, and a session that boots an app, a build and a browser at once can exhaust the memory between two board polls |
 | `models` | `opus` each, `final: fable`, `orchestrator: fable` | Which model each agent runs on (Settings → *Models*): `implement` (triggers 1–3; with `orchestrator` on, the implementor subagent), `orchestrator` (the implement session when `orchestrator` is on), `tester` (the headless-Chrome subagent that screenshots the change — the QA sweep's browser runs on it too), `reviewer` (the in-session review loop), `final` (trigger 4 — the review every Code Review card gets), `status` (mention replies), `qa` (trigger 9 — the session that tests one QA card), `e2e` (the test-writing subagent while `e2e` is on), `smoke` (trigger 11 — the smoke test session; its per-role testers run on `tester`). An older config's `model` / `approvedModel` still load; its `review` key is ignored. A value is a Claude Code alias, a model id, or a model from another provider (see *Model providers*) |
-| `smoke` | `{everyDays: 0, at: "06:00", branch: "", budgetMinutes: 120, brief: ""}` | The scheduled smoke test (trigger 11, Settings → *Smoke test*): `everyDays` is how many days apart it runs (`1` daily, `2` every second day, `7` weekly; `0` turns the schedule off), `at` the local time of day a due run starts, `branch` the branch under test (empty: the default branch), `budgetMinutes` the session's own budget, `brief` what to smoke — the roles and their main flows, one per line; empty, the session reads them off the project's docs and skills |
+| `smoke` | `{everyDays: 0, at: "06:00", branch: "", repo: "", budgetMinutes: 120, brief: ""}` | The scheduled smoke test (trigger 11, Settings → *Smoke test*): `everyDays` is how many days apart it runs (`1` daily, `2` every second day, `7` weekly; `0` turns the schedule off), `at` the local time of day a due run starts, `branch` the branch under test (empty: the default branch), `repo` the repository under test (empty: the first one), `budgetMinutes` the session's own budget, `brief` what to smoke — the roles and their main flows, one per line; empty, the session reads them off the project's docs and skills |
 | `qa` | `{branch: "", at: "20:00", budgetMinutes: 60}` | The daily QA sweep (trigger 9, Settings → *QA sweep*): `at` is the local time of day it starts (`HH:MM`; empty turns it off), `branch` the branch the merged fixes are deployed from and tested on (empty: the default branch), `budgetMinutes` one QA session's own budget. The column it sweeps is the *QA* role in `statusField.columns` — opt-in, chosen in Settings → *Board*; nothing runs without it |
 | `orchestrator` | `true` | Run implement sessions as an orchestrator on `models.orchestrator` that never edits code itself: it reads the issue, briefs one implementor subagent on `models.implement`, verifies, runs the tester and the reviewer, opens the PR. Off, one session on `models.implement` does all of it. Either way the tester and the reviewer are subagents (Settings → *Models*) |
 | `autostart` | `false` | Start Sloth at login through a macOS launch agent (Settings → *Machine*; see *Run at login*). Saved but ignored on other platforms |

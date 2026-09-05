@@ -183,7 +183,7 @@ describe('POST /api/stack/unlock', () => {
     expect(spawned).toHaveLength(1);
     expect(spawned[0].args).toContain('/sloth:stack redis');
     expect(spawned[0].options.env.SLOTH_STACK_INSTALL).toBe('redis');
-    expect(spawned[0].options.cwd).toBe(configure().runnerRoot);
+    expect(spawned[0].options.cwd).toBe(configure().repos[0].root);
     expect(status.install.sessionId).toEqual(expect.any(String));
     for (const text of leaks(status)) expect(text).not.toContain(PASSWORD);
   });

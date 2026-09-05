@@ -1,5 +1,5 @@
 import type { BlockedCard, BoardView } from './board-types';
-import type { AgentModels } from './config-types';
+import type { AgentModels, RepoConfig } from './config-types';
 import type { RemoteStatus } from './machine-types';
 
 export interface Usage {
@@ -49,6 +49,8 @@ export interface WatcherState {
 /** A finished run's app kept alive behind a tunnel — `~/.sloth/sessions/<repo>/issue-<n>/preview-state.json`. */
 export interface PreviewState {
   issue: number;
+  /** The issue's repository; a state file from before Sloth watched several names none, and is the legacy repository's. */
+  repo?: string;
   /** The PR the link was posted on; absent, the comment went on the issue. */
   pr?: number;
   /** The public address, once the tunnel printed it. */
@@ -79,6 +81,8 @@ export interface WatcherSession {
   /** `issue` implements, `approved` reviews a PR (`review` is that kind's older name), `qa` tests a card on the QA branch, `smoke` smoke-tests the app. */
   kind: 'issue' | 'review' | 'approved' | 'qa' | 'smoke';
   target: number;
+  /** The repository `target` is in — the PR's for a review, the issue's for the rest. */
+  repo: string;
   pid?: number;
   alive: boolean;
   sessionId?: string;
@@ -90,6 +94,8 @@ export interface WatcherSession {
   paused?: { since: number; reason: string };
   /** The issue a review / approved run was started for — the server writes it into the directory. */
   issue?: number;
+  /** That issue's repository when it is not `repo` — a PR that closes an issue in another of Sloth's repositories. */
+  issueRepo?: string;
   runLogTail: string;
   inbox: string[];
   updatedAt?: string;
@@ -105,6 +111,8 @@ export interface SessionSummary extends Stats {
   prompt: string;
   kind: SessionKind;
   target?: number;
+  /** The repository the run worked in — the one whose transcripts directory the transcript was found in. */
+  repo: string;
   title?: string;
   status: SessionStatus;
   live: boolean;
@@ -117,6 +125,7 @@ export interface SessionSummary extends Stats {
 
 /** What one issue has cost so far — every run Sloth started on it, rolled up. */
 export interface IssueCost {
+  repo: string;
   issue: number;
   title?: string;
   sessions: number;
@@ -153,8 +162,12 @@ export interface RateBucket {
   reset: number;
 }
 export interface MonitorConfig {
+  /** The first repository — what a link with no repository of its own points into. */
   repo: string;
+  /** Every repository Sloth works in, in config order. */
+  repos: RepoConfig[];
   title: string;
+  /** The first repository's checkout. */
   runnerRoot: string;
   transcriptsDir: string;
   commands: Record<string, string>;

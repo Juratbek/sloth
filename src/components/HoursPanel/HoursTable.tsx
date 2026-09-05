@@ -1,5 +1,5 @@
 import type { HoursEnding, HoursExcluded, HoursIssue, HoursKind, HoursLive } from '../../../server/types';
-import { dayLabel, hrs } from '../../lib/format';
+import { dayLabel, hrs, issueLabel } from '../../lib/format';
 
 /** How a kind of run reads in a cell. */
 export const KIND_LABEL: Record<HoursKind, string> = { issue: 'implement', approved: 'review', review: 'review', qa: 'QA', smoke: 'smoke test' };
@@ -16,10 +16,11 @@ export const ENDING_LABEL: Record<HoursEnding, string> = {
   rebooted: 'machine rebooted',
 };
 
-const issueLink = (repo: string, issue: number | undefined) =>
+/** `repo` is the row's own repository when it says one — a line from before Sloth watched several says none, and is the first repository's. */
+const issueLink = (repo: string, issue: number | undefined, several = false) =>
   issue ? (
     <a href={`https://github.com/${repo}/issues/${issue}`} target="_blank" rel="noreferrer" className="text-zinc-300 hover:underline">
-      #{issue}
+      {issueLabel(repo, issue, several)}
     </a>
   ) : (
     <span>—</span>
@@ -37,7 +38,7 @@ function failedTitle(i: HoursIssue): string | undefined {
 }
 
 /** The month's billable hours, one row per card, most hours first. */
-export function IssuesHours({ issues, repo }: { issues: HoursIssue[]; repo: string }) {
+export function IssuesHours({ issues, repo, several = false }: { issues: HoursIssue[]; repo: string; several?: boolean }) {
   return (
     <table className="w-full text-[11px]">
       <thead className="sticky top-0 bg-zinc-900 text-zinc-400">
@@ -53,8 +54,8 @@ export function IssuesHours({ issues, repo }: { issues: HoursIssue[]; repo: stri
       </thead>
       <tbody className="text-zinc-400">
         {issues.map((i) => (
-          <tr key={i.issue} className="border-t border-zinc-800/70">
-            <td className="px-2 py-1 whitespace-nowrap">{issueLink(repo, i.issue)}</td>
+          <tr key={`${i.repo}#${i.issue}`} className="border-t border-zinc-800/70">
+            <td className="px-2 py-1 whitespace-nowrap">{issueLink(i.repo || repo, i.issue, several)}</td>
             <td className="hidden max-w-0 truncate px-2 py-1 sm:table-cell">{i.title ?? ''}</td>
             <td className="px-2 py-1 text-right tabular-nums">{i.runs}</td>
             <td className="hidden px-2 py-1 text-right tabular-nums sm:table-cell">{i.byKind.issue ? hrs(i.byKind.issue) : '—'}</td>
@@ -75,12 +76,12 @@ export function IssuesHours({ issues, repo }: { issues: HoursIssue[]; repo: stri
 }
 
 /** The month's failed runs: how each ended, and whether a later run took its card up (half rate) or not (not billed). */
-export function ExcludedRuns({ runs, repo }: { runs: HoursExcluded[]; repo: string }) {
+export function ExcludedRuns({ runs, repo, several = false }: { runs: HoursExcluded[]; repo: string; several?: boolean }) {
   return (
     <ul className="space-y-0.5 px-2 py-1 text-[11px] text-zinc-500">
       {runs.map((r) => (
         <li key={r.n} className="flex flex-wrap gap-x-2">
-          <span className="text-zinc-400">{issueLink(repo, r.issue)}</span>
+          <span className="text-zinc-400">{issueLink(r.issueRepo || r.repo || repo, r.issue, several)}</span>
           <span>{KIND_LABEL[r.kind]}</span>
           <span className="tabular-nums">{hrs(r.seconds)}</span>
           <span>{ENDING_LABEL[r.ending]}</span>
@@ -93,14 +94,14 @@ export function ExcludedRuns({ runs, repo }: { runs: HoursExcluded[]; repo: stri
 }
 
 /** The runs going right now — their hours join the month when they end. */
-export function LiveRuns({ runs, repo }: { runs: HoursLive[]; repo: string }) {
+export function LiveRuns({ runs, repo, several = false }: { runs: HoursLive[]; repo: string; several?: boolean }) {
   return (
     <span className="text-zinc-500">
       {' · running now: '}
       {runs.map((r, i) => (
-        <span key={`${r.kind}-${r.target}`}>
+        <span key={`${r.repo}:${r.kind}-${r.target}`}>
           {i > 0 && ', '}
-          {issueLink(repo, r.issue)} {KIND_LABEL[r.kind]} <span className="tabular-nums">{hrs(r.seconds)}</span>
+          {issueLink(r.issueRepo || r.repo || repo, r.issue, several)} {KIND_LABEL[r.kind]} <span className="tabular-nums">{hrs(r.seconds)}</span>
         </span>
       ))}
     </span>

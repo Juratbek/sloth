@@ -1,31 +1,33 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { cfg } from './config';
 import { costOf } from './pricing';
 import { readNew } from './transcripts';
 import type { ModelCost, UsageBucket, UsageSeries } from './types';
+import { transcriptsDirs } from './repos';
 
 const HOUR = 3_600_000;
 const TTL = 30_000;
 
-/** Every main transcript plus every subagent file underneath it. */
+/** Every main transcript of every repository plus every subagent file underneath it. */
 function transcriptFiles(): string[] {
-  let entries: string[] = [];
-  try {
-    entries = fs.readdirSync(cfg().transcriptsDir).filter((f) => f.endsWith('.jsonl'));
-  } catch {
-    return [];
-  }
   const files: string[] = [];
-  for (const entry of entries) {
-    files.push(path.join(cfg().transcriptsDir, entry));
-    const agents = path.join(cfg().transcriptsDir, entry.replace(/\.jsonl$/, ''), 'subagents');
+  for (const dir of transcriptsDirs()) {
+    let entries: string[] = [];
     try {
-      for (const f of fs.readdirSync(agents)) {
-        if (/^agent-\w+\.jsonl$/.test(f)) files.push(path.join(agents, f));
-      }
+      entries = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl'));
     } catch {
-      /* no subagents for this session */
+      continue;
+    }
+    for (const entry of entries) {
+      files.push(path.join(dir, entry));
+      const agents = path.join(dir, entry.replace(/\.jsonl$/, ''), 'subagents');
+    try {
+        for (const f of fs.readdirSync(agents)) {
+          if (/^agent-\w+\.jsonl$/.test(f)) files.push(path.join(agents, f));
+        }
+      } catch {
+        /* no subagents for this session */
+      }
     }
   }
   return files;

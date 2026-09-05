@@ -15,7 +15,7 @@ import {
 } from '../server/health';
 import type { Installer } from '../server/stack';
 import type { Health, HealthId } from '../server/types';
-import { configure, readLog, wipe } from './harness';
+import { configure, readLog, runnerRoot, wipe } from './harness';
 import { cloneRepo, forgetCheckout } from '../server/checkout';
 import { cfg } from '../server/config';
 import fs from 'node:fs';
@@ -52,12 +52,12 @@ describe('checkHealth', () => {
     expect(of(health, 'gh').ok).toBe(true);
     expect(of(health, 'gh').detail).toContain('Logged in to github.com');
     expect(of(health, 'git').ok).toBe(true);
-    expect(of(health, 'git').detail).toContain(configure().runnerRoot);
+    expect(of(health, 'git').detail).toContain(configure().repos[0].root);
   });
 
   it('reports a runner root that is not there yet as Sloth\'s to clone, without asking git', async () => {
     allWell();
-    fs.rmSync(cfg().runnerRoot, { recursive: true, force: true });
+    fs.rmSync(runnerRoot(), { recursive: true, force: true });
     const check = of(await checkHealth(), 'git');
     expect(check.ok).toBe(false);
     expect(check.detail).toContain('Sloth clones acme/widgets there');
@@ -67,10 +67,10 @@ describe('checkHealth', () => {
   it('is not a fault while the clone is running, and is the clone\'s error once it failed', async () => {
     allWell();
     forgetCheckout();
-    fs.rmSync(cfg().runnerRoot, { recursive: true, force: true });
+    fs.rmSync(runnerRoot(), { recursive: true, force: true });
     onExecFile(/gh repo clone/, { code: 1, stderr: 'could not read Username' });
-    const cloning = cloneRepo('acme/widgets', cfg().runnerRoot);
-    expect(of(await checkHealth(), 'git')).toMatchObject({ ok: true, detail: `cloning acme/widgets into ${cfg().runnerRoot}` });
+    const cloning = cloneRepo('acme/widgets', runnerRoot());
+    expect(of(await checkHealth(), 'git')).toMatchObject({ ok: true, detail: `cloning acme/widgets into ${runnerRoot()}` });
     await cloning;
     expect(of(await checkHealth(), 'git')).toMatchObject({ ok: false, detail: 'could not read Username' });
     forgetCheckout();

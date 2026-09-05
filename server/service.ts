@@ -8,6 +8,8 @@ import { which } from './install';
 import { run } from './runner/gh';
 import { log } from './runner/log';
 import type { ServiceStatus } from './types';
+import { primaryRepo } from './repos';
+import { repoName } from './repo-types';
 
 /**
  * Starting Sloth when the Mac starts. Watching stops when the process stops, so a Sloth that is only
@@ -26,8 +28,8 @@ const PATH_EXTRA = ['/opt/homebrew/bin', '/usr/local/bin', path.join(os.homedir(
 export const servicePath = () =>
   [...new Set([...(process.env.PATH ?? '').split(path.delimiter), ...PATH_EXTRA])].filter(Boolean).join(path.delimiter);
 
-/** One agent per watched repository, so two Sloths on one Mac do not fight over the same label. */
-export const label = () => `dev.sloth.${(cfg().repo.split('/')[1] || 'sloth').replace(/[^\w.-]/g, '-')}`;
+/** One agent per Sloth, named after its first repository, so two Sloths on one Mac do not fight over the same label. */
+export const label = () => `dev.sloth.${(repoName(primaryRepo()) || 'sloth').replace(/[^\w.-]/g, '-')}`;
 export const plistPath = () => path.join(os.homedir(), 'Library/LaunchAgents', `${label()}.plist`);
 const logFile = () => path.join(SLOTH_HOME, 'service.log');
 const target = () => `gui/${process.getuid?.() ?? 0}/${label()}`;

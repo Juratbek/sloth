@@ -32,6 +32,8 @@ export interface SmokeConfig {
   at: string;
   /** The branch under test; empty is the repository's default branch. */
   branch: string;
+  /** The repository under test, `owner/name`; empty is the first configured one. One smoke test qualifies one app. */
+  repo: string;
   /** The session's own time budget — one app boot, one browser pass per role. */
   budgetMinutes: number;
   /** What to smoke — the roles and their main flows, one per line; empty, the session reads them off the project's docs. */
@@ -41,4 +43,4 @@ export interface SmokeConfig {
 /** The sweep is on as soon as a QA column is chosen — at eight in the evening, once the day's merges are deployed. */
 export const DEFAULT_QA: QaConfig = { branch: '', at: '20:00', budgetMinutes: 60 };
 /** Off until asked for — a smoke test is a two-hour session of its own; early in the morning once it is, so the report is there when the day starts. */
-export const DEFAULT_SMOKE: SmokeConfig = { everyDays: 0, at: '06:00', branch: '', budgetMinutes: 120, brief: '' };
+export const DEFAULT_SMOKE: SmokeConfig = { everyDays: 0, at: '06:00', branch: '', repo: '', budgetMinutes: 120, brief: '' };

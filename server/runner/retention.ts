@@ -1,13 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
+import { repoRoot, transcriptFile, untagName } from '../repos';
 import { forgetTranscript } from '../transcripts';
 import { run } from './gh';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
 import { previewing, pruneCaches, trimRunLogs } from './caps';
 import { statePath } from './markers';
 import { dirAlive, dirOf, isBlocked, runDirs, stateOf, type Kind } from './session-dirs';
-import { slotInUse } from './slots';
+import { slotInUse, slotRepoConfigured } from './slots';
 import { killWarm } from './warm';
 
 /**
@@ -37,38 +38,40 @@ const newest = (...paths: string[]): number =>
   }, 0);
 
 
-/** The transcript of the run booked in `dir` — its main `.jsonl` and the subagent files beside it. */
-function removeTranscript(dir: string): void {
+/** The transcript of the run booked in `dir` — its main `.jsonl` and the subagent files beside it, under the checkout of the run's repository. */
+function removeTranscript(dir: string, repo?: string): void {
   const id = readFile(path.join(dir, 'session_id'))?.trim();
   if (!id || !/^[\w-]+$/.test(id)) return;
-  forgetTranscript(path.join(cfg().transcriptsDir, `${id}.jsonl`));
-  remove(path.join(cfg().transcriptsDir, `${id}.jsonl`));
-  remove(path.join(cfg().transcriptsDir, id));
+  const file = transcriptFile(id, repo);
+  forgetTranscript(file);
+  remove(file);
+  remove(file.replace(/\.jsonl$/, ''));
 }
 
 function pruneSessions(cutoff: number): void {
-  for (const { name, kind, target, dir } of runDirs()) {
+  for (const { name, kind, target, repo, dir } of runDirs()) {
     // A live run, one whose app is still up behind a preview link, or one parked in needs-help waiting
     // for a human's answer, is not finished — the answer arrives whenever it arrives, and the reply
     // (trigger 6) reads the state, inbox and exits this directory holds. Parked is `waiting` in its
     // state: `blocked` marks only the run parked in place, with no needs-help column to move to.
-    if (dirAlive(dir) || isBlocked(dir) || stateOf(dir).state === 'waiting' || (kind === 'issue' && previewing(target))) continue;
+    if (dirAlive(dir) || isBlocked(dir) || stateOf(dir).state === 'waiting' || (kind === 'issue' && previewing({ repo, number: target }))) continue;
     if (newest(dir, path.join(dir, 'state.json'), path.join(dir, 'run.log')) > cutoff) continue;
     if (isDry()) {
       log(`dry-run: would delete the session directory of ${name}`);
       continue;
     }
-    removeTranscript(dir);
+    removeTranscript(dir, repo);
     remove(dir);
     log(`pruned session ${name}`);
   }
 }
 
 /**
- * The worktrees nobody needs: a per-issue checkout of the old scheme whose run is over, and a pool slot
- * numbered past `maxActive` that no run holds (the cap was lowered). A slot within the pool stays — its
- * installed dependencies are the next run's head start. `git worktree remove` so git's own administrative
- * files go too.
+ * The worktrees nobody needs: a per-issue checkout of the old scheme whose run is over, a pool slot
+ * numbered past `maxActive` that no run holds (the cap was lowered), and a slot's worktree of a repository
+ * no longer configured. A slot within the pool stays — its installed dependencies are the next run's head
+ * start. `git worktree remove` so git's own administrative files go too; each worktree is removed through
+ * the checkout of its own repository (`repos.ts` `untagName` reads it off the name).
  *
  * A checkout git has already forgotten — its administrative files pruned, or the run that made it killed
  * before git finished — fails that command with "is not a working tree" for ever, and used to be logged
@@ -84,23 +87,28 @@ async function pruneWorktrees(): Promise<void> {
   } catch {
     return;
   }
-  let removed = 0;
+  const pruned = new Set<string>();
   for (const name of names) {
-    // `issue-<n>` is an old implement run's checkout, `qa-<n>` the QA sweep's test of the same issue, `slot-<n>` the pool's.
-    const m = /^(issue|qa|slot)-(\d+)$/.exec(name);
+    // `issue-<n>` is an old implement run's checkout, `qa-<n>` the QA sweep's test of the same issue, `slot-<n>` the pool's —
+    // each with `@owner~name` on the end in every repository but the legacy one.
+    const { base, repo } = untagName(name);
+    const m = /^(issue|qa|slot)-(\d+)$/.exec(base);
     const n = Number(m?.[2]);
     if (!m || !n) continue;
     const dir = path.join(c.worktreesDir, name);
     if (m[1] === 'slot') {
-      if (n <= c.maxActive || slotInUse(name)) continue;
-    } else if (dirAlive(dirOf(m[1] as Kind, n)) || (m[1] === 'issue' && previewing(n))) continue;
+      if (n <= c.maxActive && slotRepoConfigured(name)) continue;
+      if (slotInUse(base)) continue;
+    } else if (dirAlive(dirOf({ kind: m[1] as Kind, target: n, repo })) || (m[1] === 'issue' && previewing({ repo, number: n }))) continue;
     if (isDry()) {
       log(`dry-run: would remove the worktree ${name}`);
       continue;
     }
     // A slot that leaves the pool takes its warm stack with it: servers, database, record (`warm.ts`).
-    if (m[1] === 'slot') await killWarm(name, 'the slot leaves the pool');
-    const r = await run('git', ['-C', c.runnerRoot, 'worktree', 'remove', dir, '--force'], { timeout: 120_000 });
+    if (m[1] === 'slot') await killWarm(base, 'the slot leaves the pool');
+    const root = repoRoot(repo);
+    pruned.add(root);
+    const r = await run('git', ['-C', root, 'worktree', 'remove', dir, '--force'], { timeout: 120_000 });
     if (!r.ok && fs.existsSync(dir)) {
       const why = r.err.split('\n')[0];
       // Only when git disowns it: a removal that failed for any other reason (a lock, a busy file) is
@@ -112,11 +120,11 @@ async function pruneWorktrees(): Promise<void> {
       remove(dir);
       log(`worktree ${name} deleted — git has no record of it (${why})`);
     }
-    removed++;
-    remove(statePath('slots', name));
+    // The lease is the slot's, not one worktree's: it goes only with a slot that leaves the pool.
+    if (m[1] === 'slot' && n > c.maxActive) remove(statePath('slots', base));
     log(`pruned worktree ${name}`);
   }
-  if (removed) await run('git', ['-C', c.runnerRoot, 'worktree', 'prune'], { timeout: 60_000 });
+  for (const root of pruned) await run('git', ['-C', root, 'worktree', 'prune'], { timeout: 60_000 });
 }
 
 /** The dedupe markers that grow without bound: one per `@sloth` comment, one directory per status reply. */

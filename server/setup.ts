@@ -221,10 +221,10 @@ export async function handleSetup(pathname: string, method: string, body: unknow
       startLoop();
       startTunnel();
     });
-    // The checkout the sessions need is Sloth's to make: cloned now if the saved root is not one yet,
-    // without the save waiting on it — the health chip says "cloning" until it is there.
+    // The checkouts the sessions need are Sloth's to make: cloned now if a saved root is not one yet,
+    // without the save waiting on it — the health chip says "cloning" until they are there.
     void ensureCheckout();
-    // The launch agent is named after the repo and points at this checkout, so it is written from here.
+    // The launch agent is named after the first repository and points at this checkout, so it is written from here.
     const serviceError = config.autostart === was ? undefined : await applyAutostart(config.autostart);
     return { ok: true, path: CONFIG_PATH, config, serviceError };
   }

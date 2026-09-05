@@ -13,7 +13,7 @@ import { webhookMiddleware } from '../server/webhook-route';
 import { verifyTrelloSignature } from '../server/webhook-trello';
 import { resetSpawn, spawned } from './child-process-mock';
 import { called, onGh, resetGh } from './gh-mock';
-import { alivePid, configure, exists, makeSession, read, readLog, sessionDir, statePath, wipe } from './harness';
+import { REPO, alivePid, configure, exists, makeSession, read, readLog, ref, sessionDir, statePath, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
@@ -163,7 +163,7 @@ describe('card comments onto the issue', () => {
     fs.mkdirSync(statePath('mirrored'), { recursive: true });
     fs.writeFileSync(statePath('mirrored', 'c-900'), '');
     onGh(/api repos\/acme\/widgets\/issues\/4\/comments --paginate/, [[800, 'gh-login', Buffer.from('**Sloth:** Which colour?').toString('base64')].join('\t'), [900, 'gh-login', Buffer.from('**@tess on Trello:**\n\nBlue.').toString('base64')].join('\t')].join('\n'));
-    await answered([{ number: 4, title: 'Card c4', status: 'Sloth needs help', labels: [], assignees: [], closed: false }]);
+    await answered([{ repo: REPO, number: 4, title: 'Card c4', status: 'Sloth needs help', labels: [], assignees: [], closed: false }]);
     expect(spawned).toHaveLength(1);
     expect(readLog().some((l) => /Answer from tess \(tester\)/.test(l))).toBe(true);
   });
@@ -220,7 +220,7 @@ describe('a card for an issue without one', () => {
     answers[`GET /boards/${BOARD}/cards`] = [];
     answers['POST /cards'] = { id: 'c-new', name: 'Fix the footer' };
     onGh(/issue view 12/, 'Fix the footer\n');
-    expect(await moveCard(12, 'l-wip')).toBe(true);
+    expect(await moveCard(ref(12), 'l-wip')).toBe(true);
     const create = trelloCalls(/POST \/cards$/)[0];
     expect(create.params.get('idList')).toBe('l-wip');
     expect(create.params.get('name')).toBe('Fix the footer');

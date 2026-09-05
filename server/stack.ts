@@ -5,7 +5,7 @@ import { stackOf } from './config-file';
 import { installStatus, runJob, which, type Step } from './install';
 import { isDry, log } from './runner/log';
 import { startStackSession, withStackSession } from './stack-session';
-import { TOOLS, detectStack, requiredStack } from './stack-detect';
+import { TOOLS, detectStack, detectStackOfAll, requiredStack } from './stack-detect';
 import { APT_UPDATE, aptInstall, canSudoApt, createUser, serviceControl, sudoUser, sudoWide, unlockSudo } from './sudo';
 import type { StackStatus, StackTool } from './types';
 
@@ -83,9 +83,9 @@ export function manualCommand(id: StackId): string {
   return process.platform === 'darwin' ? `brew install ${t.brew.formula}` : `sudo apt-get install -y ${t.apt.packages.join(' ')}`;
 }
 
-/** Every tool's state: installed or not, wanted by the checkout at `root` (the configured one by default) or not. */
-export async function stackStatus(root = cfg().runnerRoot): Promise<StackStatus> {
-  const detected = detectStack(root);
+/** Every tool's state: installed or not, wanted by the checkout at `root` (every configured one together by default) or not. */
+export async function stackStatus(root?: string): Promise<StackStatus> {
+  const detected = root ? detectStack(root) : detectStackOfAll();
   const [tools, by] = await Promise.all([Promise.all(STACK.map((id) => check(id, detected))), installer()]);
   return {
     tools,

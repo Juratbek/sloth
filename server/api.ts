@@ -24,6 +24,8 @@ import { usageSeries } from './usage';
 import { hoursReport } from './hours';
 import { ensureWebhook, startWebhook, webhookInfo } from './webhook';
 import { webhookMiddleware } from './webhook-route';
+import { primaryRepo } from './repos';
+import type { IssueRef } from './repo-types';
 
 /**
  * Answers a handler that threw. Nothing can be said once the response has begun — an SSE stream, a body
@@ -76,6 +78,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     const preview = /^\/api\/previews\/(\d+)\/stop$/.exec(p);
     const stopSession = /^\/api\/sessions\/([\w-]+)\/stop$/.exec(p);
     const unblockIssue = /^\/api\/issues\/(\d+)\/unblock$/.exec(p);
+    // Which repository a number is in: `?repo=owner/name`, the first repository when the page did not say — as a page from before there were several does not.
+    const repoOf = (): string => url.searchParams.get('repo') || primaryRepo();
     if (p === '/api/tick' && req.method === 'POST') {
       const dryRun = url.searchParams.get('dry') === '1';
       await tick({ board: true, comments: true, dryRun });
@@ -98,17 +102,17 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     } else if (unblockIssue && req.method === 'POST') {
       // Lifts a give-up. The card is only handed back to the sweep — the next one tests it, and "sweep
       // now" beside it makes that next one immediate.
-      const issue = Number(unblockIssue[1]);
+      const issue: IssueRef = { repo: repoOf(), number: Number(unblockIssue[1]) };
       const unblocked = await serial('unblock', () => unblock(issue, 'from the monitor'));
       broadcast();
-      body = { ok: unblocked, issue };
+      body = { ok: unblocked, issue: issue.number, repo: issue.repo };
     } else if ((p === '/api/pause' || p === '/api/resume') && req.method === 'POST') {
       // Pause / resume the launching triggers; running sessions and replies are untouched.
       setPaused(p === '/api/pause');
       broadcast();
       body = { ok: true, paused: isPaused() };
     } else if (preview && req.method === 'POST') {
-      await serial('stop preview', () => stopPreview(Number(preview[1]), 'stopped from the monitor'));
+      await serial('stop preview', () => stopPreview({ repo: repoOf(), number: Number(preview[1]) }, 'stopped from the monitor'));
       body = { ok: true };
     } else if (stopSession && req.method === 'POST') {
       // Ends the run behind a transcript; an issue's card is parked so it is not relaunched. Behind the
@@ -117,7 +121,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       const w = watcherOf(stopSession[1]);
       if (w) {
         const stopped = await serial('stop session', () =>
-          stopRun(w.kind, w.target, 'stopped from the monitor', 'the run for this issue was stopped from the monitor.'),
+          stopRun({ kind: w.kind, target: w.target, repo: w.repo }, 'stopped from the monitor', 'the run for this issue was stopped from the monitor.'),
         );
         broadcast();
         body = { ok: true, stopped };

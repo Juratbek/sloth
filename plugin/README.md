@@ -68,7 +68,9 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_SESSION_DIR` | This run's directory — `state.json`, `inbox/`, pids, markers |
 | `SLOTH_REVIEW_COMMENT` | A status reply only: the question was a comment on a line of `$SLOTH_PR`'s diff, with this id; the answer goes into that review thread |
 | `SLOTH_ISSUE` / `SLOTH_PR` | The target issue (implement, status) or PR (review) |
-| `SLOTH_REPO` | `owner/repo` |
+| `SLOTH_REPO` | `owner/repo` — the repository this run works in: the issue's, or the PR's for a review. Every `gh … --repo "$SLOTH_REPO"` in the commands means this one |
+| `SLOTH_ISSUE_REPO` | The repository `$SLOTH_ISSUE` is in — `$SLOTH_REPO` unless the run is a review or a status reply on a PR that closes an issue in another of Sloth's repositories |
+| `SLOTH_REPOS` | Every repository Sloth works in, JSON `[{"slug","note","root","worktree"}]`: its `owner/repo`, what it is in the user's words, its checkout, and the worktree of it in this run's slot (see the `session` skill, *Working in a second repository*). One entry while Sloth watches one repository |
 | `SLOTH_BOARD` | `github` (a Projects v2 board) or `trello` (a Trello board — its lists are the columns, and the `board` skill's Trello section says how a session reads and moves a card there) |
 | `SLOTH_BOARD_API` | Sloth's own board API on this machine, `http://127.0.0.1:<port>/api/board`: a card's column and a move, for a board that is not GitHub's |
 | `SLOTH_PROJECT_ID`, `SLOTH_PROJECT_NUMBER`, `SLOTH_PROJECT_OWNER` | The board (on Trello: the board id, `0`, the member) |
@@ -85,9 +87,10 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_SMOKE_RUN` / `SLOTH_SMOKE_BRANCH` / `SLOTH_SMOKE_SHA` | A smoke test's own number, the branch it qualifies (resolved — never empty) and the exact head it tests; `brief.md` in the session directory says what to smoke when Settings does |
 | `SLOTH_STACK` | The tools the project's app needs on this machine, space-separated (`postgresql redis node …`) |
 | `SLOTH_STACK_INSTALL` | Only on a `/sloth:stack` run: the tools that run has to install — the same list as its arguments |
-| `SLOTH_RUNNER_ROOT` | The checkout sessions run from |
-| `SLOTH_WORKTREES_DIR` | Where Sloth's pool of worktrees lives — `slot-1 … slot-N` under it |
-| `SLOTH_WORKTREE` | The slot leased to this run; the session resets it to its branch and leaves it, the server returns it to the pool |
+| `SLOTH_RUNNER_ROOT` | The checkout of `$SLOTH_REPO` the sessions run from |
+| `SLOTH_WORKTREES_DIR` | Where Sloth's pool of worktrees lives — `slot-1 … slot-N` under it, and `slot-<n>@owner~name` for the worktree of another repository in the same slot |
+| `SLOTH_WORKTREE` | The worktree of `$SLOTH_REPO` in the slot leased to this run; the session resets it to its branch and leaves it, the server returns it to the pool |
+| `SLOTH_SLOT` | The slot itself — `slot-<n>`; the worktrees of the other repositories in it are named in `SLOTH_REPOS` |
 | `SLOTH_ADMIN_LOGIN` | The admin — the one login whose orders have no limit (may be empty: nobody is admin) |
 | `SLOTH_DEVELOPER_LOGINS` | Space-separated logins whose orders are followed within the issue they are on (may be empty) |
 | `SLOTH_TESTER_LOGINS` | Space-separated logins that answer questions and ask for status, never order (may be empty) |

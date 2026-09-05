@@ -2,7 +2,7 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { newKey, startProxy, type Proxy } from '../server/runner/preview-proxy';
-import { configure } from './harness';
+import { configure, ref } from './harness';
 
 /** A stand-in for the session's app: it answers with what it was asked, so the proxy's work is visible. */
 function upstream(): Promise<{ url: string; close: () => void }> {
@@ -51,7 +51,7 @@ const at = (path: string) => `http://127.0.0.1:${proxy.port}${path}`;
 beforeEach(async () => {
   configure();
   app = await upstream();
-  proxy = (await startProxy(1, app.url, key))!;
+  proxy = (await startProxy(ref(1), app.url, key))!;
 });
 afterEach(() => {
   proxy.close();

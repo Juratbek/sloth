@@ -1,5 +1,6 @@
 import { cfg } from './config';
 import { checkoutState } from './checkout';
+import { repos } from './repos';
 import { ownerConflict } from './runner/owner';
 import { me as trelloMe, trelloReady } from './trello';
 import { chromeBinary, type Browser } from './runner/browser';
@@ -60,19 +61,33 @@ async function ghCheck(): Promise<HealthCheck> {
  * reach the repository it works on? `--exit-code` makes an empty answer a failure rather than a silent
  * success, so a `origin` pointing at nothing is caught here and not by a session an hour later.
  */
-async function gitCheck(): Promise<HealthCheck> {
-  const cwd = cfg().runnerRoot;
+async function gitCheckOf(slug: string, cwd: string): Promise<HealthCheck> {
   // No checkout yet is not a fault while Sloth is making one (`checkout.ts`); it is one when it could not.
   const state = checkoutState(cwd);
   if (state.kind === 'cloning') return { id: 'git', ok: true, detail: `cloning ${state.repo} into ${cwd}` };
   if (state.kind === 'error') return { id: 'git', ok: false, detail: state.error };
-  if (state.kind === 'missing') return { id: 'git', ok: false, detail: `no checkout at ${cwd} yet — Sloth clones ${cfg().repo} there on the next tick` };
+  if (state.kind === 'missing') return { id: 'git', ok: false, detail: `no checkout at ${cwd} yet — Sloth clones ${slug} there on the next tick` };
   const r = await run('git', ['ls-remote', '--exit-code', 'origin', 'HEAD'], { timeout: TIMEOUT, cwd });
   return {
     id: 'git',
     ok: r.ok,
     detail: r.ok ? `origin is reachable from ${cwd}` : first(r.err, r.out) || `git ls-remote origin failed in ${cwd}`,
   };
+}
+
+/**
+ * The same question for every repository, asked at once and answered as one check: the first checkout
+ * that is not in order is the answer, and every one of them in order is one line saying how many.
+ */
+async function gitCheck(): Promise<HealthCheck> {
+  const list = repos();
+  const results = await Promise.all(list.map((r) => gitCheckOf(r.slug, r.root)));
+  const bad = results.find((c) => !c.ok);
+  if (bad) return list.length > 1 ? { ...bad, detail: `${list[results.indexOf(bad)].slug}: ${bad.detail}` } : bad;
+  const cloning = results.find((c) => /^cloning /.test(c.detail));
+  if (cloning) return cloning;
+  if (results.length <= 1) return results[0] ?? { id: 'git', ok: false, detail: 'no repository configured' };
+  return { id: 'git', ok: true, detail: `origin is reachable from every checkout (${results.length} repositories)` };
 }
 
 /**

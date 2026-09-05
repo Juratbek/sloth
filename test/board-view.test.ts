@@ -4,12 +4,12 @@ import { clearSnapshot, setSnapshot, snapshot } from '../server/runner/board-sna
 import { reloadConfig } from '../server/config';
 import type { ConfigColumns } from '../server/config-types';
 import type { BlockedCard, IssueCost, SessionSummary, WatcherSession, WatcherState } from '../server/types';
-import { COLUMNS, card, configure } from './harness';
+import { COLUMNS, REPO, card, configure } from './harness';
 
 const usage = () => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, thinking: 0 });
 
 const dir = (kind: WatcherSession['kind'], target: number, over: Partial<WatcherSession> = {}): WatcherSession =>
-  ({ name: `${kind}-${target}`, kind, target, alive: false, retries: 0, blocked: false, runLogTail: '', inbox: [], ...over }) as WatcherSession;
+  ({ name: `${kind}-${target}`, kind, target, repo: REPO, alive: false, retries: 0, blocked: false, runLogTail: '', inbox: [], ...over }) as WatcherSession;
 
 /** A run as `listSessions` hands it over — only what the join reads is filled in. */
 const session = (over: Partial<SessionSummary>): SessionSummary =>
@@ -17,6 +17,7 @@ const session = (over: Partial<SessionSummary>): SessionSummary =>
     id: 'sess',
     prompt: '',
     kind: 'sloth:implement',
+    repo: REPO,
     status: 'done',
     live: false,
     agents: [],
@@ -34,7 +35,7 @@ const session = (over: Partial<SessionSummary>): SessionSummary =>
 const state = (s: WatcherState): { state: WatcherState } => ({ state: s });
 
 const cost = (issue: number, over: Partial<IssueCost> = {}): IssueCost =>
-  ({ issue, sessions: 1, cost: 1, tokens: { input: 0, output: 0, cacheRead: 0 }, ...over }) as IssueCost;
+  ({ repo: REPO, issue, sessions: 1, cost: 1, tokens: { input: 0, output: 0, cacheRead: 0 }, ...over }) as IssueCost;
 
 const NOW = Date.parse('2026-08-28T12:00:00Z');
 const view = (
@@ -125,6 +126,7 @@ describe('buildBoardView', () => {
     });
     const v = view([card(42, 'Sloth needs help', { assignees: ['bob'], labels: ['Fable: approved'] })], [parked], [cost(42, { cost: 4.5 })]);
     expect(v.columns.find((c) => c.role === 'needsHelp')?.cards[0]).toEqual({
+      repo: REPO,
       issue: 42,
       title: 'Issue 42',
       assignees: ['bob'],
@@ -207,7 +209,7 @@ describe('why nothing is happening — the per-card hold', () => {
   });
 
   it('answers with the card\'s own reason before the loop\'s — a give-up, then the skip label', () => {
-    const blocked: BlockedCard[] = [{ issue: 1, title: 'Issue 1', reason: 'its QA test died 3 times on one head.', sha: 'abc', at: 0 }];
+    const blocked: BlockedCard[] = [{ repo: REPO, issue: 1, title: 'Issue 1', reason: 'its QA test died 3 times on one head.', sha: 'abc', at: 0 }];
     const v = view([card(1, 'In Progress'), card(2, 'In Progress', { labels: ['Sloth: skip'] })], [dead(1), dead(2)], [], COLUMNS, blocked, { paused: true });
     expect(holds(v)[1]).toBe('Sloth has given up on this card — its QA test died 3 times on one head. Unblock it from the home panel.');
     expect(holds(v)[2]).toBe('The Sloth: skip label holds this card back — take it off and Sloth works it again.');
@@ -239,7 +241,7 @@ describe('why nothing is happening — the per-card hold', () => {
   });
 
   it('says nothing about a card in Done, which is not waiting for anything', () => {
-    const blocked: BlockedCard[] = [{ issue: 1, title: 'Issue 1', reason: 'it died.', sha: 'abc', at: 0 }];
+    const blocked: BlockedCard[] = [{ repo: REPO, issue: 1, title: 'Issue 1', reason: 'it died.', sha: 'abc', at: 0 }];
     const v = view([card(1, 'Done', { closed: true, labels: ['Sloth: skip'] })], [dead(1)], [], COLUMNS, blocked, { paused: true });
     expect(holds(v)[1]).toBeUndefined();
   });

@@ -42,10 +42,12 @@ gh pr view <N> --repo "$SLOTH_REPO" \
 
 `closingIssuesReferences` is the **only** source of the wired issue — never guess it from the title or the
 branch name. No wired issue → say so, assess mergeability, bugs and scope only, answer "Resolves the issue"
-with `no wired issue`, and skip the board move (still leave the comments).
+with `no wired issue`, and skip the board move (still leave the comments). The issue may be in another of
+Sloth's repositories than the PR (`Closes owner/name#12`): `$SLOTH_ISSUE_REPO` names it, and every read of
+the issue and every label below goes there, never to `$SLOTH_REPO`.
 
 ```bash
-gh issue view <issue> --repo "$SLOTH_REPO" --json title,body,comments
+gh issue view <issue> --repo "$SLOTH_ISSUE_REPO" --json title,body,comments
 ```
 
 The issue's comment thread carries requirements too — read it, not just the body.
@@ -181,10 +183,10 @@ review left there does not outlive a rejected new head. Create the label first: 
 never had it rejects the add.
 
 ```bash
-retry gh label create "Fable: approved" --repo "$SLOTH_REPO" --color 6f42c1 \
+retry gh label create "Fable: approved" --repo "$SLOTH_ISSUE_REPO" --color 6f42c1 \
   --description "Passed Sloth's review — ready for a human to test" --force
-retry gh issue edit <issue> --repo "$SLOTH_REPO" --add-label "Fable: approved"       # OK to merge: yes
-retry gh issue edit <issue> --repo "$SLOTH_REPO" --remove-label "Fable: approved"    # OK to merge: no
+retry gh issue edit <issue> --repo "$SLOTH_ISSUE_REPO" --add-label "Fable: approved"       # OK to merge: yes
+retry gh issue edit <issue> --repo "$SLOTH_ISSUE_REPO" --remove-label "Fable: approved"    # OK to merge: no
 ```
 
 Only ever label the issue wired to **this** PR; no wired issue → nothing to label. Outside final mode

@@ -7,7 +7,7 @@ import { sampleMachine, setReaders } from '../server/runner/machine';
 import { pausedSeconds, pressure, resetPressure, resumeRun } from '../server/runner/pressure';
 import { reap, stop } from '../server/runner/triggers';
 import { resetGh } from './gh-mock';
-import { alivePid, card, configure, exists, makeSession, read, readLog, sessionDir, wipe } from './harness';
+import { alivePid, card, configure, exists, makeSession, read, readLog, runRef, sessionDir, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
@@ -134,7 +134,7 @@ describe('pressure', () => {
     signals.length = 0;
     await reap();
     expect(signals.some((s) => s.signal === undefined || s.signal === 'SIGTERM')).toBe(false); // 55 min of its own: within budget + grace
-    await stop('issue', 1, 'from the monitor', 'why');
+    await stop(runRef('issue', 1), 'from the monitor', 'why');
     const order = signals.map((s) => s.signal);
     expect(order.indexOf('SIGCONT')).toBeGreaterThanOrEqual(0);
     expect(order.indexOf('SIGCONT')).toBeLessThan(order.findIndex((s) => s === undefined || s === 'SIGTERM'));

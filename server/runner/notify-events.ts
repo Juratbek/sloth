@@ -2,9 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
 import type { WebhookEvent } from '../config-types';
+import { label, tag, untagName } from '../repos';
+import { refKey, type IssueRef } from '../repo-types';
 import type { BoardItem } from './board';
 import { isDry, remove, write } from './log';
-import { APPROVED_LABEL, skipped, statePath } from './markers';
+import { APPROVED_LABEL, marker, skipped, statePath } from './markers';
 import { notifies, notify } from './notify';
 import { previewLink } from './preview';
 
@@ -18,12 +20,16 @@ import { previewLink } from './preview';
 
 /** The needs-help markers have always been `state/notified/<issue>`; the newer events get a directory each. */
 const dirOf = (event: WebhookEvent) => (event === 'needsHelp' ? statePath('notified') : statePath('notified', event));
-const markerOf = (event: WebhookEvent, issue: number | string) => path.join(dirOf(event), String(issue));
+const markerOf = (event: WebhookEvent, issue: IssueRef) => path.join(dirOf(event), tag(String(issue.number), issue.repo));
 
-/** Only the issue numbers: the per-event directories live beside the needs-help markers. */
-function announced(event: WebhookEvent): string[] {
+/** Only the issues: the per-event directories live beside the needs-help markers. */
+function announced(event: WebhookEvent): IssueRef[] {
   try {
-    return fs.readdirSync(dirOf(event)).filter((f) => /^\d+$/.test(f));
+    return fs
+      .readdirSync(dirOf(event))
+      .map((f) => untagName(f))
+      .filter(({ base }) => /^\d+$/.test(base))
+      .map(({ base, repo }) => ({ repo, number: Number(base) }));
   } catch {
     return [];
   }
@@ -45,26 +51,26 @@ const STATES: State[] = [
     event: 'needsHelp',
     of: (b) => inColumn(b, cfg().statusField.columns.needsHelp.name),
     skip: skipped,
-    line: (i) => `Sloth needs help with #${i.number} ${i.title}`,
+    line: (i) => `Sloth needs help with ${label(i)} ${i.title}`,
   },
   {
     event: 'codeReview',
     of: (b) => inColumn(b, cfg().statusField.columns.codeReview.name),
-    line: (i) => `#${i.number} ${i.title} is in ${i.status} — its PR awaits Sloth's review`,
+    line: (i) => `${label(i)} ${i.title} is in ${i.status} — its PR awaits Sloth's review`,
   },
   {
     event: 'finalPassed',
     of: (b) => inColumn(b, cfg().statusField.columns.approved.name).filter((i) => i.labels.includes(APPROVED_LABEL)),
     line: (i) => {
-      const link = previewLink(i.number);
-      return `#${i.number} ${i.title} passed its review — in ${i.status}, ready for a human to test${link ? `: ${link}` : ''}`;
+      const link = previewLink(i);
+      return `${label(i)} ${i.title} passed its review — in ${i.status}, ready for a human to test${link ? `: ${link}` : ''}`;
     },
   },
   {
     // Only what Sloth itself filed away (trigger 6's marker): every issue the board ever closed is not news.
     event: 'merged',
-    of: (b) => b.filter((i) => i.closed && fs.existsSync(statePath('finished', String(i.number)))),
-    line: (i) => `#${i.number} ${i.title} is closed — Sloth is done with it`,
+    of: (b) => b.filter((i) => i.closed && fs.existsSync(marker('finished', String(i.number), i))),
+    line: (i) => `${label(i)} ${i.title} is closed — Sloth is done with it`,
   },
 ];
 
@@ -77,36 +83,37 @@ const STATES: State[] = [
 async function unapproved(item: BoardItem | undefined): Promise<void> {
   if (!item || item.labels.includes(APPROVED_LABEL)) return;
   await notify('finalFailed', {
-    issue: item.number,
+    issue: item,
     title: item.title,
     column: item.status,
-    text: `#${item.number} ${item.title} lost its "${APPROVED_LABEL}" label — its review has to happen again`,
+    text: `${label(item)} ${item.title} lost its "${APPROVED_LABEL}" label — its review has to happen again`,
   });
 }
 
 /** Every board-read event of one tick. Nothing at all happens without a webhook URL. */
 export async function boardEvents(board: BoardItem[]): Promise<void> {
   if (!cfg().helpWebhook) return;
-  const byNumber = new Map(board.map((i) => [i.number, i]));
+  const byKey = new Map(board.map((i) => [refKey(i), i]));
   for (const { event, of, skip, line } of STATES) {
     const cards = of(board);
-    const still = new Set(cards.map((i) => String(i.number)));
+    const still = new Set(cards.map(refKey));
     const before = announced(event);
     for (const f of before) {
-      if (still.has(f)) continue;
+      if (still.has(refKey(f))) continue;
       remove(markerOf(event, f));
       // The label going is the failing verdict.
-      if (event === 'finalPassed') await unapproved(byNumber.get(Number(f)));
+      if (event === 'finalPassed') await unapproved(byKey.get(refKey(f)));
     }
+    const done = new Set(before.map(refKey));
     for (const item of cards) {
-      if (before.includes(String(item.number)) || skip?.(item)) continue;
+      if (done.has(refKey(item)) || skip?.(item)) continue;
       // The marker records the state, not the announcement: `finalFailed` is only ever raised by a
       // `finalPassed` marker going, so someone subscribed to the one and not the other still needs both
       // written. Only a webhook that was tried and failed leaves none, so the next tick tries again.
       const sent = notifies(event)
-        ? await notify(event, { issue: item.number, title: item.title, column: item.status, text: line(item) })
+        ? await notify(event, { issue: item, title: item.title, column: item.status, text: line(item) })
         : true;
-      if (sent && !isDry()) write(markerOf(event, item.number), '');
+      if (sent && !isDry()) write(markerOf(event, item), '');
     }
   }
 }

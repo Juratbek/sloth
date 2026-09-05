@@ -1,8 +1,7 @@
 import { cfg } from '../config';
 import { broadcast } from '../events';
 import { pruneBlocked } from './blocked';
-import { fetchBoard } from './board';
-import type { BoardItem } from './board';
+import { fetchBoard, type BoardItem } from './board';
 import { setSnapshot } from './board-snapshot';
 import { refreshColumns } from './columns';
 import { comments } from './comments';
@@ -27,6 +26,7 @@ import { ensureCheckout } from '../checkout';
 import { isWebhookLive, onWebhookChange } from '../webhook';
 import { autoUpdate } from '../update';
 import type { LoopStatus } from '../types';
+import { repoSlugs } from '../repos';
 
 export interface TickOptions {
   board?: boolean;
@@ -272,7 +272,7 @@ export function startLoop(): void {
   if (!claimState()) return;
   state.running = true;
   log(
-    `watching ${c.repo} · ${c.project.provider === 'trello' ? `Trello board ${c.project.title}` : `board #${c.project.number}`} · pickup "${c.statusField.columns.pickup.name}" · board ${c.boardSeconds}s / comments ${c.commentSeconds}s (${c.fallbackCommentSeconds}s without the webhook) / machine ${c.machineSeconds}s${c.autoUpdate ? ` / auto-update ${c.updateSeconds}s` : ''}`,
+    `watching ${repoSlugs().join(', ')} · ${c.project.provider === 'trello' ? `Trello board ${c.project.title}` : `board #${c.project.number}`} · pickup "${c.statusField.columns.pickup.name}" · board ${c.boardSeconds}s / comments ${c.commentSeconds}s (${c.fallbackCommentSeconds}s without the webhook) / machine ${c.machineSeconds}s${c.autoUpdate ? ` / auto-update ${c.updateSeconds}s` : ''}`,
   );
   schedule('board', 5);
   schedule('comments', 20);

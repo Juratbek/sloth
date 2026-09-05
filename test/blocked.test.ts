@@ -5,7 +5,7 @@ import { setDry } from '../server/runner/log';
 import { openSweep, qaSweep } from '../server/runner/qa';
 import { resetSpawn, spawned } from './child-process-mock';
 import { called, onGh, resetGh } from './gh-mock';
-import { COLUMNS, card, configure, exists, makeSession, readLog, sessionDir, statePath, wipe } from './harness';
+import { COLUMNS, card, configure, exists, makeSession, readLog, ref, sessionDir, statePath, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
@@ -64,7 +64,7 @@ describe('the QA sweep giving up', () => {
   it('blocks the card, says so on the issue and raises the event', async () => {
     tried(1, 3);
     await sweepOn(HEAD, [card(1, QA.name)]);
-    expect(isCardBlocked(1)).toBe(true);
+    expect(isCardBlocked(ref(1))).toBe(true);
     expect(blockedCards()).toMatchObject([{ issue: 1, title: 'Issue 1', sha: HEAD, reason: expect.stringContaining('without a verdict 3 times on qa @ aaaaaaa') }]);
     expect(spawned).toHaveLength(0);
     expect(called(/issue comment 1 [\s\S]*blocked/)).toHaveLength(1);
@@ -75,7 +75,7 @@ describe('the QA sweep giving up', () => {
   it('leaves a card that still has tries in it alone', async () => {
     tried(1, 2);
     await sweepOn(HEAD, [card(1, QA.name)]);
-    expect(isCardBlocked(1)).toBe(false);
+    expect(isCardBlocked(ref(1))).toBe(false);
     expect(log()).toContain('launch QA #1');
   });
 
@@ -93,7 +93,7 @@ describe('the QA sweep giving up', () => {
     tried(1, 3);
     setDry(true);
     await sweepOn(HEAD, [card(1, QA.name)]);
-    expect(isCardBlocked(1)).toBe(false);
+    expect(isCardBlocked(ref(1))).toBe(false);
     expect(posted).toHaveLength(0);
     expect(called(/issue comment/)).toHaveLength(0);
     expect(log()).toContain('dry-run: would block #1');
@@ -106,8 +106,8 @@ describe('lifting a block', () => {
     await sweepOn(HEAD, [card(1, QA.name)]);
     expect(exists(statePath('qa', `1-${HEAD}`))).toBe(true);
 
-    expect(unblock(1, 'from the monitor')).toBe(true);
-    expect(isCardBlocked(1)).toBe(false);
+    expect(unblock(ref(1), 'from the monitor')).toBe(true);
+    expect(isCardBlocked(ref(1))).toBe(false);
     expect(exists(statePath('qa', `1-${HEAD}`))).toBe(false);
     expect(exists(sessionDir('qa', 1), 'retries')).toBe(false);
     expect(log()).toContain('#1 unblocked (from the monitor)');
@@ -118,7 +118,7 @@ describe('lifting a block', () => {
   });
 
   it('is nothing to do on a card that is not blocked', () => {
-    expect(unblock(1, 'from the monitor')).toBe(false);
+    expect(unblock(ref(1), 'from the monitor')).toBe(false);
     expect(log()).toBe('');
   });
 
@@ -126,9 +126,9 @@ describe('lifting a block', () => {
     tried(1, 3);
     await sweepOn(HEAD, [card(1, QA.name)]);
     pruneBlocked([card(1, QA.name)]);
-    expect(isCardBlocked(1)).toBe(true);
+    expect(isCardBlocked(ref(1))).toBe(true);
     pruneBlocked([card(1, COLUMNS.done.name)]);
-    expect(isCardBlocked(1)).toBe(false);
+    expect(isCardBlocked(ref(1))).toBe(false);
     expect(log()).toContain('#1 unblocked (the card left QA)');
   });
 
@@ -136,6 +136,6 @@ describe('lifting a block', () => {
     tried(1, 3);
     await sweepOn(HEAD, [card(1, QA.name)]);
     pruneBlocked([card(1, QA.name, { closed: true })]);
-    expect(isCardBlocked(1)).toBe(false);
+    expect(isCardBlocked(ref(1))).toBe(false);
   });
 });

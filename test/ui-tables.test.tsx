@@ -15,6 +15,7 @@ afterEach(cleanup);
 
 const config = (over: Partial<MonitorConfig> = {}): MonitorConfig => ({
   repo: 'acme/widgets',
+  repos: [{ slug: 'acme/widgets', note: '', root: '/tmp/runner' }],
   title: 'Widgets',
   runnerRoot: '/tmp/runner',
   transcriptsDir: '/tmp/transcripts',
@@ -34,6 +35,7 @@ const config = (over: Partial<MonitorConfig> = {}): MonitorConfig => ({
 });
 
 const issue = (over: Partial<IssueCost> = {}): IssueCost => ({
+  repo: 'acme/widgets',
   issue: 42,
   title: 'Add the login screen',
   sessions: 3,
@@ -77,7 +79,7 @@ describe('IssuesTable, with issues', () => {
   });
 
   it('leaves the number unlinked before Sloth knows which repo it is watching', () => {
-    render(<IssuesTable issues={[issue()]} config={config({ repo: '' })} />);
+    render(<IssuesTable issues={[issue({ repo: '' })]} config={config({ repo: '' })} />);
     expect(screen.queryByRole('link')).toBeNull();
     expect(screen.getByText('#42')).toBeTruthy();
   });

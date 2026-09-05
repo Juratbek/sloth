@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { CONFIG_PATH, reloadConfig, type ResolvedConfig } from '../server/config';
 import type { BoardItem } from '../server/runner/board';
+import type { IssueRef } from '../server/repo-types';
+import type { RunRef } from '../server/runner/session-dirs';
 import { writeConfigFile, normalizeConfig } from '../server/config-file';
 import type { SlothConfig } from '../server/config-types';
 import { setReaders } from '../server/runner/machine';
@@ -28,8 +30,18 @@ export const COLUMNS = {
   done: { id: 'opt-done', name: 'Done' },
 };
 
+/** The one repository the harness configures — the legacy one, so every name on disk is untagged as before. */
+export const REPO = 'acme/widgets';
+/** An issue in it. */
+export const ref = (number: number, repo = REPO): IssueRef => ({ repo, number });
+/** A run in it. */
+export const runRef = (kind: RunRef['kind'], target: number, repo = REPO): RunRef => ({ kind, target, repo });
+/** Its checkout — what `runnerRoot` used to name. */
+export const runnerRoot = (): string => reloadConfig().repos[0].root;
+
 /** One board card; `extra` overrides any field — an assignee, a label, a closed issue. */
 export const card = (number: number, status: string, extra: Partial<BoardItem> = {}): BoardItem => ({
+  repo: REPO,
   number,
   title: `Issue ${number}`,
   status,
@@ -63,9 +75,9 @@ export function configure(overrides: Record<string, unknown> = {}): ResolvedConf
   const config: SlothConfig = normalizeConfig(baseConfig(overrides));
   writeConfigFile(CONFIG_PATH, config);
   const c = reloadConfig();
-  for (const dir of [c.runnerRoot, c.worktreesDir, c.sessionsDir, c.stateDir]) fs.mkdirSync(dir, { recursive: true });
-  // The runner root is a checkout, as far as the code that looks for one is concerned (`checkout.ts`).
-  fs.mkdirSync(path.join(c.runnerRoot, '.git'), { recursive: true });
+  for (const dir of [...c.repos.map((r) => r.root), c.worktreesDir, c.sessionsDir, c.stateDir]) fs.mkdirSync(dir, { recursive: true });
+  // Every checkout is one, as far as the code that looks for one is concerned (`checkout.ts`).
+  for (const r of c.repos) fs.mkdirSync(path.join(r.root, '.git'), { recursive: true });
   calmMachine();
   noProcesses();
   return c;

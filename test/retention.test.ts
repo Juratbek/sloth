@@ -5,7 +5,7 @@ import { setDry } from '../server/runner/log';
 import { prune } from '../server/runner/retention';
 import { called, fail, onCommand, resetGh } from './gh-mock';
 import { cfg } from '../server/config';
-import { alivePid, configure, exists, makeSession, readLog, sessionDir, statePath, wipe } from './harness';
+import { alivePid, configure, exists, makeSession, readLog, runnerRoot, sessionDir, statePath, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 
@@ -178,7 +178,7 @@ describe('prune', () => {
   });
 
   it('cuts a build cache back to its size cap, oldest entry first', async () => {
-    const cache = path.join(cfg().runnerRoot, '.turbo', 'cache');
+    const cache = path.join(runnerRoot(), '.turbo', 'cache');
     fs.mkdirSync(cache, { recursive: true });
     // Three 256 MB entries against a 512 MB cap: the oldest one goes and the two newest stay. Sparse,
     // so the test costs no disk — the sweep goes by the size the entry reports.

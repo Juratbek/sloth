@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchBoard, freeIn, moveCard, pickupOrder, reviewVerdict, wiredPrs } from '../server/runner/board';
 import { setDry } from '../server/runner/log';
 import { called, onGh, resetGh } from './gh-mock';
-import { configure, readLog } from './harness';
+import { configure, readLog, ref } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 
@@ -36,7 +36,7 @@ describe('fetchBoard', () => {
     expect(board?.[0].assignees).toEqual(['bob']);
     expect(board?.[1].labels).toEqual(['bug']);
     expect(board?.map((i) => i.closed)).toEqual([false, false, true]);
-    expect(freeIn(board!, 'Todo')).toEqual([2]);
+    expect(freeIn(board!, 'Todo').map((i) => i.number)).toEqual([2]);
   });
   it('ranks a card by the position of its option in the priority field', async () => {
     const options = { options: [{ id: 'p-high' }, { id: 'p-med' }, { id: 'p-low' }] };
@@ -60,7 +60,7 @@ describe('fetchBoard', () => {
     expect(board.map((i) => i.priority)).toEqual([2, undefined, 0, undefined, 0]);
     expect(called(/-F priority=Priority/)).toHaveLength(1);
     // Ranked first, board order within a rank, unranked last — and never a card labelled Sloth: skip.
-    expect(pickupOrder(board, 'Todo')).toEqual([3, 1, 2, 4]);
+    expect(pickupOrder(board, 'Todo').map((i) => i.number)).toEqual([3, 1, 2, 4]);
   });
   it('asks for no priority value when the field is turned off', async () => {
     configure({ priorityField: '' });
@@ -78,13 +78,13 @@ describe('fetchBoard', () => {
 describe('moveCard', () => {
   it('adds the card then edits its Status', async () => {
     onGh(/project item-add/, 'ITEM_1');
-    expect(await moveCard(42, 'opt-wip')).toBe(true);
+    expect(await moveCard(ref(42), 'opt-wip')).toBe(true);
     expect(called(/project item-edit --id ITEM_1 .*--single-select-option-id opt-wip/)).toHaveLength(1);
   });
   it('refuses an empty option and only logs in a dry run', async () => {
-    expect(await moveCard(42, '')).toBe(false);
+    expect(await moveCard(ref(42), '')).toBe(false);
     setDry(true);
-    expect(await moveCard(42, 'opt-wip')).toBe(true);
+    expect(await moveCard(ref(42), 'opt-wip')).toBe(true);
     expect(called(/project/)).toHaveLength(0);
     expect(readLog().at(-1)).toMatch(/dry-run: would move #42/);
   });
@@ -108,14 +108,14 @@ describe('wiredPrs', () => {
         },
       },
     });
-    expect(await wiredPrs([1, 2, 3])).toEqual([
+    expect(await wiredPrs([1, 2, 3].map((n) => ref(n)))).toEqual([
       // The latest Sloth verdict on the current head counts; one on an older head is none.
-      { issue: 1, pr: 10, sha: 'aaa', head: 'sloth/issue-1-x', base: 'main', state: 'OPEN', draft: false, checks: 'FAILURE', mergeable: 'MERGEABLE', verdict: 'passed' },
-      { issue: 2, pr: 11, sha: 'bbb', head: 'feat', base: '', state: 'OPEN', draft: true, checks: 'NONE', mergeable: 'UNKNOWN' },
-      { issue: 3, pr: 13, sha: 'ddd', head: 'ok', base: '', state: 'OPEN', draft: false, checks: 'PENDING', mergeable: 'CONFLICTING' },
+      { issue: ref(1), pr: ref(10), sha: 'aaa', head: 'sloth/issue-1-x', base: 'main', state: 'OPEN', draft: false, checks: 'FAILURE', mergeable: 'MERGEABLE', verdict: 'passed' },
+      { issue: ref(2), pr: ref(11), sha: 'bbb', head: 'feat', base: '', state: 'OPEN', draft: true, checks: 'NONE', mergeable: 'UNKNOWN' },
+      { issue: ref(3), pr: ref(13), sha: 'ddd', head: 'ok', base: '', state: 'OPEN', draft: false, checks: 'PENDING', mergeable: 'CONFLICTING' },
     ]);
     // A repository that runs no checks reports no rollup at all — that is not a pending one.
-    expect((await wiredPrs([2], { states: ['MERGED'] })).map((p) => [p.pr, p.state, p.checks])).toEqual([[12, 'MERGED', 'NONE']]);
+    expect((await wiredPrs([2].map((n) => ref(n)), { states: ['MERGED'] })).map((p) => [p.pr.number, p.state, p.checks])).toEqual([[12, 'MERGED', 'NONE']]);
   });
   it('leaves account-level Vercel failures out of a red rollup; a real failure still counts', async () => {
     const pr = (n: number, r: object) => ({ number: n, state: 'OPEN', isDraft: false, headRefOid: 'aaa', headRefName: 'x', mergeable: 'MERGEABLE', ...r });
@@ -137,7 +137,7 @@ describe('wiredPrs', () => {
         },
       },
     });
-    expect((await wiredPrs([1, 2, 3, 4, 5])).map((p) => [p.pr, p.checks])).toEqual([
+    expect((await wiredPrs([1, 2, 3, 4, 5].map((n) => ref(n)))).map((p) => [p.pr.number, p.checks])).toEqual([
       [10, 'SUCCESS'],
       [11, 'FAILURE'],
       [12, 'PENDING'],
@@ -151,18 +151,18 @@ describe('wiredPrs', () => {
       { body: '**Sloth:**\nReview: **failed** — 5/10.', commit: { oid: 'aaa' } },
       { body: '**Sloth:**\nReview: **passed** — 9/10.', commit: { oid: 'bbb' } },
     ] } } } } });
-    expect(await reviewVerdict(10, 'aaa')).toBe('failed');
-    expect(await reviewVerdict(10, 'bbb')).toBe('passed');
-    expect(await reviewVerdict(10, 'ccc')).toBeUndefined();
+    expect(await reviewVerdict(ref(10), 'aaa')).toBe('failed');
+    expect(await reviewVerdict(ref(10), 'bbb')).toBe('passed');
+    expect(await reviewVerdict(ref(10), 'ccc')).toBeUndefined();
     resetGh();
     onGh(/api graphql/, { ok: false, out: '', err: 'boom' });
-    expect(await reviewVerdict(10, 'aaa')).toBeUndefined();
+    expect(await reviewVerdict(ref(10), 'aaa')).toBeUndefined();
     expect(readLog().at(-1)).toMatch(/PR #10 review lookup failed: boom/);
   });
   it('asks nothing for no issues and survives a failed lookup', async () => {
     expect(await wiredPrs([])).toEqual([]);
     expect(called(/graphql/)).toHaveLength(0);
     onGh(/api graphql/, { ok: false, out: '', err: 'boom' });
-    expect(await wiredPrs([1])).toEqual([]);
+    expect(await wiredPrs([1].map((n) => ref(n)))).toEqual([]);
   });
 });
