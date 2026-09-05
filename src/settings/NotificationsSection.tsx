@@ -14,6 +14,8 @@ const EVENTS: { event: WebhookEvent; label: string; hint: string }[] = [
   { event: 'merged', label: 'Issue closed', hint: 'A PR was merged and Sloth filed its card away in Done.' },
   { event: 'qaPassed', label: 'QA passed', hint: 'The daily QA sweep tested a card on the QA branch and it passed — the card is in Done.' },
   { event: 'qaFailed', label: 'QA failed', hint: 'The sweep found the fix wanting — the findings are on the issue and the card is back in In Progress.' },
+  { event: 'smokePassed', label: 'Smoke test passed', hint: 'The scheduled smoke test found the branch fit to ship — GO, or GO with risks; the message links the report.' },
+  { event: 'smokeFailed', label: 'Smoke test failed', hint: 'The smoke test said NO-GO — a blocker on a main flow — or could not test at all; the message links the report.' },
   { event: 'blocked', label: 'Card blocked', hint: 'Sloth gave up on a card — its QA tests kept dying before they reached a verdict. Nothing starts on it again until someone unblocks it from the monitor.' },
   { event: 'stopped', label: 'Run stopped', hint: 'A session was stopped — past its budget, from the monitor, or relaunched too many times.' },
   { event: 'usageLimit', label: 'Usage limit', hint: 'A Claude usage limit stopped a session and paused the watcher for 30 minutes.' },

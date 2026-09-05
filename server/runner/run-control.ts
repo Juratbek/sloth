@@ -4,7 +4,7 @@ import { cfg } from '../config';
 import { moveCard, reviewVerdict } from './board';
 import { cleanup, cleanupRun, keepWarm } from './cleanup';
 import type { HoursEnding } from '../hours-types';
-import { bookRun, KILL_GRACE } from './hours';
+import { bookRun, budgetOf, KILL_GRACE } from './hours';
 import { exitLine, exitReport, forgetExits, recordExit } from './exits';
 import { comment } from './gh';
 import { killTree } from './kill';
@@ -110,13 +110,14 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
   // way its subagents, servers and browser go with it.
   await killTree(pid!);
   remove(path.join(dir, 'pid'));
-  if (kind === 'qa') {
+  if (kind === 'qa' || kind === 'smoke') {
     // Its app and worktree are its own; the card stays in QA and the head keeps its marker, like a stopped
     // review — except a budget kill, where `reap` drops the marker so the sweep tests the card again.
     // A killed run's database may hold a mutation it never finished: the stack warms the slot tainted,
-    // so the next test of the card reseeds instead of trusting it.
-    await cleanupRun('qa', target, true);
-    log(`QA #${target} stopped: ${reason}`);
+    // so the next test of the card reseeds instead of trusting it. A smoke test has no card and no
+    // marker: stopped, it is over, and the next scheduled one runs when it is due.
+    await cleanupRun(kind, target, true);
+    log(`${kind === 'qa' ? `QA #${target}` : `smoke test ${target}`} stopped: ${reason}`);
     return true;
   }
   if (kind !== 'issue') {
@@ -141,8 +142,8 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
  * `previews` tunnels it or, with previews off, cleans it up itself.
  */
 async function sweepDead(kind: Kind, target: number): Promise<void> {
-  if (kind === 'qa') {
-    await cleanupRun('qa', target);
+  if (kind === 'qa' || kind === 'smoke') {
+    await cleanupRun(kind, target);
     return;
   }
   if (kind !== 'issue') return;
@@ -208,7 +209,7 @@ export async function reap(): Promise<void> {
             log(`${name} ended without finishing — ${exitLine(recordExit(dir, 'the session ended on its own'))}`);
           } else {
             for (const f of markerFiles(kind, target)) remove(statePath(MARKERS[kind], f));
-            log(`${name} ended without a verdict — ${kind === 'qa' ? 'the card will be tested again' : 'the head will be reviewed again'}`);
+            log(`${name} ended without a verdict — ${kind === 'qa' ? 'the card will be tested again' : kind === 'smoke' ? 'the next scheduled smoke test runs as planned' : 'the head will be reviewed again'}`);
           }
           await sweepDead(kind, target);
           // A run that finished on its own terms left its stack running for its slot — under the
@@ -237,7 +238,7 @@ export async function reap(): Promise<void> {
     }
     // An issue run's card is the board's word on whether it is parked; a review or QA run never parks.
     trackWaiting(dir, kind === 'issue' ? target : undefined);
-    const budget = (kind === 'qa' ? cfg().qa.budgetMinutes : cfg().budgetMinutes) * 60;
+    const budget = budgetOf(kind) * 60;
     // The time a run spent paused for the machine, or parked waiting for an answer, is not its own: the
     // budget clock stands still meanwhile. And a run that got its answer keeps the skill's promise — the
     // session gives itself `max(remaining, 30 min)` then, so the server allows no less.

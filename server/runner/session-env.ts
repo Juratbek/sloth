@@ -37,6 +37,8 @@ export interface SessionExtras {
   warm?: boolean;
   /** And it last served this very issue at this very head — a retry reuses it untouched. */
   warmSame?: boolean;
+  /** A smoke test's own number, the branch it qualifies (resolved, never empty) and the exact head the server pinned. */
+  smoke?: { run: number; branch: string; sha: string };
 }
 
 export function sessionEnv(dir: string, target: Target, model: string, chrome: boolean, extras: SessionExtras = {}): NodeJS.ProcessEnv {
@@ -86,6 +88,9 @@ export function sessionEnv(dir: string, target: Target, model: string, chrome: b
     SLOTH_COL_DONE_ID: col.done.id,
     SLOTH_COL_DONE_NAME: col.done.name,
     SLOTH_QA_BRANCH: c.qa.branch,
+    // A smoke test gets the branch as resolved; any other session sees the setting as it is.
+    SLOTH_SMOKE_BRANCH: extras.smoke?.branch ?? c.smoke.branch,
+    ...(extras.smoke ? { SLOTH_SMOKE_RUN: String(extras.smoke.run), SLOTH_SMOKE_SHA: extras.smoke.sha } : {}),
     SLOTH_COLUMNS: JSON.stringify(knownColumns()),
     SLOTH_RUNNER_ROOT: c.runnerRoot,
     SLOTH_WORKTREES_DIR: c.worktreesDir,

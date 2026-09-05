@@ -76,6 +76,19 @@ board. When it finds work, it starts a Claude Code session to do it. That is all
    not reach the fix — not on the branch yet, the app would not start — says so and leaves the card for a
    human. A card is tested once per head of the branch, so a pass is not repeated tomorrow unless the branch
    moved; **sweep now** on the home panel runs a sweep at any hour.
+9. **And on a schedule, the whole app is smoke-tested.** Before a release you want to know that nothing
+   main is broken — sign-in, the screens each role lives in, the flows the business stops without. Set how
+   many days apart in Settings → *Smoke test* (1 is daily, 7 weekly) and a time of day, and Sloth starts
+   one session — `/sloth:smoke 3` — that checks the branch out at its current head, builds it, boots the
+   app and has one browser tester per user role walk that role's main flows, happy paths only, one role
+   at a time. What to smoke can be written down in the same settings, one role and its flows per line;
+   left empty, the session reads the roles off the project's own docs and skills. A blocker or a major
+   finding becomes an issue of its own — with a screenshot of the broken screen in it, so whoever reads it
+   sees the bug instead of imagining it — put on the board with no status so a person decides whether Sloth
+   fixes it; the report — GO, GO with risks or NO-GO, with the findings, screenshots and a table of the
+   roles — is a comment on an issue titled *Smoke test reports* that Sloth creates once. Nothing on the
+   board moves. **test now** on the home panel runs one at any hour; a second one is never started while
+   one is going.
 
 ## When the session gets stuck
 
@@ -88,7 +101,7 @@ URL) hears about the card too, within one board poll. Both are set in the wizard
 
 The webhook can hear about more than this one moment. **Settings → Notifications** has a toggle per
 event: a card reaching *Code Review*, a review passing (with the preview link) or its pass taken back, an issue Sloth closed and
-filed away, the QA sweep's verdict on a card, a run stopped or parked, and a Claude usage limit pausing the watcher. Only the needs-help
+filed away, the QA sweep's verdict on a card, the smoke test's GO / NO-GO, a run stopped or parked, and a Claude usage limit pausing the watcher. Only the needs-help
 one is on to begin with, so a Sloth that was set up before this keeps saying exactly what it did.
 
 - Anyone on the team — the admin, a developer or a tester — answers in the issue thread, and the

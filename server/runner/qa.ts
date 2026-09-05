@@ -10,7 +10,7 @@ import { isDry, log, readFile, remove, write } from './log';
 import { MARKERS, skipped, statePath } from './markers';
 import { notify } from './notify';
 import { counter, dirAlive, issueDir, qaDir, runDirs } from './session-dirs';
-import { launchQa } from './spawn';
+import { launchQa } from './spawn-tests';
 
 /**
  * Trigger 9 — the QA sweep. Once a day, at `qa.at` on this machine's clock, every card in the QA column
@@ -51,25 +51,29 @@ export function openSweepState(): Sweep | undefined {
   }
 }
 
-/** The QA branch and its current head, from GitHub — what every test of one sweep checks out. */
-async function branchHead(): Promise<{ branch: string; sha: string } | undefined> {
+/**
+ * A branch — empty: the repository's default — and its current head, from GitHub: what every test of one
+ * sweep checks out, and what a smoke test (`smoke.ts`) is pinned to. `what` names the caller in the log.
+ */
+export async function headOf(wanted: string, what: string): Promise<{ branch: string; sha: string } | undefined> {
   const c = cfg();
-  let branch = c.qa.branch;
+  let branch = wanted;
   if (!branch) {
     const r = await gh(['repo', 'view', c.repo, '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name']);
     if (!r.ok || !r.out) {
-      log(`QA sweep: the default branch could not be read: ${r.err.split('\n')[0]}`);
+      log(`${what}: the default branch could not be read: ${r.err.split('\n')[0]}`);
       return undefined;
     }
     branch = r.out;
   }
   const r = await gh(['api', `repos/${c.repo}/commits/${branch}`, '--jq', '.sha']);
   if (!r.ok || !/^[0-9a-f]{40}$/.test(r.out)) {
-    log(`QA sweep: the head of ${branch} could not be read: ${r.err.split('\n')[0]}`);
+    log(`${what}: the head of ${branch} could not be read: ${r.err.split('\n')[0]}`);
     return undefined;
   }
   return { branch, sha: r.out };
 }
+const branchHead = () => headOf(cfg().qa.branch, 'QA sweep');
 
 /**
  * The sweep in progress, or a new one when it is time: `qa.at` has passed and today's has not run — or

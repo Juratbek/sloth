@@ -16,6 +16,7 @@ import { isPaused } from './pause';
 import { pressure } from './pressure';
 import { previews } from './preview';
 import { qaSweep, qaVerdicts } from './qa';
+import { smokeTick, smokeVerdicts } from './smoke';
 import { prune } from './retention';
 import { answered } from './answers';
 import { pausedUntil, reap } from './run-control';
@@ -155,6 +156,7 @@ async function tickSteps({ board = false, comments: wantComments = false }: Tick
     // moving a card on the verdict its QA test left behind.
     await step('finished', () => finished(items!));
     await step('qa verdicts', qaVerdicts);
+    await step('smoke verdicts', smokeVerdicts);
     // A blocked card a human has moved on is nobody's to hold back any more.
     await step('blocked', async () => pruneBlocked(items!));
     // The webhook hears about all of it even while paused: sessions keep running, so they keep parking.
@@ -173,6 +175,8 @@ async function tickSteps({ board = false, comments: wantComments = false }: Tick
     await step('answered', () => answered(items!));
     // The day's QA sweep, when it is time: the merged fixes waiting in QA are tested before new ones are started.
     await step('qa sweep', () => qaSweep(items!));
+    // The smoke test when it is due: asked for at this hour, it goes ahead of the cards waiting for pickup.
+    await step('smoke test', smokeTick);
     await step('pickup', () => pickup(items!));
   } finally {
     state.ticking = false;

@@ -108,6 +108,8 @@ export function byPriority(runs: RunDir[]): RunDir[] {
   const cardOf = (r: RunDir) => items.find((i) => i.number === (r.kind === 'issue' || r.kind === 'qa' ? r.target : readNumber(path.join(r.dir, 'issue'))));
   const column = (r: RunDir) => {
     if (r.kind === 'qa') return 2;
+    // A scheduled smoke test works for no card: it is the first to make room and the last to get it back.
+    if (r.kind === 'smoke') return -1;
     if (r.kind !== 'issue') return 1;
     const status = cardOf(r)?.status;
     return status && status === col.qa.name ? 2 : status === col.codeReview.name ? 1 : 0;

@@ -92,7 +92,10 @@ function lastLine(): { n: number; hash: string } {
  */
 export const runSeconds = (dir: string, until = nowSec()): number => Math.max(0, until - launchedAt(dir) - pausedSeconds(dir) - waitedSeconds(dir));
 
-/** The issue a run in `dir` works for: an implement or QA run is named after it, a review has it written beside it. */
+/** The minutes a run of this kind gets: the QA sweep and the smoke test have budgets of their own. */
+export const budgetOf = (kind: HoursKind): number => (kind === 'qa' ? cfg().qa.budgetMinutes : kind === 'smoke' ? cfg().smoke.budgetMinutes : cfg().budgetMinutes);
+
+/** The issue a run in `dir` works for: an implement or QA run is named after it, a review has it written beside it; a smoke test has none. */
 export const issueOfRun = (kind: HoursKind, target: number, dir: string): number | undefined =>
   kind === 'issue' || kind === 'qa' ? target : readNumber(path.join(dir, 'issue')) || undefined;
 
@@ -120,7 +123,7 @@ function endedAt(dir: string, kind: HoursKind, ending: HoursEnding, startedAt: n
   const said = ending === 'done' || ending === 'noResponse' || ending === 'waiting' ? Number(stateOf(dir).since) || 0 : 0;
   const marks = [said, readNumber(path.join(dir, 'exited')), lastWrote(dir)].filter((t) => t >= startedAt && t <= now);
   if (marks.length) return Math.min(...marks);
-  const budget = (kind === 'qa' ? cfg().qa.budgetMinutes : cfg().budgetMinutes) * 60;
+  const budget = budgetOf(kind) * 60;
   return Math.min(now, startedAt + budget + KILL_GRACE);
 }
 

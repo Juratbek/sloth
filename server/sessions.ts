@@ -79,7 +79,7 @@ function listSessions(): { sessions: SessionSummary[]; orphans: WatcherSession[]
   const sessions = files.map((f) => summary(path.join(cfg().transcriptsDir, f))).sort(newestFirst);
   const orphans: WatcherSession[] = [];
   for (const dir of listSessionDirs()) {
-    const wanted: SessionKind = dir.kind === 'issue' ? 'sloth:implement' : dir.kind === 'qa' ? 'sloth:qa' : 'sloth:review';
+    const wanted: SessionKind = dir.kind === 'issue' ? 'sloth:implement' : dir.kind === 'qa' ? 'sloth:qa' : dir.kind === 'smoke' ? 'sloth:smoke' : 'sloth:review';
     const s =
       sessions.find((x) => x.id === dir.sessionId) ??
       sessions.find((x) => !x.watcher && x.kind === wanted && x.target === dir.target);
@@ -110,7 +110,8 @@ const holdState = (): HoldState => ({
 
 export async function overview(): Promise<Overview> {
   const [rate, { sessions, orphans }] = [await rateLimit(), listSessions()];
-  for (const s of sessions) if (s.target) s.title = titleFor(s.target, rate?.core?.remaining);
+  // A smoke test's number is its own, not an issue's: no title to look up, and none to mistake.
+  for (const s of sessions) if (s.target && s.kind !== 'sloth:smoke') s.title = titleFor(s.target, rate?.core?.remaining);
   const issues = rollup(sessions, (n) => titleFor(n, rate?.core?.remaining));
   return {
     generatedAt: new Date().toISOString(),
@@ -142,6 +143,9 @@ function monitorConfig(): Overview['config'] {
     models: c.models,
     qaColumn: c.statusField.columns.qa.name,
     qaAt: c.qa.at,
+    smokeEveryDays: c.smoke.everyDays,
+    smokeAt: c.smoke.at,
+    smokeBranch: c.smoke.branch,
   };
 }
 
