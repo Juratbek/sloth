@@ -1,5 +1,5 @@
 ---
-description: Implement a GitHub issue end-to-end in an isolated worktree — claim the card, fix, verify, test and screenshot it in a headless Chrome, open a PR, pass a reviewer-agent loop, hand the card to Code Review; when blocked, ask on the issue and wait for the answer
+description: Implement a GitHub issue end-to-end in an isolated worktree — claim the card, refine it with the author when it cannot be built without guessing, fix, verify, test and screenshot it in a headless Chrome, open a PR, pass a reviewer-agent loop, hand the card to Code Review; when blocked, ask on the issue and wait for the answer
 argument-hint: <issue-number|url> [extra instructions or an order]
 allowed-tools: Bash, Read, Edit, Write, Grep, Glob, Skill, Agent, ToolSearch, SendMessage
 ---
@@ -36,7 +36,8 @@ with `SLOTH_ORCHESTRATOR=0` (or unset) ignore them and do the work yourself.
   `Order from <login> (<role>, PR #<n> comment <id>)`, forwarded by the server; `<role>` is `admin` or
   `developer`. It overrides the default "implement the issue" scope ("address the review comments", "start
   over with approach X", "stop", "refine" — the questions of Step 1.5 before any code, however clear the card
-  reads) — within the limits of the role, below. An order given on the PR is
+  reads; like every order, written as a statement, since a comment ending in `?` reaches the server as a
+  question) — within the limits of the role, below. An order given on the PR is
   acknowledged and answered on that PR; everything else about the run still goes on the issue.
 - **Extra instructions (optional)** — remaining free text; fold it into the work.
 
@@ -69,8 +70,9 @@ this issue left before it died: `head:`, `done:`, `next:`, `don't redo:` (`sessi
 PR is known (Step 1), compare its `head:` with the current head of the PR's branch — or, with no PR yet,
 with the branch's tip (`git ls-remote origin`). A match means the note is current: continue from its
 `next:`, trust `done:` and `don't redo:`, and skip the discovery it already paid for. No match — the
-branch moved since — `rm -f` it and start from scratch. Either way, from here on **rewrite `handoff.md`
-at every step boundary**, the same moment `state.json` is written, so the run that continues this one
+branch moved since — `rm -f` it and start from scratch. A note with an empty `head:` is one a run wrote
+before any branch existed and says nothing the thread does not (Step 1.5 keeps its state there): `rm -f` it.
+Either way, from Step 2 on **rewrite `handoff.md` at every step boundary**, the same moment `state.json` is written, so the run that continues this one
 starts where it stopped instead of re-deriving everything.
 
 ## Step 1 — Read and scope
@@ -119,14 +121,26 @@ gh issue view "$ISSUE" --repo "$SLOTH_REPO" --json comments \
 
 ## Step 1.5 — Refine: is the card buildable?
 
+`set_state working 1.5 "refining"`. First, **where the card stands** — the thread and the body are the record,
+this step writes no `handoff.md`:
+
+- The body holds a `<!-- sloth:spec -->` block → refined by an earlier run; the spec is binding, read as part of
+  Step 1. **Step 2.**
+- `ROUNDS` = the number of Sloth comments in the thread carrying a `<!-- sloth:refine N -->` line (below).
+  `ROUNDS` is 1 or 2 and someone with a role answered after the last of them → continue at item 4. No answer
+  after it yet → the questions stand: park and wait as item 3 says, with no new comment.
+- `ROUNDS` is 0 → decide.
+
 Decide, from the issue and its thread, whether the card can be built **without guessing**. It can when a
 developer who knows the project could start now: a bug with the steps that reproduce it or the wrong state
-shown; a change whose place, scope and expected result are in the body or the thread; a body that already
-carries a `## Spec` section (an earlier run refined it — the spec is binding, read it as part of Step 1). It
-cannot when the card names a feature and little else — a title and a line; a wish without where it lives or
-who uses it; a screen with no design and no copy; two readings that would lead to different code; an
-acceptance nobody could check. A `refine` order (Step 0) makes the card not buildable whatever it says: the
-person wants the questions before any code. A review round-trip (Step 1, *Existing PR*) is never refined.
+shown; a change whose place, scope and expected result are in the body or the thread. It cannot when a
+**feature** card names the feature and little else — a title and a line; a wish without where it lives or who
+uses it; a screen with no design and no copy; two readings that would lead to different code; an outcome
+nobody could check. A reported bug is not refined for lacking acceptance criteria — reproducing it is the
+criterion. A `refine` order (Step 0) means the questions are wanted before any code, however clear the card
+reads. A review round-trip (Step 1, *Existing PR*) is never refined: a `refine` order on a card with an open
+Sloth PR is answered in one comment — refine comes before code; what should change in the PR is an order on
+the PR — and the round-trip goes on.
 
 Buildable → Step 2. Otherwise, before any worktree or code:
 
@@ -140,20 +154,27 @@ Buildable → Step 2. Otherwise, before any worktree or code:
    note?", "does the export include archived items?". Never a question the conventions decide, a request for
    approval, or "should it be fast / look good". **At most 5**, the most important first, each in one or two
    lines with the options and what you would do under each when the answer is not obvious (`session` skill,
-   needs-help protocol). Nothing left to ask → the card was buildable: Step 2.
+   needs-help protocol). Nothing left to ask → the card was buildable: Step 2 — under a `refine` order, after
+   one comment `$SLOTH_BOT_PREFIX nothing to refine — the card is buildable as written`.
 3. **Post and park** exactly as Step Q says — one comment, card to `$SLOTH_COL_NEEDS_HELP_NAME`,
-   `state: waiting`, the same `$SLOTH_WAIT_HOURS` window as any question. An answer inside it continues this
-   session, which still holds what it read. No answer within it → end the run as Step Q says (`set_state done
-   Q`); the card stays parked at no cost, and a later answer starts a new run of this command, which reads
-   the thread and continues here — cheaper than keeping this one alive for a day.
-4. **The answers may open new questions** — one more round at most, asked the same way, and only about what
-   the answers brought up. What is still open after the second round is not asked again here: the spec lists
-   it under **Open**, the work starts on what is settled, and the point comes up as an ordinary Step Q
-   question when the code reaches it. Never decide it yourself.
-5. **Write the spec into the issue body.** Append a `## Spec` section, keeping everything above it as it is
-   and replacing a `## Spec` an earlier run wrote:
+   `state: waiting`, the same `$SLOTH_WAIT_HOURS` window as any question — with one line more at the end of
+   the comment, before the `cc`: `<!-- sloth:refine 1 -->` (`2` for the second round; invisible on GitHub,
+   it is how a later run counts the rounds). An answer inside the window continues this session, which still
+   holds what it read. No answer within it → end the run as Step Q says (`set_state done Q`); the card stays
+   parked at no cost, and a later answer starts a new run of this command, which comes back here — cheaper
+   than keeping this one alive for a day.
+4. **An answer arrived** — during refine the resume of Step Q is **silent**: no `thanks — continuing`, no
+   card move; both come with the spec (item 5). Re-read the whole thread. The answers may open new questions
+   — **one more round at most** (`ROUNDS` was 1), asked as item 3 says with `<!-- sloth:refine 2 -->`, and only
+   about what the answers brought up. After the second round nothing is asked again here: what is still open
+   goes into the spec under **Open**, the work starts on what is settled, and the point comes up as an
+   ordinary Step Q question when the code reaches it. Never decide it yourself.
+5. **Write the spec into the issue body** — always, once the questions have their answers, whatever the
+   card now looks like: the tester and the reviewer hold the work to it. Write this section to
+   `$SESSION_DIR/spec.md`, the marker lines included:
 
    ```markdown
+   <!-- sloth:spec -->
    ## Spec
    _Written by Sloth from the thread on <date>; the answers in the thread are binding._
 
@@ -165,20 +186,28 @@ Buildable → Step 2. Otherwise, before any worktree or code:
    **Edge cases** — empty states, permissions, errors, concurrency, each with its expected behaviour.
    **Design** — the links or attachments that are the spec for the screens, when there are any.
    **Open** — what the two rounds left undecided, when anything; asked again when the code reaches it.
+   <!-- /sloth:spec -->
    ```
 
+   Then append it to the body, keeping everything above and outside Sloth's own block as it is — a heading a
+   human wrote is theirs, only the block between the markers is replaced — and never on a read that failed:
+
    ```bash
-   gh issue view "$ISSUE" --repo "$SLOTH_REPO" --json body --jq .body | sed '/^## Spec$/,$d' >"$SESSION_DIR/body.md"
+   [ -s "$SESSION_DIR/spec.md" ] || { echo "spec.md missing"; exit 1; }     # never push a body without it
+   BODY=$(retry gh issue view "$ISSUE" --repo "$SLOTH_REPO" --json body --jq .body) || { echo "body unread — spec not written"; exit 1; }
+   printf '%s\n' "$BODY" | tr -d '\r' \
+     | awk '/^<!-- sloth:spec -->$/{skip=1} !skip{print} /^<!-- \/sloth:spec -->$/{skip=0}' >"$SESSION_DIR/body.md"
    printf '\n' >>"$SESSION_DIR/body.md"; cat "$SESSION_DIR/spec.md" >>"$SESSION_DIR/body.md"
    retry gh issue edit "$ISSUE" --repo "$SLOTH_REPO" --body-file "$SESSION_DIR/body.md"
    ```
 
-   On a Trello board (`SLOTH_BOARD=trello`) the people read the card, not the issue: post the spec as a
-   comment too, `$SLOTH_BOT_PREFIX Spec:` followed by the same section — the one comment allowed past the
-   `session` skill's five lines; the mirror copies it onto the card.
+   A failed read or edit is Step Q — the spec goes into the question comment so nothing is lost — not a
+   guess. On a Trello board (`SLOTH_BOARD=trello`) the people read the card, not the issue: post the spec as
+   a comment too, `$SLOTH_BOT_PREFIX Spec:` followed by the same section — the one comment the `session`
+   skill allows past five lines; the mirror copies it onto the card.
 
-Then the resume of Step Q as the `session` skill says — card back to `$SLOTH_COL_IN_PROGRESS_NAME`, one
-comment `$SLOTH_BOT_PREFIX spec written into the issue — building`, the budget recomputed — and on to Step 2.
+Then the rest of the Step Q resume, once: card back to `$SLOTH_COL_IN_PROGRESS_NAME`, one comment
+`$SLOTH_BOT_PREFIX spec written into the issue — building`, the budget recomputed — and on to Step 2.
 **From here the spec is the requirement list**: Step 3 builds it and nothing beyond it, the tester (Step 4.5)
 confirms every acceptance criterion, the reviewer loop (Step 5.5) and the server's review hold the diff to
 them, and the PR's `## Why` refers to them. The `Scope so far` comment of Step 1 is written in addition only

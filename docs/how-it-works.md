@@ -9,14 +9,15 @@ board. When it finds work, it starts a Claude Code session to do it. That is all
 2. **Sloth picks it up.** It moves the card to *In Progress* and starts a session:
    `claude -p "/sloth:implement 42"`. The session gets its own git worktree, so it never touches
    your checkout.
-3. **The session does the work.** It reads the issue and its comments. A card it could not build without
-   guessing — a feature named in a line, a screen with no design, two readings that would lead to different
-   code — is **refined first**: the session answers what the code and your docs settle, asks the rest on the
-   issue (the questions whose answer changes the code, five at most, two rounds at most), parks the card in
-   *Sloth needs help* and waits for the answers as it does for any question (`waitHours`).
-   Then it writes a `## Spec` into the issue body — goal, scope, out of scope, acceptance criteria, edge
-   cases — and builds to it; the tester and the reviewer hold the work to that spec. A comment
-   `@sloth refine` on the issue asks for the questions even on a card that reads clear. Then it follows your
+3. **The session does the work.** It reads the issue and its comments. Some cards cannot be built without
+   guessing: a feature named in a line, a screen with no design, two readings that would lead to different
+   code. Such a card is **refined first**. The session answers what the code and your docs settle, and asks
+   the rest on the issue: only questions whose answer changes the code, five at most, two rounds at most.
+   The card is parked in *Sloth needs help* meanwhile, and the wait is the same as for any question
+   (`waitHours`). With the answers in, it writes a `## Spec` into the issue body — goal, scope, out of scope,
+   acceptance criteria, edge cases — and builds to it; the tester and the reviewer hold the work to that
+   spec. A comment `@sloth refine` on the issue — a statement, not a question, from the admin or a developer
+   — asks for the questions even on a card that reads clear. Then the session follows your
    project's `CLAUDE.md` and rules, writes the fix, and runs your tests. Then it starts the app and a **tester
    agent** opens it in a headless Chrome of its own — its own empty profile, nobody else's browser —
    clicks through the change like a user would, and **screenshots every screen it checks**; what it finds
