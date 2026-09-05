@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ReactNode } from 'react';
 import type { RepoConfig, SetupRepo } from '../server/config-types';
 import RepoPicker from '../src/setup/RepoPicker';
 
@@ -35,9 +36,9 @@ const picked = (slug: string): RepoConfig => ({ slug, note: '', root: `~/.sloth/
 
 let changed: RepoConfig[][] = [];
 
-function mount(props: { repos?: RepoConfig[]; linked?: string[]; locked?: string } = {}) {
+function mount(props: { repos?: RepoConfig[]; linked?: string[]; locked?: string; details?: (repo: RepoConfig, at: number) => ReactNode; bounded?: boolean } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  return render(
     <QueryClientProvider client={client}>
       <RepoPicker
         repos={props.repos ?? []}
@@ -45,6 +46,8 @@ function mount(props: { repos?: RepoConfig[]; linked?: string[]; locked?: string
         linked={props.linked ?? []}
         home="~/.sloth"
         locked={props.locked}
+        details={props.details}
+        bounded={props.bounded}
       />
     </QueryClientProvider>,
   );
@@ -154,5 +157,24 @@ describe('the repository picker', () => {
     expect(screen.getByText(/Install gh and log in/)).toBeTruthy();
     // The list is unknown, not empty: a picked repository is not called missing off a failed reading.
     expect(screen.queryByText('not in your list')).toBeNull();
+  });
+
+  it('opens a picked row on what the page gives it, and leaves an unticked one shut', async () => {
+    h.repos = [listed('acme/widgets'), listed('acme/api')];
+    mount({ repos: [picked('acme/widgets')], details: (repo, at) => <p>{`options for ${repo.slug} at ${at}`}</p> });
+    await screen.findByRole('checkbox', { name: 'acme/api' });
+    expect(screen.getByText('options for acme/widgets at 0')).toBeTruthy();
+    expect(screen.queryByText(/options for acme\/api/)).toBeNull();
+  });
+
+  it('puts the list in a scroll box of its own only where the page asks for one', async () => {
+    h.repos = [listed('acme/widgets')];
+    const open = mount();
+    await screen.findByRole('checkbox', { name: 'acme/widgets' });
+    expect(open.container.querySelector('[class*="max-h-"]')).toBeNull();
+    cleanup();
+    const boxed = mount({ bounded: true });
+    await screen.findByRole('checkbox', { name: 'acme/widgets' });
+    expect(boxed.container.querySelector('[class*="max-h-"]')).toBeTruthy();
   });
 });

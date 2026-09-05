@@ -162,12 +162,14 @@ rides the 5-minute poll (`GET /api/health`, `POST /api/health/check`).
 
 ## Several repositories
 
-One board, several repositories: the wizard's repository step (and Settings → *Repository*) lists every
+One board, several repositories: the wizard's repository step (and Settings → *Repositories*) lists every
 repository the logged-in `gh` account can reach — search it and tick the ones Sloth may work in; one it can only
 read is shown but cannot be ticked, because Sloth pushes branches and opens PRs, and a repository the list has
-not got is still added by typing its `owner/repo`. Each gets its own checkout and a one-line **note** saying
-what it is. Everything Sloth does is then keyed on *repository and number*, never the number alone: two
-repositories both have an issue 12, and their cards, runs, markers and hours are kept apart.
+not got is still added by typing its `owner/repo`. A ticked repository opens under its own row on its
+**checkout** (with a Clone button) and a one-line **note** saying what it is; the page has its own Save.
+Where Sloth keeps the rest of its paths — runners, worktrees, sessions, state, the watcher log — is
+Settings → *Directories*. Everything Sloth does is then keyed on *repository and number*, never the number
+alone: two repositories both have an issue 12, and their cards, runs, markers and hours are kept apart.
 
 - **Which repository a card is in.** A Projects board says: its issue's repository. A card whose repository
   is not one of Sloth's is left alone (and said once in the log). A Trello card names no issue, so the issue

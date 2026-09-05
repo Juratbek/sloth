@@ -3,10 +3,20 @@ import type { SlothConfig } from '../../server/config-types';
 import { useModels } from '../hooks/use-models';
 import { TextInput, inputStyle } from '../setup/ui';
 
-/** What every settings section gets: the config being edited and a way to change part of it. */
+/**
+ * What every settings section gets: the config being edited, a way to change part of it, and the saving
+ * itself — the shell keeps the one Save for the whole draft, and a section that would rather show its own
+ * button (`ownSave`) presses the same one rather than writing a second way to save.
+ */
 export interface SectionProps {
   draft: SlothConfig;
   patch: (p: Partial<SlothConfig>) => void;
+  /** The config as it is saved: what a section compares the draft against to know it is dirty. */
+  baseline: SlothConfig;
+  save: () => void;
+  discard: () => void;
+  saving: boolean;
+  saveError?: string;
 }
 
 /** One setting: its name and what it does on the left, the control on the right. */

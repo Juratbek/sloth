@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { RepoConfig, SetupRepo } from '../../server/config-types';
 import { Button, Error, Loading, TextInput, inputStyle } from './ui';
 import { REPO_RE, newRepo, useAccessibleRepos } from './use-setup';
 
 /**
  * Which repositories Sloth may work in, ticked off the list of everything the logged-in `gh` account can
- * reach. The wizard's repository step and Settings → *Repository* show the same one, so a repository is
+ * reach. The wizard's repository step and Settings → *Repositories* show the same one, so a repository is
  * added the same way whichever page the user is on. Selection order is kept: the first repository is
- * where a run with no card of its own — the smoke test, the stack install — works.
+ * where a run with no card of its own — the smoke test, the stack install — works. A picked row opens on
+ * whatever the page gives `details` — its checkout, its note — so the options are read where the tick is.
  */
 
 /** Sloth pushes branches and opens PRs, so reading a repository is not enough to be given it. */
@@ -63,30 +64,33 @@ function hintFor(row: Row, locked: boolean): string {
   return row.missing ? 'not in your list' : '';
 }
 
-function RepoRow({ row, picked, linked, locked, onToggle }: { row: Row; picked: boolean; linked: boolean; locked: boolean; onToggle: () => void }) {
+function RepoRow({ row, picked, linked, locked, onToggle, details }: { row: Row; picked: boolean; linked: boolean; locked: boolean; onToggle: () => void; details?: ReactNode }) {
   const disabled = locked || (!row.writable && !picked);
   const hint = hintFor(row, locked);
   return (
-    <label className={`flex items-start gap-2 rounded-md border px-3 py-2 ${picked ? 'border-ok-edge-strong bg-ok-tint/30' : 'border-edge hover:bg-surface-raised'}`}>
-      <input
-        type="checkbox"
-        checked={picked}
-        disabled={disabled}
-        aria-label={row.slug}
-        onChange={onToggle}
-        className="mt-0.5 h-4 w-4 shrink-0 accent-accent disabled:opacity-40"
-      />
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5">
-          <span className="truncate text-sm text-fg-strong">{row.slug}</span>
-          {linked && <Badge>linked to the board</Badge>}
-          {row.private && <Badge>private</Badge>}
-          {row.archived && <Badge>archived</Badge>}
+    <div className={`rounded-md border ${picked ? 'border-ok-edge-strong bg-ok-tint/30' : 'border-edge hover:bg-surface-raised'} ${!row.writable && !picked ? 'opacity-60' : ''}`}>
+      <label className="flex items-start gap-2 px-3 py-2">
+        <input
+          type="checkbox"
+          checked={picked}
+          disabled={disabled}
+          aria-label={row.slug}
+          onChange={onToggle}
+          className="mt-0.5 h-4 w-4 shrink-0 accent-accent disabled:opacity-40"
+        />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5">
+            <span className="truncate text-sm text-fg-strong">{row.slug}</span>
+            {linked && <Badge>linked to the board</Badge>}
+            {row.private && <Badge>private</Badge>}
+            {row.archived && <Badge>archived</Badge>}
+          </span>
+          {row.description && <span className="block truncate text-xs text-fg-muted">{row.description}</span>}
+          {hint && <span className="block text-[11px] text-fg-faint">{hint}</span>}
         </span>
-        {row.description && <span className="block truncate text-xs text-fg-muted">{row.description}</span>}
-        {hint && <span className="block text-[11px] text-fg-faint">{hint}</span>}
-      </span>
-    </label>
+      </label>
+      {picked && details && <div className="border-t border-edge px-3 pt-3 pb-3">{details}</div>}
+    </div>
   );
 }
 
@@ -127,6 +131,8 @@ export default function RepoPicker({
   linked,
   home,
   locked,
+  details,
+  bounded,
 }: {
   repos: RepoConfig[];
   onChange: (repos: RepoConfig[]) => void;
@@ -134,12 +140,16 @@ export default function RepoPicker({
   home: string;
   /** A slug that stays ticked whatever the user does — the repository whose files on disk carry no name. */
   locked?: string;
+  /** What a picked row opens on, inside its own card: the checkout, the note, whatever the page adds. */
+  details?: (repo: RepoConfig, index: number) => ReactNode;
+  /** Keeps the list in its own scroll box — for the wizard, where the step sits in a dialog-like flow. */
+  bounded?: boolean;
 }) {
   const { data, error, isFetching } = useAccessibleRepos();
   const [filter, setFilter] = useState('');
 
-  const picked = (slug: string) => repos.some((r) => same(r.slug, slug));
-  const toggle = (slug: string) => onChange(picked(slug) ? repos.filter((r) => !same(r.slug, slug)) : [...repos, newRepo(slug, home)]);
+  const at = (slug: string) => repos.findIndex((r) => same(r.slug, slug));
+  const toggle = (slug: string) => onChange(at(slug) >= 0 ? repos.filter((r) => !same(r.slug, slug)) : [...repos, newRepo(slug, home)]);
   const rows = ordered(data ?? [], repos, linked, !!data);
   const needle = filter.trim().toLowerCase();
   const shown = needle ? rows.filter((row) => matches(row, needle)) : rows;
@@ -163,24 +173,28 @@ export default function RepoPicker({
       )}
       {!data && isFetching && <Loading what="repositories" />}
       {data && rows.length === 0 && !needle && <p className="text-sm text-fg-muted">This GitHub account can reach no repositories.</p>}
-      <div className="max-h-[46vh] space-y-1.5 overflow-y-auto pr-1">
-        {shown.map((row) => (
-          <RepoRow
-            key={row.slug}
-            row={row}
-            picked={picked(row.slug)}
-            linked={linked.some((l) => same(l, row.slug))}
-            locked={!!locked && same(locked, row.slug)}
-            onToggle={() => toggle(row.slug)}
-          />
-        ))}
+      <div className={`space-y-1.5 ${bounded ? 'max-h-[46vh] overflow-y-auto pr-1' : ''}`}>
+        {shown.map((row) => {
+          const index = at(row.slug);
+          return (
+            <RepoRow
+              key={row.slug}
+              row={row}
+              picked={index >= 0}
+              linked={linked.some((l) => same(l, row.slug))}
+              locked={!!locked && same(locked, row.slug)}
+              onToggle={() => toggle(row.slug)}
+              details={index >= 0 && details ? details(repos[index], index) : undefined}
+            />
+          );
+        })}
       </div>
       {needle && (
         <p className="text-[11px] text-fg-faint">
           {shown.length} of {rows.length} shown
         </p>
       )}
-      <AddByName onAdd={(slug) => onChange([...repos, newRepo(slug, home)])} taken={picked} />
+      <AddByName onAdd={(slug) => onChange([...repos, newRepo(slug, home)])} taken={(slug) => at(slug) >= 0} />
     </div>
   );
 }
