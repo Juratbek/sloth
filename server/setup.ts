@@ -4,6 +4,8 @@ import { CONFIG_PATH, reloadConfig } from './config';
 import { SLOTH_HOME_LABEL } from './env';
 import { run } from './exec';
 import { cancelGhLogin, ghLoginStatus, startGhLogin } from './gh-login';
+import { cloneRepo, ensureCheckout } from './checkout';
+import type { CloneResult } from './checkout';
 import { expandPath, normalizeConfig, readConfigFile, writeConfigFile } from './config-file';
 import { watchAll } from './events';
 import { ensureTrelloLists } from './runner/board-trello';
@@ -154,15 +156,8 @@ async function projectFields(id: string): Promise<SetupFields> {
   };
 }
 
-async function clone(body: any): Promise<{ ok: boolean; path?: string; error?: string }> {
-  const repo = String(body?.repo ?? '');
-  const target = expandPath(String(body?.path ?? ''));
-  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return { ok: false, error: 'repo must be owner/repo' };
-  if (fs.existsSync(target)) return { ok: true, path: target };
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  const r = await run('gh', ['repo', 'clone', repo, target], { timeout: 300_000 });
-  return r.ok ? { ok: true, path: target } : { ok: false, error: notFound(r.err, 'gh') };
-}
+/** The Settings button: the same clone the boot and the tick make on their own, shared with one in flight. */
+const clone = (body: any): Promise<CloneResult> => cloneRepo(String(body?.repo ?? ''), expandPath(String(body?.path ?? '')));
 
 const ROLES: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved', 'qa', 'done'];
 
@@ -226,6 +221,9 @@ export async function handleSetup(pathname: string, method: string, body: unknow
       startLoop();
       startTunnel();
     });
+    // The checkout the sessions need is Sloth's to make: cloned now if the saved root is not one yet,
+    // without the save waiting on it — the health chip says "cloning" until it is there.
+    void ensureCheckout();
     // The launch agent is named after the repo and points at this checkout, so it is written from here.
     const serviceError = config.autostart === was ? undefined : await applyAutostart(config.autostart);
     return { ok: true, path: CONFIG_PATH, config, serviceError };

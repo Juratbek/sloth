@@ -1,4 +1,5 @@
 import { cfg } from './config';
+import { checkoutState } from './checkout';
 import { ownerConflict } from './runner/owner';
 import { me as trelloMe, trelloReady } from './trello';
 import { chromeBinary, type Browser } from './runner/browser';
@@ -61,6 +62,11 @@ async function ghCheck(): Promise<HealthCheck> {
  */
 async function gitCheck(): Promise<HealthCheck> {
   const cwd = cfg().runnerRoot;
+  // No checkout yet is not a fault while Sloth is making one (`checkout.ts`); it is one when it could not.
+  const state = checkoutState(cwd);
+  if (state.kind === 'cloning') return { id: 'git', ok: true, detail: `cloning ${state.repo} into ${cwd}` };
+  if (state.kind === 'error') return { id: 'git', ok: false, detail: state.error };
+  if (state.kind === 'missing') return { id: 'git', ok: false, detail: `no checkout at ${cwd} yet — Sloth clones ${cfg().repo} there on the next tick` };
   const r = await run('git', ['ls-remote', '--exit-code', 'origin', 'HEAD'], { timeout: TIMEOUT, cwd });
   return {
     id: 'git',

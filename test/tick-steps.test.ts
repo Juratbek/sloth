@@ -22,9 +22,13 @@ vi.mock('node:child_process', () => import('./child-process-mock'));
 
 import { setDry } from '../server/runner/log';
 import { tick } from '../server/runner/loop';
-import { onGh, resetGh } from './gh-mock';
+import { called, fail, onCommand, onGh, resetGh } from './gh-mock';
 import { resetSpawn } from './child-process-mock';
 import { configure, readLog, wipe } from './harness';
+import { forgetCheckout } from '../server/checkout';
+import { cfg } from '../server/config';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const EMPTY_BOARD = { data: { node: { items: { pageInfo: { hasNextPage: false }, nodes: [] } } } };
 
@@ -36,7 +40,29 @@ beforeEach(() => {
   setDry(false);
   h.ran = [];
   h.failing = '';
+  forgetCheckout();
   onGh(/items\(first: 100/, EMPTY_BOARD);
+});
+
+describe('the checkout step', () => {
+  beforeEach(() => fs.rmSync(cfg().runnerRoot, { recursive: true, force: true }));
+
+  it('clones a runner root that is not there before anything is launched', async () => {
+    onCommand(/^gh repo clone/, ({ args }) => {
+      fs.mkdirSync(path.join(args[3], '.git'), { recursive: true });
+      return '';
+    });
+    await tick({ board: true });
+    expect(called(/^gh repo clone acme\/widgets/)).toHaveLength(1);
+    expect(h.ran).toEqual(['reviews', 'handover', 'retryStranded', 'pickup']);
+  });
+
+  it('starts nothing while there is no checkout to start it in', async () => {
+    onCommand(/^gh repo clone/, fail('could not read Username'));
+    await tick({ board: true });
+    expect(h.ran).toEqual([]);
+    expect(readLog().join('\n')).toContain('checkout: cloning acme/widgets into');
+  });
 });
 
 describe('a step that throws', () => {
