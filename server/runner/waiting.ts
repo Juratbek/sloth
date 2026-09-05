@@ -2,7 +2,7 @@ import path from 'node:path';
 import { cfg } from '../config';
 import { refKey, type IssueRef } from '../repo-types';
 import { snapshot } from './board-snapshot';
-import { nowSec, readNumber, remove, write } from './log';
+import { isDry, nowSec, readNumber, remove, write } from './log';
 import { launchedAt, stateOf } from './session-dirs';
 
 /**
@@ -61,6 +61,8 @@ function credit(dir: string, from: number, to: number): void {
  * `issue` is the card the run works for, for the board's word on whether it is parked.
  */
 export function trackWaiting(dir: string, issue?: IssueRef): void {
+  // A dry tick books nothing: `waiting_total` and `answered` are what the run is billed and judged by.
+  if (isDry()) return;
   const since = readNumber(file(dir));
   const now = nowSec();
   const state = stateOf(dir);
@@ -99,15 +101,27 @@ export function waitedSeconds(dir: string, until = nowSec()): number {
 }
 
 /**
- * The waits this run has been credited for and is no longer in — what its budget deadline is moved out by.
- * The wait still open is deliberately not counted there: with it, the deadline grew by exactly as much as
- * the clock advanced, so `now > deadline` reduced to a constant and a run with a wait file could never be
+ * The wait a run's budget deadline is moved out by: every wait it has finished, and the one still open —
+ * but that one only up to `waitHours`, which is the longest a question may honestly stand before the
+ * session gives up on it.
+ *
+ * Uncapped, the open wait moved the deadline out by exactly as much as the clock advanced: substituting
+ * `total + (now - since)` into `now > launchedAt + waited + budget` cancels `now` on both sides and leaves
+ * the constant `since > launchedAt + total + budget`, so once the wait file existed the run could never be
  * killed. A run whose card stands in needs-help while its own state still says `working` — a hung session,
- * or a card a human dragged there — opens a wait it never closes, and used to hold its slot for ever, with
- * no ledger line and nothing to reap it. A run that really is waiting says so in its state, and `reap`
- * leaves any run that is not `working` alone before the deadline is even looked at.
+ * or a card a human dragged there — opens a wait nothing ever closes, and held its slot for ever: no
+ * `stopped` event, no ledger line, and retention would not prune it.
+ *
+ * The cap and not the whole open wait, because the honest case runs through the same window. A wait is
+ * closed by `trackWaiting` when the board says the card has left needs-help, and the board is the previous
+ * tick's read: for the minutes between a session being answered and the next board read, the run says
+ * `working` with its wait still open. Dropping the open wait outright killed it there — the very thing
+ * this module was written to prevent.
  */
-export const creditedWaiting = (dir: string): number => readNumber(totalFile(dir));
+export function waitedForDeadline(dir: string): number {
+  const since = readNumber(file(dir));
+  return readNumber(totalFile(dir)) + (since ? Math.min(Math.max(0, nowSec() - since), cfg().waitHours * 3600) : 0);
+}
 
 /** When the run last went from `waiting` back to work, or 0 if it never asked. */
 export const answeredAt = (dir: string): number => readNumber(answeredFile(dir));

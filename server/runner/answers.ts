@@ -7,7 +7,7 @@ import type { Role } from '../roles';
 import { wroteIt } from './bot';
 import { freeIn } from './board';
 import type { BoardItem } from './board';
-import { workedColumns } from './columns';
+import { parkedColumns } from './columns';
 import { gh } from './gh';
 import { isDry, log, remove } from './log';
 import { isBlocked, issueAlive, issueDir } from './session-dirs';
@@ -66,14 +66,15 @@ async function answerOn(issue: IssueRef): Promise<Answer | undefined> {
  * Review (a review given up or stopped) and in Approved (a PR closed unmerged) as well as In Progress.
  * Only In Progress used to be scanned for the marker, so a review given up on a board with no needs-help
  * column left its card in Code Review for good: nothing looked there again, and the park comment's promise
- * that answering in the thread continues the work was not kept. Every worked column is scanned instead.
+ * that answering in the thread continues the work was not kept. Every column a card can be parked in is
+ * scanned instead — not the pickup column, which the same comment offers as the way to start over.
  */
 export async function answered(board: BoardItem[]): Promise<void> {
   const col = cfg().statusField.columns;
   const needsHelp = col.needsHelp.name;
   const parked = [
     ...(needsHelp ? freeIn(board, needsHelp) : []),
-    ...workedColumns()
+    ...parkedColumns()
       .filter((name) => name !== needsHelp)
       .flatMap((name) => freeIn(board, name))
       .filter((issue) => isBlocked(issueDir(issue))),

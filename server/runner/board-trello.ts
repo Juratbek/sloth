@@ -215,10 +215,13 @@ async function cardFor(issue: IssueRef, listId: string): Promise<string | undefi
   return card.id;
 }
 
+/** Trello answers a rate limit with 429 and a slow client with 408: neither says the move is impossible. */
+const TRANSIENT = [408, 425, 429];
+
 /**
- * Moves an issue's card to a list, at the top of it. A 4xx from Trello is its answer and stands; anything
- * else — a socket reset, a 5xx, a rate limit — is the board being out of reach for a moment, and says
- * nothing about whether the move is possible (`MoveOutcome`).
+ * Moves an issue's card to a list, at the top of it. A 4xx from Trello is its answer and stands — except
+ * the ones above; anything else, a socket reset or a 5xx, is the board being out of reach for a moment and
+ * says nothing about whether the move is possible (`MoveOutcome`).
  */
 export async function moveTrelloCard(issue: IssueRef, listId: string): Promise<MoveOutcome> {
   if (isDry()) {
@@ -232,7 +235,7 @@ export async function moveTrelloCard(issue: IssueRef, listId: string): Promise<M
     return 'moved';
   } catch (e) {
     log(`${label(issue)} move failed: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
-    return e instanceof trello.TrelloError && e.status < 500 ? 'refused' : 'unavailable';
+    return e instanceof trello.TrelloError && e.status < 500 && !TRANSIENT.includes(e.status) ? 'refused' : 'unavailable';
   }
 }
 

@@ -3,6 +3,7 @@ import { cfg } from '../config';
 import { canonicalRepo, label } from '../repos';
 import type { IssueRef, PrRef } from '../repo-types';
 import { fetchTrelloBoard } from './board-trello';
+import { wroteIt } from './bot';
 import { onTrello } from './board-move';
 import { gh, graphql } from './gh';
 import { isDry, log } from './log';
@@ -196,27 +197,28 @@ function checksOf(rollup: Rollup | undefined): Checks {
 export type Verdict = 'passed' | 'failed';
 interface ReviewNode {
   body?: string;
+  author?: { login?: string };
   commit?: { oid?: string };
 }
-const REVIEW_FIELDS = 'reviews(last: 30) { nodes { body commit { oid } } }';
+const REVIEW_FIELDS = 'reviews(last: 30) { nodes { body author { login } commit { oid } } }';
 const ROLLUP_FIELDS = `statusCheckRollup { state contexts(first: 100) { nodes {
   ... on StatusContext { state description } ... on CheckRun { conclusion } } } }`;
 const PR_FIELDS = `number state isDraft headRefOid headRefName baseRefName mergeable repository { nameWithOwner } commits(last: 1) { nodes { commit { ${ROLLUP_FIELDS} } } } ${REVIEW_FIELDS}`;
 
 /**
- * The verdict `/sloth:review … final` posted on a PR for the head `sha`, read off the PR itself: the
- * review's body opens with the bot prefix and says `Review: **passed**` or `Review: **failed**`
- * (`plugin/commands/review.md`, Step 4). The latest one on that head counts. A verdict lives on GitHub,
- * where nothing on this machine can lose it — the marker under `state/approved/` only says a review was
- * started, and a card moved after the verdict landed would otherwise be a card nobody remembers the
- * verdict of. A human's review, or one on an older head, is not a verdict.
+ * The verdict `/sloth:review … final` posted on a PR for the head `sha`, read off the PR itself: a review
+ * Sloth wrote (`wroteIt` — the prefix and the login both, so nobody else's review saying `Review:
+ * **passed**` can move a card or let trigger 8 merge a PR) saying `Review: **passed**` or `Review:
+ * **failed**` (`plugin/commands/review.md`, Step 4). The latest one on that head counts. A verdict lives
+ * on GitHub, where nothing on this machine can lose it — the marker under `state/approved/` only says a
+ * review was started. A human's review, or one on an older head, is not a verdict.
  */
 export function verdictOf(reviews: ReviewNode[] | undefined, sha: string): Verdict | undefined {
-  const prefix = cfg().botPrefix;
   let verdict: Verdict | undefined;
   for (const r of reviews ?? []) {
-    if (r.commit?.oid !== sha || !r.body?.startsWith(prefix)) continue;
-    const m = /Review: \*\*(passed|failed)\*\*/.exec(r.body);
+    const body = r.body ?? '';
+    if (r.commit?.oid !== sha || !wroteIt(r.author?.login ?? '', body)) continue;
+    const m = /Review: \*\*(passed|failed)\*\*/.exec(body);
     if (m) verdict = m[1] as Verdict;
   }
   return verdict;

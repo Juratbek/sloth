@@ -220,15 +220,12 @@ export async function comments(): Promise<void> {
           continue;
         }
         const hold = orderHold(t.issue);
-        if (hold?.wait) {
-          // Left unseen like a paused order: the next tick, with the review over, starts the session.
-          log(`${where(t)}: ${named} waits — ${hold.why}`);
-          continue;
-        }
         if (hold) {
-          log(`${where(t)}: ${named} refused — ${hold.why}`);
-          if (!isDry() && hold.reply) await replyTo(t, comment, hold.reply);
-          if (!isDry()) write(seen, '');
+          log(`${where(t)}: ${named} not acted on — ${hold.why}`);
+          if (!isDry()) {
+            await replyTo(t, comment, hold.reply);
+            write(seen, '');
+          }
           continue;
         }
         const origin = t.pr ? `PR #${t.pr.number} ${named}` : `issue ${named}`;

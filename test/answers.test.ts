@@ -45,15 +45,17 @@ describe('answered', () => {
     expect(spawned.map((s) => s.options.env.SLOTH_ISSUE)).toEqual(['5']);
   });
 
-  it('covers a card blocked in place in every worked column, not only In Progress', async () => {
+  it('covers a card blocked in place in every column a card is parked in, and leaves the pickup column to a start-over', async () => {
     // `park` is called with the card in Code Review (a review given up or stopped) and in Approved (a PR
     // closed unmerged) too, and blocks it where it stands when the needs-help move is refused or there is
     // no such column. Only In Progress used to be scanned, so those cards sat there for ever and answering
-    // in the thread did nothing, although the park comment said it would.
+    // in the thread did nothing, although the park comment said it would. The same comment offers moving
+    // the card back to the pickup column as the way to *start over*, so trigger 6 leaves that column alone:
+    // relaunching from here would continue the dead run — its handoff kept, its hours booked as continued.
     for (const n of [8, 9, 10]) makeSession('issue', n, { blocked: '1' });
     onGh(/issues\/(8|9|10)\/comments/, tsv([[1, 'jurat', true], [2, 'bob', false]]));
     await answered([card(8, COLUMNS.codeReview.name), card(9, COLUMNS.approved.name), card(10, COLUMNS.pickup.name)]);
-    expect(spawned.map((s) => s.options.env.SLOTH_ISSUE).sort()).toEqual(['10', '8', '9']);
+    expect(spawned.map((s) => s.options.env.SLOTH_ISSUE).sort()).toEqual(['8', '9']);
   });
 
   it('a comment is only Sloth’s question when Sloth wrote it', async () => {

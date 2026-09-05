@@ -71,17 +71,19 @@ describe('comments (trigger 3)', () => {
     await comments();
     expect(spawned[0].args[1]).toBe('/sloth:implement 4 Order from bob (developer, issue comment 101): @sloth address the review comments');
   });
-  it('leaves an order unseen while the review of the card’s PR is still running', async () => {
+  it('does not start a second session while the review of the card’s PR is still running, and says so', async () => {
     // Trigger 4 waits for an implement session so one actor owns a card at a time; nothing waited the other
     // way round. `@sloth address the review comments`, written while the review read the diff, cleaned the
     // run environment, moved the card to In Progress and pushed to the branch the reviewer was about to
-    // post a verdict on — and move the card by. The order is left unseen and lands on a later tick.
+    // post a verdict on — and move the card by. The order is answered rather than held for a later tick:
+    // the comment search reads the last hour only, and a review may run to its whole budget.
     makeSession('approved', 9, { pid: alivePid(), issue: '4' });
     thread(4, false, [{ id: 104, login: 'bob', body: '@sloth address the review comments' }]);
     await comments();
     expect(spawned).toHaveLength(0);
-    expect(exists(statePath('seen', '104'))).toBe(false);
-    expect(readLog().join('\n')).toMatch(/comment 104 waits — the review of its PR is still running/);
+    expect(called(/api repos\/acme\/widgets\/issues\/4\/comments -f body=.*review of this card is still running/)).toHaveLength(1);
+    expect(exists(statePath('seen', '104'))).toBe(true);
+    expect(readLog().join('\n')).toMatch(/comment 104 not acted on — the review of its PR is still running/);
   });
 
   it('refuses an order on a card a human has taken over, and says so in the thread', async () => {

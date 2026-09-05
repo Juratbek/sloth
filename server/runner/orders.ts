@@ -78,19 +78,27 @@ const heldByHuman = (issue: IssueRef): boolean => (snapshot()?.items ?? []).some
  * label — a comment could put Sloth back on a card a person had taken by hand.
  */
 export interface OrderHold {
-  /** The order is left unseen and acted on by a later tick, rather than answered now. */
-  wait: boolean;
   /** For `watcher.log`. */
   why: string;
-  /** What to write back in the thread the order was given in; a hold that only waits says nothing. */
-  reply?: string;
+  /** What to write back in the thread the order was given in, so nobody is left waiting on a silence. */
+  reply: string;
 }
 
+/**
+ * Both holds answer and are marked seen rather than left for a later tick. Leaving the comment unseen
+ * looked kinder — the order would land once the review ended — but `commentsOf` reads only the last hour
+ * (`LOOKBACK`) and a review may run to its whole budget, so an order held that way could fall out of the
+ * window and never be acted on at all, after Sloth had already put 👀 on it.
+ */
 export function orderHold(issue: IssueRef): OrderHold | undefined {
-  if (reviewAlive(issue)) return { wait: true, why: 'the review of its PR is still running — the order waits for it' };
+  if (reviewAlive(issue)) {
+    return {
+      why: 'the review of its PR is still running',
+      reply: 'The review of this card is still running, and one actor owns a card at a time — I have not started on this. Say the word again once the verdict is on the PR.',
+    };
+  }
   if (heldByHuman(issue)) {
     return {
-      wait: false,
       why: `the card is labelled ${SKIP_LABEL}, so a human owns it`,
       reply: `This card is labelled **${SKIP_LABEL}**, so a person owns it and Sloth leaves it alone. Take the label off and say the word again for Sloth to pick it up.`,
     };

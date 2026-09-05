@@ -122,11 +122,14 @@ describe('reap, on the runs it leaves alone', () => {
       // reduced to a constant: once the wait file existed the run could never be killed. A hung session
       // whose card a human dragged into needs-help — or one whose move to In Progress failed — held its
       // slot for ever, with no `stopped` event, no ledger line and nothing to prune it.
+      // Past its budget *and* past the longest a question may honestly stand: `waitHours` is the cap on
+      // what an open wait may move the deadline out by, so the run is not held open by it for ever.
+      const over = (cfg().budgetMinutes + cfg().waitHours * 60 + 20) * 60;
       makeSession('issue', 8, {
         pid: '12345',
-        started: overBudget(),
-        // The wait opened a few minutes after the launch and was never closed: the run says it is working.
-        waiting: String(nowSec() - (cfg().budgetMinutes + 15) * 60),
+        started: String(nowSec() - over),
+        // The wait opened ten minutes after the launch and was never closed: the run says it is working.
+        waiting: String(nowSec() - over + 600),
         'state.json': { state: 'working', step: '3' },
         'run.log': 'still going\n',
       });
@@ -135,6 +138,31 @@ describe('reap, on the runs it leaves alone', () => {
       await reap();
       expect(readLog().join('\n')).toMatch(/#8 stopped: hung past the budget/);
       expect(exists(sessionDir('issue', 8), 'pid')).toBe(false);
+    } finally {
+      setSnapshot([]);
+      kill.mockRestore();
+    }
+  });
+
+  it('leaves a run that has just been answered alone, while the board it is judged by still says parked', async () => {
+    const kill = stubKill();
+    try {
+      // A wait is closed by the *board*, and the board is the previous tick's read: for the minutes between
+      // a session being answered and the next read, the run says `working` with its wait still open. The
+      // wait it really served has to count toward the deadline in that window, or the run is killed minutes
+      // after it thanked the developer and carried on — which is what `waiting.ts` exists to prevent.
+      const now = nowSec();
+      makeSession('issue', 12, {
+        pid: '12345',
+        started: String(now - 100 * 60),
+        waiting: String(now - 90 * 60),
+        'state.json': { state: 'working', step: '4', since: now - 120 },
+        'run.log': 'thanks — continuing\n',
+      });
+      setSnapshot([card(12, COLUMNS.needsHelp.name)]);
+      await reap();
+      expect(readLog().join('\n')).not.toMatch(/#12 stopped/);
+      expect(exists(sessionDir('issue', 12), 'pid')).toBe(true);
     } finally {
       setSnapshot([]);
       kill.mockRestore();

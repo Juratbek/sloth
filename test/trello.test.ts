@@ -280,6 +280,9 @@ describe('the board API for sessions', () => {
     expect(await moveFromSession({ issue: 4, column: 'Code Review' })).toMatchObject({ ok: false, status: 503 });
     answers['PUT /cards/c4'] = Object.assign(new Error('invalid list id'), { status: 400 });
     expect(await moveFromSession({ issue: 4, column: 'Code Review' })).toMatchObject({ ok: false, status: 400 });
+    // A rate limit is a 429 and a slow client a 408 — both under 500, neither the board's answer.
+    answers['PUT /cards/c4'] = Object.assign(new Error('API_TOKEN_LIMIT_EXCEEDED'), { status: 429 });
+    expect(await moveFromSession({ issue: 4, column: 'Code Review' })).toMatchObject({ ok: false, status: 503 });
     // A column list that has never been read is not "no such column" either: the next tick reads it again.
     expect(await moveFromSession({ issue: 4, column: 'Planning' })).toMatchObject({ ok: false, status: 400 });
     resetColumns();
