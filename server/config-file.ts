@@ -203,6 +203,8 @@ export function normalizeConfig(input: unknown): SlothConfig {
     models: models(b.models, b.model, b.approvedModel),
     orchestrator: b.orchestrator !== false,
     chrome: b.chrome !== false,
+    // Opt-in: a test-writing subagent is a whole extra agent per card, and it needs a Playwright setup in the project.
+    e2e: b.e2e === true,
     autostart: b.autostart === true,
     autoUpdate: b.autoUpdate !== false,
     updateSeconds: int(b.updateSeconds, d.updateSeconds, 300),
