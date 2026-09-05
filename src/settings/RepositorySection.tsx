@@ -3,6 +3,7 @@ import type { SlothConfig } from '../../server/config-types';
 import { Button, TextInput, inputStyle } from '../setup/ui';
 import { useClone, useProjectFields } from '../setup/use-setup';
 import { Row } from './ui';
+import { useSetupEnv } from '../setup/use-setup';
 import type { SectionProps } from './ui';
 
 type DirKey = keyof ReturnType<typeof defaultDirs>;
@@ -19,10 +20,11 @@ const DIRS: { key: keyof SlothConfig & string; label: string; hint: string }[] =
 export default function RepositorySection({ draft, patch }: SectionProps) {
   const linked = useProjectFields(draft.project.id || undefined).data?.repositories ?? [];
   const clone = useClone();
+  const home = useSetupEnv().data?.home ?? '~/.sloth';
   const setRepo = (repo: string) => {
     // A directory still at its default for the old name follows the new one; a custom path stays.
-    const was = defaultDirs(repoName(draft.repo));
-    const now = defaultDirs(repoName(repo));
+    const was = defaultDirs(repoName(draft.repo), home);
+    const now = defaultDirs(repoName(repo), home);
     const follow = (key: DirKey) => (draft[key] === was[key] || draft[key].endsWith(was[key].slice(1)) ? now[key] : draft[key]);
     patch({ repo, runnerRoot: follow('runnerRoot'), worktreesDir: follow('worktreesDir'), sessionsDir: follow('sessionsDir') });
   };

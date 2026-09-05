@@ -1,4 +1,5 @@
 import type { ConfigProject } from '../../server/config-types';
+import { boardLabel } from './board-label';
 import { Button, Choice, Error, Loading } from './ui';
 import { useProjects } from './use-setup';
 
@@ -17,19 +18,23 @@ export default function StepProject({
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-zinc-400">Which GitHub project board should Sloth watch?</p>
+      <p className="text-sm text-zinc-400">Which board should Sloth watch?</p>
+      <p className="text-xs text-zinc-500">
+        A GitHub Projects (v2) board, or a Trello board — the Trello ones appear once Trello is connected on the previous step. On Trello the
+        lists are the columns, the cards the work, the card comments the conversation; nobody on the board needs GitHub.
+      </p>
       {error && <Error>{String(error)}</Error>}
       {!data && isFetching && <Loading what="projects" />}
-      {data?.length === 0 && <p className="text-sm text-zinc-400">No open Projects (v2) found for this account.</p>}
+      {data?.length === 0 && <p className="text-sm text-zinc-400">No open Projects (v2) boards for this account, and no Trello boards.</p>}
       <div className="max-h-[46vh] space-y-2 overflow-y-auto pr-1">
         {data?.map((p) => (
           <Choice
             key={p.id}
             selected={selected?.id === p.id}
-            onSelect={() => onSelect({ id: p.id, number: p.number, owner: p.owner, title: p.title })}
+            onSelect={() => onSelect({ provider: p.provider, id: p.id, number: p.number, owner: p.owner, title: p.title })}
             title={p.title}
-            subtitle={`${p.owner} · #${p.number}`}
-            right={`${p.items} items`}
+            subtitle={boardLabel(p)}
+            right={p.provider === 'trello' ? 'Trello' : `${p.items} items`}
           />
         ))}
       </div>

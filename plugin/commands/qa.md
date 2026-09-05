@@ -10,7 +10,7 @@ The issue in `$ARGUMENTS` (`$SLOTH_ISSUE` when set) sits in `$SLOTH_COL_QA_NAME`
 deployed to `$SLOTH_QA_BRANCH` — the repository's default branch when that is empty — and a tester is
 supposed to confirm it. Be that tester: check the branch out, bring the app up, drive the behaviour the
 issue asked for as the user it concerns, and say on the issue what you saw. **You move no card and change
-no code.** The server reads your verdict and moves the card: `passed` → `$SLOTH_COL_DONE_NAME`, `failed` →
+no code** — the throwaway Playwright run config of Step 3, deleted after its run, is the one file you write. The server reads your verdict and moves the card: `passed` → `$SLOTH_COL_DONE_NAME`, `failed` →
 `$SLOTH_COL_IN_PROGRESS_NAME`, where a new implement run picks your findings up; `inconclusive` leaves it
 for a human.
 
@@ -39,8 +39,9 @@ gh pr view <N> --repo "$SLOTH_REPO" --json number,title,body,state,mergedAt,merg
 ```
 
 From the issue and its thread write down, before touching anything: **the behaviour to confirm** (every
-requirement and acceptance criterion, the body *and* the thread — earlier answers are binding), **the old
-behaviour that must be gone**, and **the role** — which user of the app meets this screen. A behaviour spec
+requirement and acceptance criterion, the body *and* the thread — earlier answers are binding; a `## Spec`
+section in the body is Sloth's refinement of the card, and every box under its *Acceptance criteria* is one
+thing to confirm), **the old behaviour that must be gone**, and **the role** — which user of the app meets this screen. A behaviour spec
 in the repo (`docs/` or equivalent) that covers the flow is the reference for what "correct" means.
 
 No merged PR wired to the issue, or one merged into a branch that is not `$SLOTH_QA_BRANCH` and not merged
@@ -116,6 +117,19 @@ surrounding flow a real user would go through, and `$SLOTH_SCREENSHOTS_DIR`. Its
    was seen against what was expected, what could not be tested and why, and the screenshot files with a
    one-line caption each.
 
+With `SLOTH_E2E=1` the fix may have brought its e2e tests along — **you** run them, not the tester, once its
+run is in. The files: the Playwright spec files the merged PR (Step 0) **added** —
+`gh api "repos/$SLOTH_REPO/pulls/<N>/files" --paginate --jq '.[] | select(.status == "added") | .filename'`,
+kept to those under the checkout's Playwright `testDir` (`playwright.config.*` outside `node_modules`; none →
+nothing to run, say so). Run exactly those against the app from Step 2 the way the `e2e-writer` agent does
+(`agents/e2e-writer.md`, procedure 4, its snippet included): a `playwright.sloth.config.ts` beside the
+project's that points every `baseURL` — top-level, and per project when it declares any — at this app, drops `webServer` (the app
+is never booted twice) and sets `outputDir` under `$SESSION_DIR`; `npx playwright test --config … <files>
+--reporter=list`; one `npx playwright install chromium` when the browsers are missing; the run config
+deleted afterwards. That throwaway config is the one file the read-only worktree gets (Rules). A red test is a finding with the criterion it checks and what the app
+showed; a run that could not happen is said so, never counted against the fix. They add to the tester's
+evidence, never replace it.
+
 `SLOTH_CHROME=0`, or the tools unavailable: test what can be tested without a browser — the API with
 `curl`, the database, the CLI, the rendered markup — and say exactly what was and was not covered. A fix
 that only shows on a screen and no browser to see it → **inconclusive**.
@@ -178,7 +192,9 @@ sha, what the tester drove and as whom, what was not covered, how many screensho
 
 ## Rules
 
-- **Read-only on the code**: a detached worktree, no branch, no commit, no push, no edit. The fix is judged, not repaired.
+- **Read-only on the code**: a detached worktree, no branch, no commit, no push, no edit — the one exception the
+  throwaway `playwright.sloth.config.ts` of Step 3, deleted after its run, its output under `$SESSION_DIR`. The fix is
+  judged, not repaired.
 - **No board move, no label, no close** — the server moves the card on `verdict`. Never move it yourself.
 - **The verdict is written after the comment**, and once. Every run ends with exactly one of the three
   words in `$SESSION_DIR/verdict`, or none if the run dies — the server then tests the card again.

@@ -6,48 +6,10 @@ import { DEFAULT_QA, DEFAULT_SMOKE, type QaConfig, type SmokeConfig } from './sc
 export { DEFAULT_QA, DEFAULT_SMOKE } from './scheduled-types';
 export type { QaConfig, SmokeConfig } from './scheduled-types';
 
-export interface ColumnRef {
-  id: string;
-  name: string;
-}
-export interface ConfigProject {
-  id: string;
-  number: number;
-  owner: string;
-  title: string;
-}
-export interface ConfigColumns {
-  pickup: ColumnRef;
-  inProgress: ColumnRef;
-  needsHelp: ColumnRef;
-  codeReview: ColumnRef;
-  /** Optional: with no Approved column a passing review leaves the card in Code Review and trigger 5 never fires. */
-  approved: ColumnRef;
-  /**
-   * Optional: the column the QA sweep (trigger 9) tests — cards whose fix is merged and deployed to
-   * `qa.branch`, waiting for a tester. Never created unless asked for; blank means no sweep.
-   */
-  qa: ColumnRef;
-  /** Optional: where a card goes once its issue is closed (trigger 6), or once it passed the QA sweep; without it the card stays put. */
-  done: ColumnRef;
-}
-export type ColumnRole = keyof ConfigColumns;
-
-/** The names Sloth gives the columns it creates when the board has none for a role. */
-export const DEFAULT_COLUMN_NAMES: Record<ColumnRole, string> = {
-  pickup: 'Todo',
-  inProgress: 'In Progress',
-  needsHelp: 'Sloth needs help',
-  codeReview: 'Code Review',
-  approved: 'Approved',
-  qa: 'QA',
-  done: 'Done',
-};
-
-/** The roles a board need not have: left blank, the trigger that needs the column simply never fires. */
-export const OPTIONAL_COLUMNS: ColumnRole[] = ['needsHelp', 'approved', 'qa', 'done'];
-/** The roles that are never created unasked — the wizard offers "none" for them, and blank stays blank. */
-export const OPT_IN_COLUMNS: ColumnRole[] = ['qa'];
+/** The board — where it lives and which of its columns Sloth uses — is typed in `board-config.ts`, re-exported here. */
+export { BOARD_PROVIDERS, DEFAULT_COLUMN_NAMES, OPTIONAL_COLUMNS, OPT_IN_COLUMNS } from './board-config';
+export type { BoardProvider, ColumnRef, ColumnRole, ConfigColumns, ConfigProject } from './board-config';
+import type { ConfigColumns, ConfigProject } from './board-config';
 
 /** How trigger 8 merges a PR that passed the review; `''` leaves merging — and the test in Approved — to a human. */
 export type MergeMethod = '' | 'squash' | 'merge' | 'rebase';
@@ -95,16 +57,19 @@ export interface AgentModels {
   qa: string;
   /** `/sloth:smoke <n>` (trigger 11): the session that smoke-tests the whole app for a release; its role testers run on `tester`. */
   smoke: string;
+  /** The e2e-writer subagent (`plugin/agents/e2e-writer.md`) an implement session spawns while `e2e` is on: one Playwright test per acceptance criterion, committed with the PR. */
+  e2e: string;
 }
 export type AgentRole = keyof AgentModels;
 
-export const DEFAULT_MODELS: AgentModels = { orchestrator: 'fable', implement: 'opus', tester: 'opus', reviewer: 'opus', final: 'fable', status: 'opus', qa: 'opus', smoke: 'fable' };
+export const DEFAULT_MODELS: AgentModels = { orchestrator: 'fable', implement: 'opus', tester: 'opus', reviewer: 'opus', final: 'fable', status: 'opus', qa: 'opus', e2e: 'opus', smoke: 'fable' };
 export const AGENT_ROLES = Object.keys(DEFAULT_MODELS) as AgentRole[];
 
 export interface SlothConfig {
   version: 1;
   repo: string;
   project: ConfigProject;
+  /** The Status field the columns are options of; on Trello `id` is the board id again and the columns are its lists. */
   statusField: { id: string; columns: ConfigColumns };
   /** The checkout the sessions run from; Sloth clones the repo here. */
   runnerRoot: string;
@@ -152,6 +117,12 @@ export interface SlothConfig {
   orchestrator: boolean;
   /** Give implement sessions a headless Chrome (Playwright MCP) for the tester subagent's screenshots. Needs Google Chrome (or Chromium) here. */
   chrome: boolean;
+  /**
+   * Have an implement session spawn the e2e-writer subagent (`models.e2e`) once the change works: one Playwright test
+   * per acceptance criterion of the card, written into the project's own e2e suite and committed with the PR; the
+   * review then holds a PR that counts tests to one per criterion. Only in a project that already has a Playwright setup. Off by default.
+   */
+  e2e: boolean;
   /** Start Sloth when this machine is logged into, through a macOS launch agent (`server/service.ts`). */
   autostart: boolean;
   /**
@@ -259,6 +230,7 @@ export const CONFIG_DEFAULTS = {
   models: DEFAULT_MODELS,
   orchestrator: true,
   chrome: true,
+  e2e: false,
   autostart: false,
   autoUpdate: true,
   updateSeconds: 3600,
@@ -279,11 +251,17 @@ export const CONFIG_DEFAULTS = {
   smoke: DEFAULT_SMOKE,
 } satisfies Partial<SlothConfig>;
 
-/** The directories that are kept apart per repository (`name` is the part after the slash). */
-export const defaultDirs = (name: string) => ({
-  runnerRoot: `~/.sloth/runners/${name}`,
-  worktreesDir: `~/.sloth/worktrees/${name}`,
-  sessionsDir: `~/.sloth/sessions/${name}`,
+/**
+ * Where an instance keeps its files: under its home — the directory its config file is in, `~/.sloth`
+ * by default — and, for the per-repository ones, under the repository's name (the part after the slash).
+ */
+export const defaultDirs = (name: string, home = '~/.sloth') => ({
+  runnersDir: `${home}/runners`,
+  runnerRoot: `${home}/runners/${name}`,
+  worktreesDir: `${home}/worktrees/${name}`,
+  sessionsDir: `${home}/sessions/${name}`,
+  stateDir: `${home}/state`,
+  watcherLog: `${home}/watcher.log`,
 });
 
 /** The payloads the get-started wizard exchanges with `/api/setup/*` (`setup-types.ts`). */

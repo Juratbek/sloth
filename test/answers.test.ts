@@ -8,7 +8,9 @@ import { COLUMNS, alivePid, card, configure, makeSession, wipe } from './harness
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
 
-const tsv = (rows: [number, string, boolean][]) => rows.map((r) => r.join('\t')).join('\n');
+/** A thread as `answerOn` reads it: id, login, body — a `true` third column is a comment of Sloth's, a `false` one somebody else's. */
+const tsv = (rows: [number, string, boolean][]) =>
+  rows.map(([id, login, sloth]) => [id, login, Buffer.from(sloth ? '**Sloth:** a question' : 'an answer').toString('base64')].join('\t')).join('\n');
 
 beforeEach(() => {
   configure();

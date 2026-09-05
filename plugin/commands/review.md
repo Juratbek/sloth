@@ -63,7 +63,9 @@ ambiguous.
 ## 3. Assess
 
 1. **Issue resolution** — does the diff implement what the issue asks? Check every requirement and
-   acceptance criterion in the body *and* the thread, not just the headline. A `Scope so far:` comment from
+   acceptance criterion in the body *and* the thread, not just the headline. A `## Spec` section in the body
+   is Sloth's refinement of the card from the thread's answers: every acceptance criterion in it is a
+   requirement, and its *Out of scope* is a boundary the diff must not cross. A `Scope so far:` comment from
    Sloth numbers them: every item on it is a requirement, the latest order included, none of them instead of
    the rest. On a reported bug, a PR whose `## Why` carries no `Root cause left:` line claims to have removed
    the cause — check that it did; one that carries the line is judged on what it says it fixes.
@@ -72,6 +74,15 @@ ambiguous.
    **violations of the project's own rules** — read the repo's `CLAUDE.md` / `AGENTS.md` and the rule files
    relevant to the changed code before citing one. A divergence from the project's documented behaviour is a
    bug.
+   **A code comment is a bug** — Sloth's code carries none: not a line or block comment, not a docstring or
+   JSDoc, not commented-out code, not a `TODO`. Only a directive the toolchain reads (`eslint-disable`,
+   `# type: ignore`, `"use client"`, a shebang, a licence header the repo already carries) or a comment the
+   project's `CLAUDE.md` explicitly requires may stay. For every other comment the diff **adds**, the
+   inline comment names the fix: delete it, and if the code needed it, rename the variable, function or
+   constant so it does not — or extract a function named for what the stretch does. A comment already in
+   the file before this PR is not a finding. Names that hide what they hold or do (`d`, `tmp`, `check`,
+   `handle`, `data2`, a bare number where a named constant belongs) are findings for the same reason:
+   the code must read without explanation.
 3. **Scope** — changes unrelated to the wired issue: drive-by refactors, formatting churn in untouched code,
    features nobody asked for. A small refactor that directly enables the fix is fine, not "unnecessary".
 4. **Checks** — `gh pr checks <N> --repo "$SLOTH_REPO"`; a failing required check is a bug: "OK to merge" is
@@ -86,6 +97,17 @@ ambiguous.
    A missing section, `No screen changed` on a diff that clearly changes one, or a dead image is an **unmet
    requirement**: "OK to merge" is no. `No browser attached to this session.` is accepted as written. On a PR
    from any other branch screenshots are welcome, never required.
+6. **E2E tests** — on a PR on a `sloth/issue-*` branch whose `## Verification` carries an `E2E` line. **No line
+   → not required**: the PR was built before the switch existed, or under a different setting than this
+   session's `SLOTH_E2E` — never a finding. A line that counts tests → the diff adds a Playwright spec file
+   with **one test per acceptance criterion** of the issue's `## Spec` (per behaviour the issue describes,
+   when it has no spec), except the criteria a `Not testable end-to-end` line names with a reason a browser
+   really cannot observe; a criterion without a test, a `.skip` / `.fixme` / `.only`, an assertion that does not
+   check the criterion's visible outcome, or a stray `playwright.sloth.config.*` in the diff is an **unmet
+   requirement**, named per criterion. A `skipped — <reason>` line is accepted when the reason names a cause;
+   `no Playwright setup` is checked once — `gh search code --repo "$SLOTH_REPO" --filename playwright.config`
+   (an error from the search is not a finding) — and holds only when nothing is found; `no flow to drive`
+   only when the diff changes no screen. On any other branch tests are welcome, never required.
 
 ## 4. Comment on the PR — whenever "OK to merge" is no, and always in final mode
 
@@ -142,7 +164,8 @@ on is the one that produced the findings.
 
 New bugs, or the PR does not resolve its issue, or both → move that issue's card to
 `$SLOTH_COL_IN_PROGRESS_NAME` (`board` skill: single-issue read for `ITEM_ID`, then `item-edit` with
-`$SLOTH_COL_IN_PROGRESS_ID`). Not on the board, or already there → leave it and note that in the report.
+`$SLOTH_COL_IN_PROGRESS_ID`; on a Trello board, `board_move` by column name). Not on the board, or already
+there → leave it and note that in the report.
 
 Final mode, "OK to merge" **yes** → move it to `$SLOTH_COL_APPROVED_NAME` the same way, with
 `$SLOTH_COL_APPROVED_ID`; the server then tells the issue it is ready to test, with the preview link. An empty

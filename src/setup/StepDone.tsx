@@ -1,5 +1,6 @@
 import type { SlothConfig } from '../../server/config-types';
 import { stackLabel } from '../components/StackPanel';
+import { boardLabel } from './board-label';
 import { Button, Error } from './ui';
 import type { ConfigPayload, Draft } from './use-setup';
 import { useSaveConfig } from './use-setup';
@@ -51,7 +52,7 @@ export default function StepDone({
   const config = payload(draft, existing);
   const columns = config.statusField.columns;
   const rows: [string, string][] = [
-    ['Board', `${config.project.title} · ${config.project.owner}/#${config.project.number}`],
+    ['Board', `${config.project.title} · ${boardLabel(config.project)}`],
     ['Repository', config.repo],
     ['Runner root', config.runnerRoot],
     ['Watched column', columns.pickup.name],

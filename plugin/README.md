@@ -12,12 +12,13 @@ what the commit convention is, how designs are read — all of that comes from t
 
 | Path | What |
 |---|---|
-| `commands/implement.md` | `/sloth:implement <issue> [order]` — claim → worktree → fix → verify → browser tester + screenshots → PR → reviewer loop → Code Review |
+| `commands/implement.md` | `/sloth:implement <issue> [order]` — claim → refine with the author when the card cannot be built without guessing (`## Spec` in the body) → worktree → fix → verify → browser tester + screenshots → e2e tests per criterion (`e2e` on) → PR → reviewer loop → Code Review |
 | `commands/review.md` | `/sloth:review <pr> [feedback-only\|final]` — verdict block, inline comments, card back to In Progress; `final` (the server's review of every Code Review card) always posts the verdict on the PR, and a pass labels the issue `Fable: approved` and moves the card to Approved for a human to test |
 | `commands/status.md` | `/sloth:status <issue> <comment-id>` — answer a mention when no session is running |
 | `commands/qa.md` | `/sloth:qa <issue>` — the daily QA sweep's test of one card: check the QA branch out, boot the app, test the merged fix in the browser, post the findings on the issue, write the verdict for the server |
 | `commands/smoke.md` | `/sloth:smoke <run>` — the scheduled smoke test of the whole app: check the pinned head out, build, boot the app, walk every user role's main flows in the browser, file the blockers and majors as issues, post the GO / NO-GO report on the report issue, write the verdict for the server |
 | `commands/stack.md` | `/sloth:stack <tool-id…>` — install the project's stack on the machine Sloth runs on and verify it answers |
+| `agents/e2e-writer.md` | The `sloth:e2e-writer` subagent implement spawns while `SLOTH_E2E=1`: one Playwright test per acceptance criterion, into the project's own suite, derived from the criteria and never bent to the code |
 | `skills/board/SKILL.md` | Board reads and moves with the ids from the environment, wired-PR lookup, `retry` |
 | `skills/session/SKILL.md` | `state.json`, the inbox, the time budget, the needs-help protocol, teardown |
 
@@ -68,8 +69,10 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_REVIEW_COMMENT` | A status reply only: the question was a comment on a line of `$SLOTH_PR`'s diff, with this id; the answer goes into that review thread |
 | `SLOTH_ISSUE` / `SLOTH_PR` | The target issue (implement, status) or PR (review) |
 | `SLOTH_REPO` | `owner/repo` |
-| `SLOTH_PROJECT_ID`, `SLOTH_PROJECT_NUMBER`, `SLOTH_PROJECT_OWNER` | The board |
-| `SLOTH_STATUS_FIELD_ID` | Its single-select Status field |
+| `SLOTH_BOARD` | `github` (a Projects v2 board) or `trello` (a Trello board — its lists are the columns, and the `board` skill's Trello section says how a session reads and moves a card there) |
+| `SLOTH_BOARD_API` | Sloth's own board API on this machine, `http://127.0.0.1:<port>/api/board`: a card's column and a move, for a board that is not GitHub's |
+| `SLOTH_PROJECT_ID`, `SLOTH_PROJECT_NUMBER`, `SLOTH_PROJECT_OWNER` | The board (on Trello: the board id, `0`, the member) |
+| `SLOTH_STATUS_FIELD_ID` | Its single-select Status field (on Trello: the board id again) |
 | `SLOTH_COL_PICKUP_ID` / `_NAME` | Column work is taken from |
 | `SLOTH_COL_IN_PROGRESS_ID` / `_NAME` | Claimed / being worked on |
 | `SLOTH_COL_NEEDS_HELP_ID` / `_NAME` | Parked, waiting for a human (may be empty) |
@@ -91,6 +94,8 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_MODEL` | The model this session runs on; a subagent with no model of its own runs on it too |
 | `SLOTH_TESTER_MODEL` | The model the browser tester subagent runs on (`opus`) |
 | `SLOTH_REVIEWER_MODEL` | The model the reviewer subagent runs on (`opus`) |
+| `SLOTH_E2E` | `1` when the `e2e` switch is on: implement spawns the e2e-writer subagent after the tester and the QA sweep runs the PR's added spec files. The review reads the PR's own `E2E` line, not this variable |
+| `SLOTH_E2E_MODEL` | The model the e2e-writer subagent runs on (`opus`) |
 | `SLOTH_ORCHESTRATOR` | `1` when the implement session is an orchestrator (`orchestrator` in the config): it runs on the orchestrator model and hands every code change to an implementor subagent |
 | `SLOTH_IMPLEMENTOR_MODEL` | The model the implementor subagent runs on in orchestrator mode — the config's `models.implement` (`opus`) |
 | `SLOTH_CHROME` | `1` when the server attached a headless Chrome through Playwright MCP (`browser_*` tools); implement then tests the change in it and screenshots it |
@@ -131,12 +136,20 @@ The **last message of the transcript is the report** — the monitor shows it.
 - Orders override everything, in any column, at any step: the admin's without limit, a developer's within the issue. A tester answers and asks; a login with no role never reaches a session — the server drops those comments.
 - An open PR on the issue whose branch is `sloth/issue-<n>-*` is resumed, not duplicated.
 - The reviewer subagent is spawned once and reused across rounds.
+- Sloth writes no code comments: names carry the meaning, a stretch that needs explaining becomes a well-named
+  function; only toolchain directives and comments the project's `CLAUDE.md` requires are allowed. The reviewer
+  treats a comment the diff adds as a bug (`commands/implement.md` Step 3, `commands/review.md` Assess 2).
 - With `SLOTH_ORCHESTRATOR=1` the implement session never edits code: one implementor subagent (spawned once, reused
   for every fix) makes every change, while the session keeps the issue, the board, verification, the tester, the
   reviewer loop and the PR.
 - With `SLOTH_CHROME=1` the implement session spawns one tester subagent that drives the change in a headless
   Chrome of its own — its own empty profile, nobody else's browser — with the snapshot, console and network
   checked, saves a PNG per screen it verified into `$SLOTH_SCREENSHOTS_DIR`, and fixes what it finds before the PR.
+- With `SLOTH_E2E=1` the implement session spawns the `sloth:e2e-writer` agent once the tester passed, or with no tester attached: one Playwright
+  test per acceptance criterion of the card's `## Spec` (of the issue's own behaviour without one), in the project's
+  e2e suite, run against the session's app, committed with the code. A red test is handed to the implementor as a
+  bug. A project without a Playwright setup gets none — Sloth adds no framework. The PR's `E2E` line says what
+  happened either way, and the review holds a PR that counts tests to one per criterion.
 - With `SLOTH_PREVIEW_HOURS` above 0 an implement run that reaches Code Review leaves its app, database and worktree up and
   writes `preview.json`; the server does the teardown, hours later. Every other ending tears down in the session.
 - A card in Code Review is reviewed by the server (`/sloth:review … final`), Sloth's PR or a human's: a pass moves it to

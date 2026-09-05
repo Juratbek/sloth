@@ -2,7 +2,7 @@ import { useEffect, useState, type ComponentType } from 'react';
 import { CONFIG_DEFAULTS, DEFAULT_MODELS, defaultDirs } from '../../server/config-types';
 import type { SlothConfig } from '../../server/config-types';
 import { Button } from '../setup/ui';
-import { useSaveConfig } from '../setup/use-setup';
+import { useSaveConfig, useSetupEnv } from '../setup/use-setup';
 import AboutSection from './AboutSection';
 import BoardSection from './BoardSection';
 import MachineSection from './MachineSection';
@@ -21,8 +21,9 @@ const pick = <K extends keyof typeof CONFIG_DEFAULTS>(...keys: K[]) =>
   Object.fromEntries(keys.map((k) => [k, CONFIG_DEFAULTS[k]])) as Pick<typeof CONFIG_DEFAULTS, K>;
 
 /** The sections, in nav order. `defaults` is what Restore defaults puts back; a section without one has nothing to restore. */
-const SECTIONS: { key: Key; label: string; component: ComponentType<SectionProps>; defaults?: (c: SlothConfig) => Partial<SlothConfig> }[] = [
-  { key: 'general', label: 'General', component: General, defaults: () => pick('mention', 'botPrefix', 'boardSeconds', 'commentSeconds', 'fallbackCommentSeconds', 'chrome', 'previewHours', 'priorityField', 'autoMerge', 'resolveConflicts') },
+/** What Restore defaults puts back; `home` is this instance's — a second instance must not be sent to the first one's directories. */
+const SECTIONS: { key: Key; label: string; component: ComponentType<SectionProps>; defaults?: (c: SlothConfig, home: string) => Partial<SlothConfig> }[] = [
+  { key: 'general', label: 'General', component: General, defaults: () => pick('mention', 'botPrefix', 'boardSeconds', 'commentSeconds', 'fallbackCommentSeconds', 'chrome', 'e2e', 'previewHours', 'priorityField', 'autoMerge', 'resolveConflicts') },
   { key: 'board', label: 'Board', component: BoardSection },
   { key: 'qa', label: 'QA sweep', component: QaSection, defaults: () => pick('qa') },
   { key: 'smoke', label: 'Smoke test', component: SmokeSection, defaults: () => pick('smoke') },
@@ -30,9 +31,9 @@ const SECTIONS: { key: Key; label: string; component: ComponentType<SectionProps
     key: 'repository',
     label: 'Repository',
     component: RepositorySection,
-    defaults: (c) => {
-      const { worktreesDir, sessionsDir } = defaultDirs(c.repo.split('/')[1] ?? '');
-      return { ...pick('runnersDir', 'stateDir', 'watcherLog'), worktreesDir, sessionsDir };
+    defaults: (c, home) => {
+      const { runnersDir, worktreesDir, sessionsDir, stateDir, watcherLog } = defaultDirs(c.repo.split('/')[1] ?? '', home);
+      return { runnersDir, worktreesDir, sessionsDir, stateDir, watcherLog };
     },
   },
   { key: 'stack', label: 'Stack', component: StackSection, defaults: () => pick('stack') },
@@ -73,6 +74,7 @@ export default function Settings({
   /** Where the user wants to go with unsaved edits — asked to confirm first. */
   const [leaving, setLeaving] = useState<(() => void) | null>(null);
   const save = useSaveConfig();
+  const home = useSetupEnv().data?.home ?? '~/.sloth';
   const dirty = JSON.stringify(draft) !== JSON.stringify(baseline);
   // The saved config can change underneath (the wizard just ran, a save landed): follow it while nothing is being edited.
   useEffect(() => {
@@ -109,7 +111,7 @@ export default function Settings({
               // Destructive and one click away from every section: it overwrites what is on this page,
               // saved or not. Asked the way the session view asks before it stops a run.
               if (window.confirm(`Restore the ${section.label} defaults? Every value in this section goes back to Sloth's own, replacing what is there.`)) {
-                patch(section.defaults!(draft));
+                patch(section.defaults!(draft, home));
               }
             }}
             className="text-xs text-zinc-400 hover:text-zinc-200"

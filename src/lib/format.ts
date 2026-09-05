@@ -80,10 +80,12 @@ export const label = (s: SessionSummary) => `${KIND[s.kind] ?? s.kind}${s.target
 const IMPLEMENT_STEPS: Record<string, string> = {
   '0': 'claiming',
   '1': 'reading issue',
+  '1.5': 'refining',
   '2': 'setting up',
   '3': 'implementing',
   '4': 'verifying',
   '4.5': 'browser testing',
+  '4.6': 'writing e2e tests',
   '5': 'opening PR',
   '5.5': 'in review',
   '6': 'handing off',

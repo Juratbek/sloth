@@ -1,16 +1,10 @@
 import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { writeAtomic } from './atomic';
-import { AGENT_ROLES, CONFIG_DEFAULTS, DEFAULT_MODELS, MERGE_METHODS, STACK, WEBHOOK_EVENTS, defaultDirs, type AgentModels, type AgentRole, type ColumnRef, type MergeMethod, type QaConfig, type Roles, type SlothConfig, type SmokeConfig, type StackChoice, type StackId, type WebhookEvent } from './config-types';
+import { SLOTH_HOME_LABEL, expandPath } from './env';
+import { AGENT_ROLES, BOARD_PROVIDERS, CONFIG_DEFAULTS, DEFAULT_MODELS, MERGE_METHODS, STACK, WEBHOOK_EVENTS, defaultDirs, type AgentModels, type AgentRole, type BoardProvider, type ColumnRef, type MergeMethod, type QaConfig, type Roles, type SlothConfig, type SmokeConfig, type StackChoice, type StackId, type WebhookEvent } from './config-types';
 import { sameLogin } from './roles';
 
-const home = os.homedir();
-
-/** `~/x` → `$HOME/x`; everything else resolved against the process cwd. */
-export const expandPath = (p: string) => (p === '~' ? home : p.startsWith('~/') ? path.join(home, p.slice(2)) : path.resolve(p));
-
-export const DEFAULT_CONFIG_PATH = '~/.sloth/config.json';
+export { DEFAULT_CONFIG_PATH, expandPath } from './env';
 
 export function readConfigFile(file: string): SlothConfig | undefined {
   try {
@@ -128,20 +122,11 @@ function qaOf(v: unknown, d: QaConfig): QaConfig {
   return { branch, at, budgetMinutes: int(q.budgetMinutes, d.budgetMinutes) };
 }
 
-/** The smoke test: how many days apart (0 = off), a `HH:MM` local time, a branch name safe in argv, the budget, and the brief as typed. */
-function smokeOf(v: unknown, d: SmokeConfig): SmokeConfig {
-  const q = (v ?? {}) as Record<string, unknown>;
-  const branch = text(q.branch) ?? '';
-  if (branch && !BRANCH_RE.test(branch)) throw new Error('smoke.branch must be a branch name');
-  const at = text(q.at) ?? d.at;
-  if (!TIME_RE.test(at)) throw new Error('smoke.at must be a time of day, HH:MM');
-  return {
-    everyDays: int(q.everyDays, d.everyDays, 0),
-    at,
-    branch,
-    budgetMinutes: int(q.budgetMinutes, d.budgetMinutes),
-    brief: typeof q.brief === 'string' ? q.brief.trim() : d.brief,
-  };
+/** A config from before boards had a provider names none, and is a GitHub one. */
+function providerOf(v: unknown): BoardProvider {
+  if (v === undefined || v === null || v === '') return 'github';
+  if (!BOARD_PROVIDERS.includes(v as BoardProvider)) throw new Error(`project.provider must be one of ${BOARD_PROVIDERS.join(', ')}`);
+  return v as BoardProvider;
 }
 
 function column(v: unknown, what: string): ColumnRef {
@@ -161,15 +146,19 @@ export function normalizeConfig(input: unknown): SlothConfig {
   const repo = repoSlug(b.repo);
   const name = repo.split('/')[1];
   const columns = (b.statusField?.columns ?? {}) as Record<string, unknown>;
+  const provider = providerOf(b.project?.provider);
   const d = CONFIG_DEFAULTS;
-  const dirs = defaultDirs(name);
+  // Every directory beside this instance's config file: a second Sloth on the machine gets a home of its own.
+  const dirs = defaultDirs(name, SLOTH_HOME_LABEL);
   return {
     version: 1,
     repo,
     project: {
+      provider,
       id: str(b.project?.id, 'project.id'),
       number: int(b.project?.number, 0, 0),
-      owner: str(b.project?.owner, 'project.owner'),
+      // A Trello board has no owner login to insist on; a Projects board always has one.
+      owner: provider === 'trello' ? (text(b.project?.owner) ?? '') : str(b.project?.owner, 'project.owner'),
       title: str(b.project?.title, 'project.title'),
     },
     statusField: {
@@ -189,11 +178,11 @@ export function normalizeConfig(input: unknown): SlothConfig {
       },
     },
     runnerRoot: expandPath(text(b.runnerRoot) ?? dirs.runnerRoot),
-    runnersDir: text(b.runnersDir) ?? d.runnersDir,
+    runnersDir: text(b.runnersDir) ?? dirs.runnersDir,
     worktreesDir: text(b.worktreesDir) ?? dirs.worktreesDir,
     sessionsDir: text(b.sessionsDir) ?? dirs.sessionsDir,
-    stateDir: text(b.stateDir) ?? d.stateDir,
-    watcherLog: text(b.watcherLog) ?? d.watcherLog,
+    stateDir: text(b.stateDir) ?? dirs.stateDir,
+    watcherLog: text(b.watcherLog) ?? dirs.watcherLog,
     roles: roles(b.roles, b.orderLogin),
     mention: text(b.mention) ?? d.mention,
     botPrefix: text(b.botPrefix) ?? d.botPrefix,
@@ -214,6 +203,8 @@ export function normalizeConfig(input: unknown): SlothConfig {
     models: models(b.models, b.model, b.approvedModel),
     orchestrator: b.orchestrator !== false,
     chrome: b.chrome !== false,
+    // Opt-in: a test-writing subagent is a whole extra agent per card, and it needs a Playwright setup in the project.
+    e2e: b.e2e === true,
     autostart: b.autostart === true,
     autoUpdate: b.autoUpdate !== false,
     updateSeconds: int(b.updateSeconds, d.updateSeconds, 300),

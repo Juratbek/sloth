@@ -157,13 +157,15 @@ Sloth's, the reviewer loop will not pass, or time is running out.
    retry gh issue comment "$SLOTH_ISSUE" --repo "$SLOTH_REPO" --body-file "$SLOTH_SESSION_DIR/question.md"
    retry gh project item-edit --id "$ITEM_ID" --project-id "$SLOTH_PROJECT_ID" \
      --field-id "$SLOTH_STATUS_FIELD_ID" --single-select-option-id "$SLOTH_COL_NEEDS_HELP_ID"
+   # on a Trello board (SLOTH_BOARD=trello): board_move "$SLOTH_ISSUE" "$SLOTH_COL_NEEDS_HELP_NAME" instead — `board` skill
    ASKED=$(date +%s); echo "$ASKED" >"$SLOTH_SESSION_DIR/asked_at"
    ASKED_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
    # set_state waiting Q "<one-line summary>"   with SINCE=$ASKED
    ```
    If `SLOTH_COL_NEEDS_HELP_ID` is empty and the name cannot be resolved: still post the comment, leave the
    card where it is, `touch "$SLOTH_SESSION_DIR/blocked"`, and say so in the report.
-3. **Wait up to `SLOTH_WAIT_HOURS`.** One Bash call per 10 minutes (`timeout: 600000`): ten `sleep 60`
+3. **Wait up to `SLOTH_WAIT_HOURS`** — the one window for every question a session asks, the refine step's
+   (implement Step 1.5) included. One Bash call per 10 minutes (`timeout: 600000`): ten `sleep 60`
    iterations, each checking `ls "$SLOTH_SESSION_DIR/inbox"`, and on the last one polling the thread — any
    new comment from someone with a role (admin, developer or tester) is an answer, mention or not; a
    comment from any other login is not, whatever it says:
@@ -177,8 +179,9 @@ Sloth's, the reviewer loop will not pass, or time is running out.
 4. **30 idle minutes** — free the machine, keep the code: stop the processes and drop the database this
    session started (its own pids / database name only), leave the slot and the branch,
    `set_state waiting Q "<note>"` with `SERVERS=stopped` and `SINCE=$ASKED`.
-5. **An answer arrives** — re-read the whole thread, never re-ask what it answers. With what you need:
-   move the card back to In Progress, `rm -f "$SLOTH_SESSION_DIR/blocked"`, comment
+5. **An answer arrives** — re-read the whole thread, never re-ask what it answers. (A refine question —
+   implement Step 1.5 — resumes silently: the move happens at once, the comment comes once with the spec.) With what
+   you need: move the card back to In Progress, `rm -f "$SLOTH_SESSION_DIR/blocked"`, comment
    `$SLOTH_BOT_PREFIX thanks — continuing`, recompute the budget (above), `SINCE=$(date +%s)`,
    `set_state working …`, bring the environment back up if you stopped it, and continue from where you
    stopped. Still a gap → ask again the same way.
@@ -195,7 +198,8 @@ Sloth's, the reviewer loop will not pass, or time is running out.
 - **Never write `$SLOTH_MENTION` in your own comments** — the server reads it as a new trigger.
 - **Short.** A comment is at most 5 lines after the prefix, each line one fact: what happened, the branch
   and PR link, what is needed. No preamble, no restating the question, no list of everything you did,
-  no reasoning, no apologies. Whoever wants more asks in the thread — that is what the inbox is for.
+  no reasoning, no apologies. Whoever wants more asks in the thread — that is what the inbox is for. The one
+  exception: the `Spec:` comment implement Step 1.5 posts on a Trello board, which carries the whole spec.
 - A screenshot in a PR is always a file the tester saved and `publish_shots` pushed (below) — never claim or
   link one that was not taken; what was not screenshotted is described **in words**.
 - Orders come from the admin (`$SLOTH_ADMIN_LOGIN`, anything) and the developers (`$SLOTH_DEVELOPER_LOGINS`, within the

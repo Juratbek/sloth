@@ -1,6 +1,6 @@
 # Sloth
 
-Sloth watches a GitHub project board and lets Claude Code do the work while you rest. Move a card
+Sloth watches a project board — GitHub Projects or Trello — and lets Claude Code do the work while you rest. Move a card
 into the watched column and a headless Claude Code session implements the issue in its own git
 worktree, opens a PR, and asks on the issue when it is stuck; Sloth starts the sessions, keeps them
 inside their time budget and shows you what they are doing.
@@ -27,7 +27,7 @@ The short version; the tick-by-tick account is in [docs/how-it-works.md](docs/ho
 
 | # | When | What Sloth does |
 |---|---|---|
-| 1 | An issue sits in the watched column | Moves it to In Progress and starts `/sloth:implement <n>`, most important card first (`priorityField`) |
+| 1 | An issue sits in the watched column | Moves it to In Progress and starts `/sloth:implement <n>`, most important card first (`priorityField`). A card the session cannot build without guessing is refined first: questions on the issue, the card parked meanwhile, then a `## Spec` in the body it builds to |
 | 2 | An issue sits in In Progress with no live session | Relaunches it, at most `maxRetries` times in a row; the comment that then parks the card says how each run ended — its last step and its own final report — so nobody has to open `run.log` to learn why |
 | 3 | Someone on the team mentions `@sloth` in a comment — on an issue, or on the PR that closes it, in its conversation or on a line of its diff | Leaves 👀 on the comment, then delivers it to the live session; with no session, an order (admin or developer) starts one and anything else gets a status reply, on the thread it was written in — a review-thread comment is answered in that thread, and an answer written there wakes a parked card like one in the conversation. A login with no role is ignored; a PR linked to no issue gets told so |
 | 4 | An issue in Code Review — `Sloth: skip` or not, Sloth's PR or a human's, draft or ready — has an open wired PR whose current head has not been reviewed | **Sloth's first priority**: runs `/sloth:review <pr> final` on the review model (`models.final`, `fable` by default), once per PR head — ahead of every other row that starts a session, and held back by the machine only, never by the session caps. The verdict is posted on the PR either way: a pass labels the issue `Fable: approved` and moves the card to Approved, a fail comments inline and moves it back to In Progress, where row 2 sends the session back to address the findings. An Approved card pushed to after its pass loses the label and comes back to Code Review for a fresh review. Pending checks wait a tick; red ones are row 7's. One owner per card: the review waits until the session that wrote the PR has ended, and a Code Review card whose head already has a verdict on the PR — with nobody on it — is put where that verdict says, so a card left behind by a race unsticks itself |
@@ -157,6 +157,51 @@ rides the 5-minute poll (`GET /api/health`, `POST /api/health/check`).
                                     paused, paused_until, pruned_at, qa_sweep, qa_ran; slots/ which run holds which worktree slot, and slot-<n>.warm for the stack a slot keeps warm
 ```
 
+## Trello boards
+
+A Trello board works in place of a GitHub Projects one, and a person on it never touches GitHub: the
+cards are the issues, the lists are the columns, the card's comments are the conversation. The code, the
+PRs and the reviews live in the GitHub repository as always — every card Sloth works has a GitHub issue
+behind it, opened and kept in step by Sloth, which the team on Trello need not look at.
+
+- **Connecting.** The wizard's first step (and Settings → *Board*) has a **Trello** block: paste the API
+  key, the token and the secret there and press *Connect* — Sloth tries them against Trello and keeps
+  them, owner-readable only, in `trello.json` beside `config.json`; nothing typed is ever shown back.
+  A key comes from [trello.com/power-ups/admin](https://trello.com/power-ups/admin) (a Power-Up of your
+  own, *API key*); the token from the *Token* link beside the key, authorised for the account the board is
+  on; the *Secret* on the same page is what makes the webhook possible (below). The environment —
+  `SLOTH_TRELLO_KEY` / `SLOTH_TRELLO_TOKEN` / `SLOTH_TRELLO_SECRET`, `.env` included — wins over the file
+  field by field, for whoever prefers it. Once connected, the wizard and Settings → *Board* list the Trello
+  boards beside the GitHub ones, the columns step shows the board's lists — missing ones are created on
+  save, like Status options — and the Trello login is checked with the rest of the machine's health.
+- **Cards and issues.** A card in the watched list gets a GitHub issue opened for it — the card's name as
+  the title, its description as the body — and the issue's URL attached to the card; a card that already
+  carries an issue's URL (attached, or in its description) is that issue's card. A comment that mentions
+  Sloth on a card in any list opens its issue too. An issue that reaches the board from GitHub's side (an
+  `@sloth` order on an issue nobody made a card for) gets a card. A card outside the watched list with no
+  issue and no mention is a note, not work.
+- **Comments, both ways.** Every comment on a linked card is copied onto its issue under the author's
+  Trello name, and every comment on the issue is copied onto the card — Sloth's own words as they are, a
+  person's under their GitHub login. So `@sloth` on the card is an order or a question exactly as on an
+  issue (trigger 3), an answer on the card is the answer a parked card waits for (trigger 6, and the
+  session's inbox while it waits), and Sloth's questions, park notes, status replies and the "ready to
+  test" link all appear on the card. The team in `roles` are **Trello usernames** on a Trello board.
+  A comment older than an hour, or older than the first time the mirror ran, is not copied.
+- **The webhook.** With the secret set and a public address (see *Remote access*), Sloth
+  points a Trello webhook for the board at `/api/hooks/trello` itself and verifies every delivery against
+  the secret; a comment on a card is then read within seconds. Without the secret there is no webhook and
+  the comments are polled every `fallbackCommentSeconds`, as on GitHub without one.
+- **Order and labels.** Cards are picked up top to bottom within the watched list; drag one up to have it
+  taken first (`priorityField` does nothing on Trello). `Sloth: skip` on the card — Sloth creates the label
+  on the board — or on the issue holds a card back; `Fable: approved` lives on the issue. Card members are
+  shown on the board page as the card's assignees. Trigger 6 files a card away by its issue's close.
+- **Sessions.** A session reads and moves its card through Sloth (`SLOTH_BOARD_API`, `GET /api/board/card/<issue>`
+  and `POST /api/board/move`, from this machine only) instead of `gh project`; the plugin's `board` skill has the
+  calls. Everything else a session does is unchanged — it reads and writes the issue, and the mirror carries it.
+
+In `config.json` a Trello board is `project.provider: "trello"` with the board id in `project.id` (and in
+`statusField.id`), the list ids as the columns' ids. A config without `provider` is a GitHub board.
+
 ## The plugin
 
 `plugin/` is the Claude Code plugin the sessions run: `/sloth:implement <issue>`, `/sloth:review <pr>`,
@@ -195,7 +240,7 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | Key | Default | Means |
 |---|---|---|
 | `runnersDir` / `worktreesDir` / `sessionsDir` / `stateDir` / `watcherLog` | under `~/.sloth/` | Where checkouts, worktrees, session directories, markers and the log live |
-| `roles` | `{admin, developers, testers}` | The team: the one login that orders anything, the logins that order within an issue, the logins that answer and ask. A config from before roles keeps its `orderLogin` as the admin |
+| `roles` | `{admin, developers, testers}` | The team: the one login that orders anything, the logins that order within an issue, the logins that answer and ask — GitHub logins, or Trello usernames on a Trello board. A config from before roles keeps its `orderLogin` as the admin |
 | `mention` / `botPrefix` | `@sloth` / `**Sloth:**` | The keyword that wakes Sloth; the first line of every comment it writes |
 | `maxActive` / `maxAlive` | `2` / `3` | Session caps — `maxActive` is also the size of the worktree pool |
 | `minFreeMemory` / `minIdleCpu` / `minIdleDisk` | `10` / `5` / `10` | No new session while less of the machine's memory is available / of its CPU is idle / of its busiest disk is idle (percent, the last one being 100 minus Task Manager's *Disk*), and the lowest-priority running session is paused while it stays that way; `0` turns a check off. `minIdleDisk` does nothing on macOS, which exposes no busy-time counter to read it from — see *Machine limits* |
@@ -204,16 +249,18 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `boardSeconds` / `commentSeconds` | `300` / `120` | Poll intervals. `commentSeconds` is the comments poll while the webhook is delivering mentions — the safety net under it |
 | `fallbackCommentSeconds` | `30` | The comments poll while the webhook is **not** live: no public address, a tunnel that moved, a `gh` token that may not write webhooks. Then polling is the only way a mention is read at all, so it runs shorter. At least 10 (Settings → *General*, beside the webhook's status) |
 | `machineSeconds` | `15` | Seconds between two readings of memory, CPU and disk. The three limits above and the pausing of a running session can only act on a reading Sloth has, and a session that boots an app, a build and a browser at once can exhaust the memory between two board polls |
-| `models` | `opus` each, `final: fable`, `orchestrator: fable` | Which model each agent runs on (Settings → *Models*): `implement` (triggers 1–3; with `orchestrator` on, the implementor subagent), `orchestrator` (the implement session when `orchestrator` is on), `tester` (the headless-Chrome subagent that screenshots the change — the QA sweep's browser runs on it too), `reviewer` (the in-session review loop), `final` (trigger 4 — the review every Code Review card gets), `status` (mention replies), `qa` (trigger 9 — the session that tests one QA card), `smoke` (trigger 11 — the smoke test session; its per-role testers run on `tester`). An older config's `model` / `approvedModel` still load; its `review` key is ignored. A value is a Claude Code alias, a model id, or a model from another provider (see *Model providers*) |
+| `models` | `opus` each, `final: fable`, `orchestrator: fable` | Which model each agent runs on (Settings → *Models*): `implement` (triggers 1–3; with `orchestrator` on, the implementor subagent), `orchestrator` (the implement session when `orchestrator` is on), `tester` (the headless-Chrome subagent that screenshots the change — the QA sweep's browser runs on it too), `reviewer` (the in-session review loop), `final` (trigger 4 — the review every Code Review card gets), `status` (mention replies), `qa` (trigger 9 — the session that tests one QA card), `e2e` (the test-writing subagent while `e2e` is on), `smoke` (trigger 11 — the smoke test session; its per-role testers run on `tester`). An older config's `model` / `approvedModel` still load; its `review` key is ignored. A value is a Claude Code alias, a model id, or a model from another provider (see *Model providers*) |
 | `smoke` | `{everyDays: 0, at: "06:00", branch: "", budgetMinutes: 120, brief: ""}` | The scheduled smoke test (trigger 11, Settings → *Smoke test*): `everyDays` is how many days apart it runs (`1` daily, `2` every second day, `7` weekly; `0` turns the schedule off), `at` the local time of day a due run starts, `branch` the branch under test (empty: the default branch), `budgetMinutes` the session's own budget, `brief` what to smoke — the roles and their main flows, one per line; empty, the session reads them off the project's docs and skills |
 | `qa` | `{branch: "", at: "20:00", budgetMinutes: 60}` | The daily QA sweep (trigger 9, Settings → *QA sweep*): `at` is the local time of day it starts (`HH:MM`; empty turns it off), `branch` the branch the merged fixes are deployed from and tested on (empty: the default branch), `budgetMinutes` one QA session's own budget. The column it sweeps is the *QA* role in `statusField.columns` — opt-in, chosen in Settings → *Board*; nothing runs without it |
 | `orchestrator` | `true` | Run implement sessions as an orchestrator on `models.orchestrator` that never edits code itself: it reads the issue, briefs one implementor subagent on `models.implement`, verifies, runs the tester and the reviewer, opens the PR. Off, one session on `models.implement` does all of it. Either way the tester and the reviewer are subagents (Settings → *Models*) |
 | `autostart` | `false` | Start Sloth at login through a macOS launch agent (Settings → *Machine*; see *Run at login*). Saved but ignored on other platforms |
 | `autoUpdate` / `updateSeconds` | `true` / `3600` | Install Sloth's own updates without being asked (Settings → *About*; see *Updating itself*). Off only when set to `false`. Every `updateSeconds` the watcher looks at `origin/<branch>` and, when this checkout is behind, runs the same pull-install-build-restart the Update button runs. A checkout with local changes is left alone |
 | `chrome` | `true` | Give implement sessions a headless Chrome (Playwright MCP), so a tester subagent clicks through the change and its screenshots go on the PR; needs Google Chrome installed |
+| `e2e` | `false` | Have implement sessions spawn the e2e-writer agent once the change works (Settings → *General*): one Playwright test per acceptance criterion of the card, written into the project's own e2e suite, run against the session's app and committed with the PR; the review then holds a PR that counts tests to one per criterion (those the PR lists as not testable end-to-end excepted) and the QA sweep runs the PR's added spec files. Only in a project that already has a Playwright setup |
 | `previewHours` | `24` | How long a finished implement session's app stays up behind a public link posted on its PR (see *Previews* above); `0` turns previews off |
 | `warmSlots` | `true` | Keep a finished run's stack — dev servers, Redis, demo database — running in its worktree slot for the next session to inherit (see *Warm slots* above). Off tears everything down after every run, as before |
-| `priorityField` | `Priority` | A single-select field on the board whose option order ranks the watched column. Missing from the board, or empty here: cards are picked up in board order |
+| `project.provider` | `github` | Where the board lives: `github` (a Projects v2 board, `project.id` its node id) or `trello` (a Trello board, `project.id` its id — see *Trello boards*). Chosen with the board in the wizard and Settings → *Board* |
+| `priorityField` | `Priority` | A single-select field on the board whose option order ranks the watched column. Missing from the board, or empty here: cards are picked up in board order. On Trello the position in the list is the order |
 | `keepDays` | `30` | How long a finished run is kept. Once an hour Sloth deletes the session directories, transcripts (under `~/.claude/projects`) and status-reply markers older than this — never a live, parked or previewing run. Worktrees go sooner: a leftover per-issue one as soon as its run is over (one git has already forgotten is deleted outright), a pool slot past `maxActive` once nobody holds it. The same sweep caps what a run leaves behind whatever its age: every `.turbo/cache` back under 512 MB, oldest entry first, and the server logs of a finished run back to their last 2 MB. `watcher.log` is rotated to `watcher.log.1` past 5 MB |
 | `helpLogins` | `[]` | GitHub logins `@`-mentioned in the comment that parks a card in *needs help*, so GitHub notifies them (not the login `gh` writes with — GitHub skips self-mentions) |
 | `autoMerge` | `""` | How trigger 8 merges a PR whose review passed, whose checks are green and which merges cleanly: `squash`, `merge` or `rebase` (the `gh pr merge` methods) — as soon as it passes, skipping the human test in Approved. Empty leaves merging to a human |
@@ -224,8 +271,16 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 | `publicUrl` | — | Where the UI is already reachable — your own tunnel or domain. Set, no tunnel is started |
 | `stack` | `"auto"` | What the sessions' app needs on this machine, out of the stack Sloth can install: `postgresql`, `redis`, `node`, `python`, `java` (see *Stack* below). `auto` reads the checkout at every start; a list pins it |
 
-Environment: `SLOTH_CONFIG`, `SLOTH_PORT` (default `4400`), and `SLOTH_DRY_RUN=1` to log what every
-tick *would* do without doing it. A `.env` in the project root works too.
+**One instance, one home.** Everything an instance owns — state, sessions, worktrees, runners, its log, its
+Trello credentials — defaults to the directory its config file is in: `~/.sloth` for the default config,
+and whatever directory `SLOTH_CONFIG` names for another. So a second Sloth on the same machine (another
+project, another client) is `SLOTH_CONFIG=~/.sloth-other/config.json SLOTH_PORT=4401 pnpm dev`, and the
+two never see each other's sessions or answer on each other's cards. Each instance writes `state/owner.json`
+when it starts watching and refuses to run on a state directory another live instance holds under a
+different config — the header's health chip says so (*state dir*) until it is given directories of its own.
+
+Environment: `SLOTH_CONFIG`, `SLOTH_PORT` (default `4400`), `SLOTH_DRY_RUN=1` to log what every
+tick *would* do without doing it, and `SLOTH_TRELLO_KEY` / `SLOTH_TRELLO_TOKEN` / `SLOTH_TRELLO_SECRET` for a Trello board. A `.env` in the project root works too.
 
 ## Model providers
 

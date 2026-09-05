@@ -11,6 +11,12 @@ describe('normalizeConfig', () => {
     expect(c.models).toEqual(DEFAULT_MODELS);
     expect(c.orchestrator).toBe(true);
     expect(c.chrome).toBe(true);
+    // The e2e writer is an extra agent per card and needs a Playwright setup in the project: on only when asked.
+    expect(c.e2e).toBe(false);
+    expect(c.models.e2e).toBe('opus');
+    expect(normalizeConfig(baseConfig({ e2e: true, models: { e2e: 'sonnet' } })).e2e).toBe(true);
+    expect(normalizeConfig(baseConfig({ e2e: true, models: { e2e: 'sonnet' } })).models.e2e).toBe('sonnet');
+    expect(normalizeConfig(baseConfig({ e2e: 'yes' })).e2e).toBe(false);
     // Auto-update is on unless the file says no: a Sloth left running must not fall behind its repository.
     expect(c.autoUpdate).toBe(true);
     expect(normalizeConfig(baseConfig({ autoUpdate: false })).autoUpdate).toBe(false);
