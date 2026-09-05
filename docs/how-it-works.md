@@ -81,7 +81,9 @@ board. When it finds work, it starts a Claude Code session to do it. That is all
    many days apart in Settings → *Smoke test* (1 is daily, 7 weekly) and a time of day, and Sloth starts
    one session — `/sloth:smoke 3` — that checks the branch out at its current head, builds it, boots the
    app and has one browser tester per user role walk that role's main flows, happy paths only, one role
-   at a time. What to smoke can be written down in the same settings, one role and its flows per line;
+   at a time. With *Write e2e tests* on, the project's own Playwright suite — the tests Sloth wrote card by
+   card — runs first against that app, and a red test is handed to its role's tester as the first thing to
+   look at; one nobody could reproduce still holds the verdict at GO with risks. What to smoke can be written down in the same settings, one role and its flows per line;
    left empty, the session reads the roles off the project's own docs and skills. A blocker or a major
    finding becomes an issue of its own — with a screenshot of the broken screen in it, so whoever reads it
    sees the bug instead of imagining it — put on the board with no status so a person decides whether Sloth

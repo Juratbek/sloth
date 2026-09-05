@@ -113,6 +113,7 @@ const SMOKE_STEPS: Record<string, string> = {
   '0': 'planning roles',
   '1': 'checking out',
   '2': 'booting app',
+  '2.5': 'running e2e suite',
   '3': 'browser testing',
   '4': 'filing findings',
   '5': 'reporting',

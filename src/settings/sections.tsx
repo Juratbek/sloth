@@ -39,7 +39,7 @@ export function General({ draft, patch }: SectionProps) {
       </Row>
       <Row
         label="Write e2e tests"
-        hint="Once a change works, an e2e-writer subagent turns every acceptance criterion of the card into a Playwright test in the project's own e2e suite, runs them against the session's app and commits them with the PR; the review then holds it to one test per criterion. Only in a project that already has a Playwright setup — Sloth does not add one. Its model is under Models."
+        hint="Once a change works, an e2e-writer subagent turns every acceptance criterion of the card into a Playwright test in the project's own e2e suite, runs them against the session's app and commits them with the PR; the review then holds it to one test per criterion. The QA sweep runs the PR's tests and the smoke test runs the whole suite. Only in a project that already has a Playwright setup — Sloth does not add one. Its model is under Models."
       >
         <Toggle checked={draft.e2e} onChange={(e2e) => patch({ e2e })} label="Write e2e tests" />
       </Row>
