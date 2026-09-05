@@ -81,7 +81,9 @@ describe('a second repository', () => {
       return '';
     });
     expect(await ensureCheckout()).toBe(true);
-    expect(called(/^gh repo clone/).map((c) => c.args.slice(2))).toEqual([[API, roots().api]]);
+    // Made beside the root and renamed into place, like the first repository's.
+    expect(called(/^gh repo clone/).map((c) => c.args.slice(2))).toEqual([[API, `${roots().api}.cloning`]]);
+    expect(fs.existsSync(path.join(roots().api, '.git'))).toBe(true);
   });
 
   it('is the same repository however its slug is cased — GitHub reads the two as one', () => {

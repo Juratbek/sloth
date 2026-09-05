@@ -22,7 +22,7 @@ import { pausedUntil, reap } from './run-control';
 import { checkCopy } from './hours-copy';
 import { handover, pickup, retryStranded, reviews } from './triggers';
 import { healthTick } from '../health';
-import { ensureCheckout } from '../checkout';
+import { checkoutInBackground, checkoutReady } from '../checkout';
 import { isWebhookLive, onWebhookChange } from '../webhook';
 import { autoUpdate } from '../update';
 import type { LoopStatus } from '../types';
@@ -145,9 +145,9 @@ async function tickSteps({ board = false, comments: wantComments = false }: Tick
     state.lastBoard = Date.now();
     // Housekeeping on work that is long over — it costs nothing and skips itself for an hour.
     await step('prune', prune);
-    // The runner checkout, cloned when it is not there — before the health reading, which reports on it.
-    let checkout = false;
-    await step('checkout', async () => (checkout = await ensureCheckout()));
+    // The checkout, cloned if missing — beside the tick, not in it: a clone is minutes long and the tick holds the chain.
+    const checkout = checkoutReady();
+    if (!checkout) void checkoutInBackground();
     // Whether gh, git, the browser and sudo are still in order. Gated to ten minutes inside the step:
     // the board is read far more often than that, and "Tick now" more often again.
     await step('health', healthTick);
@@ -166,7 +166,7 @@ async function tickSteps({ board = false, comments: wantComments = false }: Tick
     // The webhook hears about all of it even while paused: sessions keep running, so they keep parking.
     await step('board events', () => boardEvents(items!));
     if (userPaused) return;
-    // Nothing that starts a session can start without the checkout it fetches in; the bookkeeping above ran.
+    // No launch without the checkout it fetches in (the launchers refuse too); the bookkeeping above ran.
     if (!checkout) return;
     // The review first: a card in Code Review is finished work waiting on a short look, so it goes ahead
     // of everything that starts a build — a red check, a stranded card, an order, the pickup column.

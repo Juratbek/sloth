@@ -10,7 +10,7 @@ import { sampleMachine, setReaders } from '../server/runner/machine';
 import { resetSpawn, spawned } from './child-process-mock';
 import { called, fail, onGh, resetGh } from './gh-mock';
 import { bootedAt } from '../server/runner/session-dirs';
-import { COLUMNS, alivePid, calmMachine, card, configure, exists, makeSession, read, readLog, ref, runRef, sessionDir, statePath, wipe } from './harness';
+import { COLUMNS, alivePid, calmMachine, card, configure, exists, makeSession, read, readLog, ref, runRef, runnerRoot, sessionDir, statePath, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
@@ -115,6 +115,13 @@ describe('pickup (trigger 1)', () => {
     // A pickup is a start-over: the dead run's handoff note must not steer the fresh session.
     expect(exists(sessionDir('issue', 3), 'handoff.md')).toBe(false);
   });
+  it('launches nothing while the runner checkout is not there yet — a comment\'s order comes this way too', async () => {
+    fs.rmSync(path.join(runnerRoot(), '.git'), { recursive: true, force: true });
+    await pickup([card(5, 'Todo')]);
+    expect(launches()).toEqual([]);
+    expect(readLog().join('\n')).toContain(`#5 queued (no checkout of acme/widgets at ${runnerRoot()} yet)`);
+  });
+
   it('only logs in a dry run', async () => {
     setDry(true);
     await pickup([card(3, 'Todo')]);
