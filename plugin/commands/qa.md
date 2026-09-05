@@ -10,7 +10,7 @@ The issue in `$ARGUMENTS` (`$SLOTH_ISSUE` when set) sits in `$SLOTH_COL_QA_NAME`
 deployed to `$SLOTH_QA_BRANCH` — the repository's default branch when that is empty — and a tester is
 supposed to confirm it. Be that tester: check the branch out, bring the app up, drive the behaviour the
 issue asked for as the user it concerns, and say on the issue what you saw. **You move no card and change
-no code.** The server reads your verdict and moves the card: `passed` → `$SLOTH_COL_DONE_NAME`, `failed` →
+no code** — the throwaway Playwright run config of Step 3, deleted after its run, is the one file you write. The server reads your verdict and moves the card: `passed` → `$SLOTH_COL_DONE_NAME`, `failed` →
 `$SLOTH_COL_IN_PROGRESS_NAME`, where a new implement run picks your findings up; `inconclusive` leaves it
 for a human.
 
@@ -122,11 +122,11 @@ run is in. The files: the Playwright spec files the merged PR (Step 0) **added**
 `gh api "repos/$SLOTH_REPO/pulls/<N>/files" --paginate --jq '.[] | select(.status == "added") | .filename'`,
 kept to those under the checkout's Playwright `testDir` (`playwright.config.*` outside `node_modules`; none →
 nothing to run, say so). Run exactly those against the app from Step 2 the way the `e2e-writer` agent does
-(`agents/e2e-writer.md`, procedure 4): a `playwright.sloth.config.*` beside the project's that points
-`use.baseURL` at this app and drops `webServer` — the app is never booted twice — `npx playwright test
---config … <files> --reporter=list`, one `npx playwright install chromium` when the browsers are missing,
-and the run config deleted afterwards. That config, `test-results/` and `playwright-report/` are the one
-writing the read-only worktree gets. A red test is a finding with the criterion it checks and what the app
+(`agents/e2e-writer.md`, procedure 4, its snippet included): a `playwright.sloth.config.ts` beside the
+project's that points every `baseURL` — top-level and per project — at this app, drops `webServer` (the app
+is never booted twice) and sets `outputDir` under `$SESSION_DIR`; `npx playwright test --config … <files>
+--reporter=list`; one `npx playwright install chromium` when the browsers are missing; the run config
+deleted afterwards. That throwaway config is the one file the read-only worktree gets (Rules). A red test is a finding with the criterion it checks and what the app
 showed; a run that could not happen is said so, never counted against the fix. They add to the tester's
 evidence, never replace it.
 
@@ -192,7 +192,9 @@ sha, what the tester drove and as whom, what was not covered, how many screensho
 
 ## Rules
 
-- **Read-only on the code**: a detached worktree, no branch, no commit, no push, no edit. The fix is judged, not repaired.
+- **Read-only on the code**: a detached worktree, no branch, no commit, no push, no edit — the one exception the
+  throwaway `playwright.sloth.config.ts` of Step 3, deleted after its run, its output under `$SESSION_DIR`. The fix is
+  judged, not repaired.
 - **No board move, no label, no close** — the server moves the card on `verdict`. Never move it yourself.
 - **The verdict is written after the comment**, and once. Every run ends with exactly one of the three
   words in `$SESSION_DIR/verdict`, or none if the run dies — the server then tests the card again.

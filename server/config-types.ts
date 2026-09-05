@@ -128,7 +128,7 @@ export interface SlothConfig {
   /**
    * Have an implement session spawn the e2e-writer subagent (`models.e2e`) once the change works: one Playwright test
    * per acceptance criterion of the card, written into the project's own e2e suite and committed with the PR; the
-   * reviewer then refuses a criterion without a test. Only in a project that already has a Playwright setup. Off by default.
+   * review then holds a PR that counts tests to one per criterion. Only in a project that already has a Playwright setup. Off by default.
    */
   e2e: boolean;
   /** Start Sloth when this machine is logged into, through a macOS launch agent (`server/service.ts`). */

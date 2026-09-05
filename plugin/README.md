@@ -92,7 +92,7 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_MODEL` | The model this session runs on; a subagent with no model of its own runs on it too |
 | `SLOTH_TESTER_MODEL` | The model the browser tester subagent runs on (`opus`) |
 | `SLOTH_REVIEWER_MODEL` | The model the reviewer subagent runs on (`opus`) |
-| `SLOTH_E2E` | `1` when the `e2e` switch is on: implement spawns the e2e-writer subagent after the tester, the reviewer refuses a criterion without a test, the QA sweep runs the PR's tests |
+| `SLOTH_E2E` | `1` when the `e2e` switch is on: implement spawns the e2e-writer subagent after the tester and the QA sweep runs the PR's added spec files. The review reads the PR's own `E2E` line, not this variable |
 | `SLOTH_E2E_MODEL` | The model the e2e-writer subagent runs on (`opus`) |
 | `SLOTH_ORCHESTRATOR` | `1` when the implement session is an orchestrator (`orchestrator` in the config): it runs on the orchestrator model and hands every code change to an implementor subagent |
 | `SLOTH_IMPLEMENTOR_MODEL` | The model the implementor subagent runs on in orchestrator mode — the config's `models.implement` (`opus`) |
@@ -142,10 +142,11 @@ The **last message of the transcript is the report** — the monitor shows it.
 - With `SLOTH_CHROME=1` the implement session spawns one tester subagent that drives the change in a headless
   Chrome of its own — its own empty profile, nobody else's browser — with the snapshot, console and network
   checked, saves a PNG per screen it verified into `$SLOTH_SCREENSHOTS_DIR`, and fixes what it finds before the PR.
-- With `SLOTH_E2E=1` the implement session spawns the `sloth:e2e-writer` agent once the tester passed: one Playwright
+- With `SLOTH_E2E=1` the implement session spawns the `sloth:e2e-writer` agent once the tester passed, or with no tester attached: one Playwright
   test per acceptance criterion of the card's `## Spec` (of the issue's own behaviour without one), in the project's
   e2e suite, run against the session's app, committed with the code. A red test is handed to the implementor as a
-  bug. A project without a Playwright setup gets none — Sloth adds no framework.
+  bug. A project without a Playwright setup gets none — Sloth adds no framework. The PR's `E2E` line says what
+  happened either way, and the review holds a PR that counts tests to one per criterion.
 - With `SLOTH_PREVIEW_HOURS` above 0 an implement run that reaches Code Review leaves its app, database and worktree up and
   writes `preview.json`; the server does the teardown, hours later. Every other ending tears down in the session.
 - A card in Code Review is reviewed by the server (`/sloth:review … final`), Sloth's PR or a human's: a pass moves it to

@@ -62,15 +62,26 @@ failure is your most valuable output.
    through the suite's fixtures; none depends on another's leftovers. Select by role, label or the test
    ids the project already uses; never by generated class names; never `waitForTimeout` — wait for the
    outcome. Assert the outcome the criterion names, on the screen, as the user sees it.
-4. **Run only your file, against the session's app.** Write a run config **beside the project's**, named
-   `playwright.sloth.config.ts` (`.js`/`.mjs` when the project's is), that imports the project's config,
-   keeps everything in it, points `use.baseURL` at the brief's URL and drops `webServer`:
+4. **Run only your file, against the session's app.** Write a run config **beside the project's**, always
+   named `playwright.sloth.config.ts` (Playwright transpiles it whatever the project's config language is),
+   that imports the project's config **with its real extension**, keeps everything in it, points every
+   `baseURL` at the brief's URL — the top-level `use` and each project's `use`, since a project's wins —
+   drops `webServer`, and sends the output outside the worktree — the import names the file that is really
+   there, `.ts`, `.js` or `.mjs`, and the snippet carries no comment, like every file Sloth writes:
    ```ts
    import { defineConfig } from '@playwright/test';
-   import base from './playwright.config';
+   import base from './playwright.config.ts';
+   const baseURL = '<the brief's URL>';
    const { webServer: _webServer, ...rest } = base;
-   export default defineConfig({ ...rest, use: { ...rest.use, baseURL: '<the brief's URL>' } });
+   export default defineConfig({
+     ...rest,
+     use: { ...rest.use, baseURL },
+     projects: (rest.projects ?? []).map((p) => ({ ...p, use: { ...p.use, baseURL } })),
+     outputDir: '<$SLOTH_SESSION_DIR>/playwright-out',
+   });
    ```
+   `globalSetup` / `globalTeardown` stay as the project has them; one that boots the app itself is a
+   `could not run — the project's globalSetup starts the app` (rule 4), not something to edit around.
    Then, from that package directory:
    ```bash
    npx playwright test --config playwright.sloth.config.ts <path-to-your-file> --reporter=list
@@ -80,8 +91,8 @@ failure is your most valuable output.
    (`Executable doesn't exist`) → `npx playwright install chromium`, **once** — the one install you may
    run; a failure, or a Linux `install-deps` prompt (it needs sudo, which you have not got) → report it,
    with the error, as *could not run*. **Delete `playwright.sloth.config.*` when the run is over**, pass or
-   fail — it is never committed; `test-results/` and `playwright-report/` the run wrote are the suite's
-   usual output and stay ignored by its `.gitignore`.
+   fail — it is never committed. With `outputDir` outside the worktree and `--reporter=list`, the run writes
+   nothing else into the checkout; `git status` after your run shows your spec files and helpers only.
 5. **Read every failure.** A failure from your side — wrong selector, a race, a sign-in step the suite
    does differently — is yours to fix, then rerun. A failure where the app does not do what the criterion
    says is **a finding, left red**: quote the criterion, say what the app showed instead, name the

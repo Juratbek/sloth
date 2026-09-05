@@ -440,16 +440,14 @@ Read its report, not its transcript:
   the line is `skipped — could not run: <the writer's reason>` and the tests stay in the commit, unrun.
 - *Not testable end-to-end* items get their own line under the E2E line, as written.
 
-Before Step 5 confirm `git status` shows the spec files (and helpers) only — no `playwright.sloth.config.*`,
-which the writer deletes after its run, and no change outside the suite. The test files are **part of the
-change**: same commit as the code, never a second PR.
+Before Step 5 confirm the writer added nothing but spec files and helpers: `git status` shows no
+`playwright.sloth.config.*` (the writer deletes it after its run), no Playwright output (its `outputDir` is
+under `$SESSION_DIR`), no edit under the application's source. The code changes from Step 3 are expected
+there. The test files are **part of the change**: same commit as the code, never a second PR.
 
-**The E2E line** of the PR's `## Verification` is written on every run, whatever the switch:
-`skipped — e2e off` with `SLOTH_E2E=0`; `skipped — no flow to drive`, `skipped — no Playwright setup`,
-`skipped — out of time`, `skipped — could not run: <why>`; or the count. A reader then knows whether tests
-were ever in question.
+**The reasons** an E2E line can give, when no tests were written: `skipped — no flow to drive`,
+`skipped — no Playwright setup`, `skipped — out of time`, `skipped — could not run: <why>`.
 
-## Step 5 — Commit, push, draft PR
 ## Step 5 — Commit, push, draft PR
 
 Commit in the repo's style — `CLAUDE.md`'s convention if it defines one, otherwise `fix: <what changed>`.
@@ -497,6 +495,9 @@ The tester, E2E and reviewer lines name the **subagent and the model it ran on**
 sees who checked what; **orchestrator:** add `- Implementor (`$SLOTH_IMPLEMENTOR_MODEL`)` above them.
 Write the reviewer line after Step 5.5 and re-edit the body then (`gh pr edit`). **No reviewer request, no
 assignee** — a human picks it up from the board. Record `PR` / `PR_URL` in `state.json`.
+
+The `E2E` line is **never absent** either, whatever the switch: `skipped — e2e off` with `SLOTH_E2E=0`, one of
+Step 4.6's reasons, or the count. A reader then knows whether tests were ever in question.
 
 `## Screenshots` is **never absent**. One of three:
 
