@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cardInfo, moveFromSession } from '../server/board-api';
+import { webhooks } from '../server/trello';
 import { normalizeConfig } from '../server/config-file';
 import { fetchBoard, moveCard, pickupOrder } from '../server/runner/board';
 import { ensureTrelloLists, issueOf } from '../server/runner/board-trello';
 import { setSnapshot } from '../server/runner/board-snapshot';
-import { knownColumns, refreshColumns } from '../server/runner/columns';
+import { knownColumns, refreshColumns, resetColumns } from '../server/runner/columns';
 import { setDry } from '../server/runner/log';
 import { ensureSkipLabel } from '../server/runner/markers';
 import { sessionEnv } from '../server/runner/session-env';
@@ -79,7 +80,7 @@ beforeEach(() => {
       hits.push({ method, path, params: u.searchParams });
       const key = `${method} ${path}`;
       const body = answers[key] ?? (method === 'GET' ? [] : { id: 'new' });
-      if (body instanceof Error) return { ok: false, status: 500, text: async () => body.message };
+      if (body instanceof Error) return { ok: false, status: (body as Error & { status?: number }).status ?? 500, text: async () => body.message };
       return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) };
     }),
   );
@@ -266,6 +267,38 @@ describe('the board API for sessions', () => {
     expect(trelloCalls(/PUT \/cards\/c4/)[0].params.get('idList')).toBe('l-wip');
     expect(await moveFromSession({ issue: 4, column: 'Planning' })).toMatchObject({ ok: false, error: expect.stringMatching(/no such column: Planning — the board has Backlog, Todo/) });
     expect(await moveFromSession({ issue: 'x', column: 'Todo' })).toMatchObject({ ok: false, error: expect.stringMatching(/issue/) });
+  });
+
+  it('tells a board that refused the move from a board it could not reach, so the session retries only the second', async () => {
+    await refreshColumns();
+    answers[`GET /boards/${BOARD}/cards`] = [linked('c4', 'l-todo', 4)];
+    await fetchBoard();
+    // The session's `board_move` gives up at once on a 4xx and retries anything else four times. Every
+    // failed move used to be a 400, so one Trello 503 on the hand-over left the card in In Progress with a
+    // finished run behind it, and trigger 2 relaunched the session until `maxRetries` parked the card.
+    answers['PUT /cards/c4'] = new Error('Trello is having a moment');
+    expect(await moveFromSession({ issue: 4, column: 'Code Review' })).toMatchObject({ ok: false, status: 503 });
+    answers['PUT /cards/c4'] = Object.assign(new Error('invalid list id'), { status: 400 });
+    expect(await moveFromSession({ issue: 4, column: 'Code Review' })).toMatchObject({ ok: false, status: 400 });
+    // A column list that has never been read is not "no such column" either: the next tick reads it again.
+    expect(await moveFromSession({ issue: 4, column: 'Planning' })).toMatchObject({ ok: false, status: 400 });
+    resetColumns();
+    expect(knownColumns()).toEqual([]);
+    expect(await moveFromSession({ issue: 4, column: 'Todo' })).toMatchObject({ ok: false, status: 503, error: expect.stringMatching(/no columns read yet/) });
+  });
+
+  it('keeps the token out of the error a failed call is named by', async () => {
+    // Every other call carries the token in the query string, which never reaches a message; this one
+    // carries it in the path, and the path went into `watcher.log`, `state/webhook.json`, the answer to
+    // `GET /api/webhook` and the Settings page — where a phone with the remote cookie could read it.
+    process.env.SLOTH_TRELLO_TOKEN = 'ATTAsecrettokenvalue';
+    try {
+      answers['GET /tokens/ATTAsecrettokenvalue/webhooks'] = Object.assign(new Error('invalid token'), { status: 401 });
+      await expect(webhooks()).rejects.toThrow(/Trello GET \/tokens\/\u2026\/webhooks: 401 invalid token/);
+      await expect(webhooks()).rejects.not.toThrow(/ATTAsecrettokenvalue/);
+    } finally {
+      process.env.SLOTH_TRELLO_TOKEN = 't';
+    }
   });
 });
 

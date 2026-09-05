@@ -42,10 +42,12 @@ function parkedOnBoard(issue: IssueRef | undefined): boolean {
   return snapshot()?.items.some((i) => refKey(i) === refKey(issue) && i.status === column) ?? false;
 }
 
+/** The earliest moment a wait of this run could have begun: its launch, or the last answer it got. */
+const floorOf = (dir: string): number => Math.max(launchedAt(dir), answeredAt(dir));
+
 /** A mark of the session's, if it lies in the run's own life: after the launch and its last answer, not in the future. */
 function honest(dir: string, mark: number, now: number): number | undefined {
-  const floor = Math.max(launchedAt(dir), answeredAt(dir));
-  return mark > floor && mark <= now ? mark : undefined;
+  return mark > floorOf(dir) && mark <= now ? mark : undefined;
 }
 
 /** Books a wait that ran from `from` to `to`, and remembers when the run was last seen working. */
@@ -67,8 +69,13 @@ export function trackWaiting(dir: string, issue?: IssueRef): void {
   if (waiting && !since) {
     // The session's `since` counts only when it said it was asking; `asked_at` it wrote when it posted the
     // question, whatever it said afterwards. Neither, and the wait began when the board was last read.
+    // …and the tick's own reading is floored the same way the session's marks are. The snapshot is the
+    // *previous* tick's board, which for a card just relaunched out of needs-help still shows it parked:
+    // an unfloored fallback credited the run a board interval it did not exist for, and pushed its
+    // deadline out by the same, on every card that ever got an answer.
     const asked = honest(dir, readNumber(path.join(dir, 'asked_at')), now);
-    const began = (said ? honest(dir, Number(state.since) || 0, now) : undefined) ?? asked ?? Math.min(now, Math.floor((snapshot()?.at ?? Infinity) / 1000));
+    const seen = Math.max(floorOf(dir), Math.min(now, Math.floor((snapshot()?.at ?? Infinity) / 1000)));
+    const began = (said ? honest(dir, Number(state.since) || 0, now) : undefined) ?? asked ?? seen;
     write(file(dir), String(began));
   } else if (!waiting && since) {
     credit(dir, since, now);
@@ -90,6 +97,17 @@ export function waitedSeconds(dir: string, until = nowSec()): number {
   const since = readNumber(file(dir));
   return readNumber(totalFile(dir)) + (since ? Math.max(0, Math.min(until, nowSec()) - since) : 0);
 }
+
+/**
+ * The waits this run has been credited for and is no longer in — what its budget deadline is moved out by.
+ * The wait still open is deliberately not counted there: with it, the deadline grew by exactly as much as
+ * the clock advanced, so `now > deadline` reduced to a constant and a run with a wait file could never be
+ * killed. A run whose card stands in needs-help while its own state still says `working` — a hung session,
+ * or a card a human dragged there — opens a wait it never closes, and used to hold its slot for ever, with
+ * no ledger line and nothing to reap it. A run that really is waiting says so in its state, and `reap`
+ * leaves any run that is not `working` alone before the deadline is even looked at.
+ */
+export const creditedWaiting = (dir: string): number => readNumber(totalFile(dir));
 
 /** When the run last went from `waiting` back to work, or 0 if it never asked. */
 export const answeredAt = (dir: string): number => readNumber(answeredFile(dir));

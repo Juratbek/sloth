@@ -40,7 +40,8 @@ const allMarked = (prs: WiredPr[], issue: IssueRef): boolean => prs.filter((p) =
  * first: the label no longer describes what is on the branches, so it goes and the card comes back to Code
  * Review to be reviewed like any other — unless a session is already on the issue (trigger 7 sent it back
  * to fix the checks), which moves the card itself. Checks decide the rest: a pending rollup is worth
- * waiting one tick for, a red one belongs to trigger 7.
+ * waiting one tick for, a red one on Sloth's own branch belongs to trigger 7, and a red one on a human's
+ * PR is reviewed as it stands — nobody else is coming to fix it.
  * At most `maxActive` reviews start in one tick: the machine is read once, before the tick, so the reading
  * `launchApproved` is held by goes stale the moment the first one starts — a Code Review backlog would
  * otherwise become a burst of detached runs no hold could see. The ones that wait are left unmarked, so
@@ -101,7 +102,15 @@ export async function reviews(board: BoardItem[]): Promise<void> {
       log(`review PR #${pr.number} waits for its checks`);
       continue;
     }
-    if (checks === 'FAILURE') continue;
+    // A red rollup on a branch of Sloth's belongs to trigger 7, which sends the session back to fix it and
+    // brings the head round again. Nobody fixes a human's PR: trigger 7 leaves it alone, so leaving it here
+    // too meant a Code Review card with one flaky check got no review, no move and not a word about it, for
+    // as long as the check stayed red. It is reviewed as it stands instead — the reviewer reads the red
+    // check off the PR like any other reader — which keeps the promise that every Code Review card is reviewed.
+    if (checks === 'FAILURE') {
+      if (OWN_BRANCH.test(head)) continue;
+      log(`review PR #${pr.number}: its checks fail, and it is not Sloth's branch to fix — reviewing it as it stands`);
+    }
     const tries = triesOn(approvedDir(pr), sha);
     if (tries > cfg().maxRetries) {
       if (!isDry()) write(reviewed, '');

@@ -2,7 +2,8 @@ import { skipped } from '../board-types';
 import { cfg } from '../config';
 import { canonicalRepo, label } from '../repos';
 import type { IssueRef, PrRef } from '../repo-types';
-import { fetchTrelloBoard, moveTrelloCard } from './board-trello';
+import { fetchTrelloBoard } from './board-trello';
+import { onTrello } from './board-move';
 import { gh, graphql } from './gh';
 import { isDry, log } from './log';
 
@@ -14,7 +15,6 @@ import { isDry, log } from './log';
  * either, and stays below. A card is an issue in one of the configured repositories; a Projects board may
  * hold issues of others too, and those are not Sloth's — left out, and said once.
  */
-const onTrello = () => cfg().project.provider === 'trello';
 
 export interface BoardItem extends IssueRef {
   title: string;
@@ -110,8 +110,11 @@ async function fetchGithubBoard(): Promise<BoardItem[] | undefined> {
   return items;
 }
 
-/** Cards in one column that no human has held back — the `Sloth: skip` label means a person owns the card. */
-export const freeIn = (board: BoardItem[], column: string): BoardItem[] => board.filter((i) => i.status === column && !skipped(i));
+/**
+ * Cards in one column there is work to be taken on: no `Sloth: skip` label — a person owns those — and the
+ * issue still open, since a closed one left behind is a duplicate to file away and not an hour to spend.
+ */
+export const freeIn = (board: BoardItem[], column: string): BoardItem[] => board.filter((i) => i.status === column && !i.closed && !skipped(i));
 
 /**
  * The same cards, in the order work should be taken in: the board's priority field first — its options
@@ -119,35 +122,9 @@ export const freeIn = (board: BoardItem[], column: string): BoardItem[] => board
  * stable). With no `priorityField` configured no card has a rank and this is plain board order.
  */
 export const pickupOrder = (board: BoardItem[], column: string): BoardItem[] =>
-  board.filter((i) => i.status === column && !skipped(i)).sort((a, b) => (a.priority ?? Infinity) - (b.priority ?? Infinity));
+  freeIn(board, column).sort((a, b) => (a.priority ?? Infinity) - (b.priority ?? Infinity));
 
-/** Moves an issue's card to a column — a Status option, or a Trello list — adding it to a Projects board first if it is not on it. */
-export async function moveCard(issue: IssueRef, optionId: string): Promise<boolean> {
-  const c = cfg();
-  if (!optionId) {
-    log(`${label(issue)} move skipped: empty option id`);
-    return false;
-  }
-  if (onTrello()) return moveTrelloCard(issue, optionId);
-  if (isDry()) {
-    log(`dry-run: would move ${label(issue)} to ${optionId}`);
-    return true;
-  }
-  const add = await gh([
-    'project', 'item-add', String(c.project.number), '--owner', c.project.owner,
-    '--url', `https://github.com/${issue.repo}/issues/${issue.number}`, '--format', 'json', '--jq', '.id',
-  ]);
-  if (!add.ok) {
-    log(`${label(issue)} move failed (item-add): ${add.err.split('\n')[0]}`);
-    return false;
-  }
-  const edit = await gh([
-    'project', 'item-edit', '--id', add.out, '--project-id', c.project.id,
-    '--field-id', c.statusField.id, '--single-select-option-id', optionId,
-  ]);
-  if (!edit.ok) log(`${label(issue)} move failed (item-edit): ${edit.err.split('\n')[0]}`);
-  return edit.ok;
-}
+export { moveCard, moveCardOutcome, type MoveOutcome } from './board-move';
 
 export type PrState = 'OPEN' | 'MERGED' | 'CLOSED';
 /** The PR head's combined check status: `NONE` when the repository runs no checks. */

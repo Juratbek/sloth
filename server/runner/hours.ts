@@ -91,7 +91,7 @@ function lastLine(): { n: number; hash: string } {
  * waits, so its span from launch to end holds the wait; nobody worked those hours, and the budget clock
  * (`run-control.ts`) does not count them either.
  */
-export const runSeconds = (dir: string, until = nowSec()): number => Math.max(0, until - launchedAt(dir) - pausedSeconds(dir) - waitedSeconds(dir));
+export const runSeconds = (dir: string, until = nowSec()): number => Math.max(0, until - launchedAt(dir) - pausedSeconds(dir, until) - waitedSeconds(dir, until));
 
 /** The minutes a run of this kind gets: the QA sweep and the smoke test have budgets of their own. */
 export const budgetOf = (kind: HoursKind): number => (kind === 'qa' ? cfg().qa.budgetMinutes : kind === 'smoke' ? cfg().smoke.budgetMinutes : cfg().budgetMinutes);
@@ -144,7 +144,7 @@ export function bookRun(r: RunRef, dir: string, ending: HoursEnding): HoursEntry
   }
   const startedAt = launchedAt(dir);
   const ended = endedAt(dir, kind, ending, startedAt, nowSec());
-  const paused = pausedSeconds(dir);
+  const paused = pausedSeconds(dir, ended);
   const waited = waitedSeconds(dir, ended);
   const last = lastLine();
   const wired = issueOfRun(r, dir);

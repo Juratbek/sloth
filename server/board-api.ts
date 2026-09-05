@@ -2,7 +2,7 @@ import { cfg } from './config';
 import { isConfigured, primaryRepo } from './repos';
 import { refKey, type IssueRef } from './repo-types';
 import * as trello from './trello';
-import { moveCard } from './runner/board';
+import { moveCardOutcome } from './runner/board';
 import { snapshot } from './runner/board-snapshot';
 import { cardIdOf } from './runner/board-trello';
 import { knownColumns } from './runner/columns';
@@ -54,21 +54,51 @@ export async function cardInfo(issue: IssueRef): Promise<CardInfo> {
   return { repo: issue.repo, issue: issue.number, column: item?.status ?? '', asOf: last ? new Date(last.at).toISOString() : '' };
 }
 
+/** What a failed move answers with. `status` is not part of the JSON — `api-settings.ts` takes it off and uses it as the code. */
+export interface MoveAnswer {
+  ok: boolean;
+  issue: number;
+  repo?: string;
+  column: string;
+  error?: string;
+  status?: number;
+}
+
 /**
  * `POST /api/board/move {issue, column, repo?}` — the column by name (case-insensitively) or id, among the ones
- * the last column refresh saw. An unknown column is a 400, never a guess: the session says which columns exist.
+ * the last column refresh saw.
+ *
+ * What the session is told apart is what it does next: the `board_move` helper in its skill reads a 4xx as
+ * the board's own answer and gives up at once, and retries anything else four times with a backoff. So a 400
+ * is only for what asking again cannot mend — a malformed body, a repository Sloth does not work in, a column
+ * this board does not have — and everything that failed on the way to the board is a 503. Every failure used
+ * to be a 400: one Trello 503 on a hand-over left the card behind with a finished run, and a first column
+ * read that failed after a restart gave every session launched in that tick "the board has no columns read
+ * yet" as a permanent answer for its whole run.
  */
-export async function moveFromSession(body: unknown): Promise<{ ok: boolean; issue: number; repo?: string; column: string; error?: string }> {
+export async function moveFromSession(body: unknown): Promise<MoveAnswer> {
   const b = (body ?? {}) as { issue?: unknown; column?: unknown; repo?: unknown };
   const issue = Number(b.issue);
   const wanted = typeof b.column === 'string' ? b.column.trim() : '';
-  if (!Number.isInteger(issue) || issue <= 0 || !wanted) return { ok: false, issue, column: wanted, error: 'issue (a number) and column (a name or id) are required' };
+  if (!Number.isInteger(issue) || issue <= 0 || !wanted) return { ok: false, issue, column: wanted, error: 'issue (a number) and column (a name or id) are required', status: 400 };
   const repo = repoArg(b.repo);
-  if (!repo) return { ok: false, issue, column: wanted, error: `${String(b.repo)} is not one of Sloth's repositories` };
+  if (!repo) return { ok: false, issue, column: wanted, error: `${String(b.repo)} is not one of Sloth's repositories`, status: 400 };
   const column = columnByName(wanted);
-  if (!column) return { ok: false, issue, repo, column: wanted, error: `no such column: ${wanted} — the board has ${knownColumns().map((c) => c.name).join(', ') || 'no columns read yet'}` };
-  const moved = (await serial('board move', () => moveCard({ repo, number: issue }, column.id))) === true;
-  return { ok: moved, issue, repo, column: column.name, ...(moved ? {} : { error: 'the move failed — watcher.log says why' }) };
+  if (!column) {
+    const names = knownColumns().map((c) => c.name);
+    // No columns read yet is not "no such column": the board has not been asked, and the next tick asks again.
+    return { ok: false, issue, repo, column: wanted, error: `no such column: ${wanted} — the board has ${names.join(', ') || 'no columns read yet'}`, status: names.length ? 400 : 503 };
+  }
+  const outcome = await serial('board move', () => moveCardOutcome({ repo, number: issue }, column.id));
+  if (outcome === 'moved') return { ok: true, issue, repo, column: column.name };
+  return {
+    ok: false,
+    issue,
+    repo,
+    column: column.name,
+    error: `the move failed — watcher.log says why`,
+    status: outcome === 'refused' ? 400 : 503,
+  };
 }
 
 /** Whether a board API path is one; the handler in `api.ts` keeps the request local. */

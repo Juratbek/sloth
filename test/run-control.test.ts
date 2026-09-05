@@ -7,7 +7,8 @@ import { exitsOf } from '../server/runner/exits';
 import { nowSec, setDry } from '../server/runner/log';
 import { called, onGh, resetGh } from './gh-mock';
 import { resetSpawn } from './child-process-mock';
-import { configure, exists, makeSession, read, readLog, ref, runRef, sessionDir, statePath, wipe } from './harness';
+import { setSnapshot } from '../server/runner/board-snapshot';
+import { COLUMNS, alivePid, card, configure, exists, makeSession, read, readLog, ref, runRef, sessionDir, statePath, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
@@ -114,11 +115,56 @@ describe('reap, on the runs it leaves alone', () => {
     expect(called(/dropdb/)).toHaveLength(0);
   });
 
+  it('still kills a run held open by a wait its own state says nothing about', async () => {
+    const kill = stubKill();
+    try {
+      // With an open wait counted toward the deadline, `now` cancelled on both sides and the condition
+      // reduced to a constant: once the wait file existed the run could never be killed. A hung session
+      // whose card a human dragged into needs-help — or one whose move to In Progress failed — held its
+      // slot for ever, with no `stopped` event, no ledger line and nothing to prune it.
+      makeSession('issue', 8, {
+        pid: '12345',
+        started: overBudget(),
+        // The wait opened a few minutes after the launch and was never closed: the run says it is working.
+        waiting: String(nowSec() - (cfg().budgetMinutes + 15) * 60),
+        'state.json': { state: 'working', step: '3' },
+        'run.log': 'still going\n',
+      });
+      setSnapshot([card(8, COLUMNS.needsHelp.name)]);
+      onGh(/project item-add/, 'ITEM');
+      await reap();
+      expect(readLog().join('\n')).toMatch(/#8 stopped: hung past the budget/);
+      expect(exists(sessionDir('issue', 8), 'pid')).toBe(false);
+    } finally {
+      setSnapshot([]);
+      kill.mockRestore();
+    }
+  });
+
   it('skips a session directory with no pid file at all', async () => {
     makeSession('issue', 2, { 'state.json': { state: 'working' }, 'run.log': 'nothing here\n' });
     await reap();
     expect(exitsOf(sessionDir('issue', 2))).toEqual([]);
     expect(readLog()).toEqual([]);
+  });
+});
+
+describe('stop, on a pid that is not this run’s any more', () => {
+  it('ends a run whose pid file predates the boot instead of killing whatever holds that number now', async () => {
+    const kill = stubKill();
+    try {
+      // `reap` has always read a pre-boot pid file as a dead run, but it only runs on a tick, and the Stop
+      // button is reachable while the tick chain has not started — a failed state claim, a config that is
+      // not configured yet — and in the seconds before the first tick. `killTree` signals a whole group.
+      const dir = makeSession('issue', 3, { pid: alivePid(), 'state.json': { state: 'working' } });
+      const old = new Date(Date.now() - 400 * 24 * 3600 * 1000);
+      fs.utimesSync(path.join(dir, 'pid'), old, old);
+      expect(await stop(runRef('issue', 3), 'stopped from the monitor', 'a human stopped this run.')).toBe(false);
+      expect(kill.mock.calls.filter(([, sig]) => sig !== 0)).toHaveLength(0);
+      expect(called(/issue comment/)).toHaveLength(0);
+    } finally {
+      kill.mockRestore();
+    }
   });
 });
 

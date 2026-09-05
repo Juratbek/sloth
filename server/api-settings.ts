@@ -86,8 +86,11 @@ export async function handleSettings(p: string, url: URL, req: IncomingMessage, 
       res.end('not found');
       return true;
     }
-    if ((body as { ok?: boolean }).ok === false) res.statusCode = 400;
-    return json(res, body);
+    // `status` is the handler's word on whether asking again is worth it (`board-api.ts`); the session
+    // reads the code, not the field, so it is taken off before the answer goes out.
+    const { status, ...answer } = body as { ok?: boolean; status?: number };
+    if (answer.ok === false) res.statusCode = status ?? 400;
+    return json(res, answer);
   }
   // Whether this machine starts Sloth at login; the toggle itself is a config key, saved with the rest.
   if (p === '/api/service') return json(res, serviceStatus());

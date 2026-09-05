@@ -5,7 +5,7 @@ import { label, repoSlugs, several } from '../repos';
 import { issueUrl, refKey, type IssueRef } from '../repo-types';
 import * as trello from '../trello';
 import type { TrelloCard, TrelloList } from '../trello';
-import type { BoardItem } from './board';
+import type { BoardItem, MoveOutcome } from './board';
 import { gh, graphql } from './gh';
 import { isDry, log } from './log';
 import { chooseRepo } from './repo-choice';
@@ -215,20 +215,24 @@ async function cardFor(issue: IssueRef, listId: string): Promise<string | undefi
   return card.id;
 }
 
-/** Moves an issue's card to a list, at the top of it. */
-export async function moveTrelloCard(issue: IssueRef, listId: string): Promise<boolean> {
+/**
+ * Moves an issue's card to a list, at the top of it. A 4xx from Trello is its answer and stands; anything
+ * else — a socket reset, a 5xx, a rate limit — is the board being out of reach for a moment, and says
+ * nothing about whether the move is possible (`MoveOutcome`).
+ */
+export async function moveTrelloCard(issue: IssueRef, listId: string): Promise<MoveOutcome> {
   if (isDry()) {
     log(`dry-run: would move ${label(issue)} to Trello list ${listId}`);
-    return true;
+    return 'moved';
   }
   try {
     const card = (await cardOf(issue)) ?? (await cardFor(issue, listId));
-    if (!card) return false;
+    if (!card) return 'unavailable';
     await trello.moveCard(card, listId);
-    return true;
+    return 'moved';
   } catch (e) {
     log(`${label(issue)} move failed: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
-    return false;
+    return e instanceof trello.TrelloError && e.status < 500 ? 'refused' : 'unavailable';
   }
 }
 

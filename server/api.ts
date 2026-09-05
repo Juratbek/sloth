@@ -17,6 +17,7 @@ import { previewIndex, withTitle } from './preview-index';
 import { healthStatus, refreshHealth, startHealth } from './health';
 import { guard, isLocal, sameOrigin, startTunnel, stopTunnel } from './remote';
 import { agentDetail, overview, sessionDetail, watcherOf } from './sessions';
+import { refreshBotLogin } from './runner/bot';
 import { ensureSkipLabel } from './runner/markers';
 import { checkoutThenStack } from './setup';
 import { usageSeries } from './usage';
@@ -209,6 +210,8 @@ export function monitorApi(): Plugin {
     checkoutThenStack();
     // The skip label people hold cards back with has to exist in the repo before anyone can apply it.
     void ensureSkipLabel();
+    // …and the login Sloth writes its comments under, so a `**Sloth:**` from anyone else is not mistaken for one.
+    void refreshBotLogin();
     // Can this machine do the work at all? Asked once here and every ten minutes from the board tick.
     startHealth();
     // The repository's webhook, pointed at this Sloth as soon as it has an address to be pointed at.

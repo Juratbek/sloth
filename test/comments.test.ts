@@ -71,6 +71,31 @@ describe('comments (trigger 3)', () => {
     await comments();
     expect(spawned[0].args[1]).toBe('/sloth:implement 4 Order from bob (developer, issue comment 101): @sloth address the review comments');
   });
+  it('leaves an order unseen while the review of the card’s PR is still running', async () => {
+    // Trigger 4 waits for an implement session so one actor owns a card at a time; nothing waited the other
+    // way round. `@sloth address the review comments`, written while the review read the diff, cleaned the
+    // run environment, moved the card to In Progress and pushed to the branch the reviewer was about to
+    // post a verdict on — and move the card by. The order is left unseen and lands on a later tick.
+    makeSession('approved', 9, { pid: alivePid(), issue: '4' });
+    thread(4, false, [{ id: 104, login: 'bob', body: '@sloth address the review comments' }]);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(exists(statePath('seen', '104'))).toBe(false);
+    expect(readLog().join('\n')).toMatch(/comment 104 waits — the review of its PR is still running/);
+  });
+
+  it('refuses an order on a card a human has taken over, and says so in the thread', async () => {
+    // `launch` has no skip check of its own, and the order path was the only caller that did not filter for
+    // the label: a comment could put Sloth back on a card a person was working by hand.
+    setSnapshot([card(4, COLUMNS.inProgress.name, { labels: ['Sloth: skip'] })]);
+    thread(4, false, [{ id: 105, login: 'bob', body: '@sloth start over with the other approach' }]);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(called(/api repos\/acme\/widgets\/issues\/4\/comments -f body=.*Sloth: skip.*a person owns it and Sloth leaves it alone/)).toHaveLength(1);
+    // Answered once and marked seen: the next tick does not ask again.
+    expect(exists(statePath('seen', '105'))).toBe(true);
+  });
+
   it("answers a question, or a tester's comment, with a status reply", async () => {
     thread(4, false, [{ id: 102, login: 'alice', body: '@sloth where is this?' }, { id: 103, login: 'carol', body: '@sloth do it now' }]);
     await comments();

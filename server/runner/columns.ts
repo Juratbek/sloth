@@ -51,6 +51,22 @@ export async function refreshColumns(): Promise<void> {
 /** What the last refresh saw; empty before the first one. */
 export const knownColumns = (): ColumnRef[] => known;
 
+/** Tests start a case from a board nobody has read yet, as a fresh Sloth does. */
+export const resetColumns = (): void => {
+  known = [];
+};
+
+/**
+ * The columns Sloth still has something to do in — a card outside them is nobody's business. The pickup
+ * column is one of them: a card there whose issue was closed is filed away rather than worked
+ * (`lifecycle.ts`), and a card parked in place is looked for in each of these and not only In Progress
+ * (`answers.ts`), since `park` leaves one wherever the card stood when the move failed.
+ */
+export const workedColumns = (): string[] => {
+  const col = cfg().statusField.columns;
+  return [col.pickup, col.inProgress, col.needsHelp, col.codeReview, col.approved].map((c) => c.name).filter(Boolean);
+};
+
 const byName = (options: FieldOption[], name: string) => options.find((o) => o.name.toLowerCase() === name.toLowerCase());
 
 /** Every option as the mutation wants it — existing ones keep their id, so nothing is dropped. */

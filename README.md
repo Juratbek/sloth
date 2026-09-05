@@ -484,9 +484,11 @@ Machine → Start at login** (`autostart`) registers a macOS launch agent —
 `~/Library/LaunchAgents/dev.sloth.<repo>.plist`, `caffeinate -i pnpm start` in this checkout — that
 launchd starts at login, restarts if it dies, and that keeps the Mac awake while it runs. It serves the
 built UI, so run `pnpm build` first (the **Update** button does). Turning it off unloads and deletes the
-agent. It takes effect at the next login; to start it now without logging out:
-`launchctl kickstart -k gui/$UID/dev.sloth.<repo>`. Only macOS is supported — elsewhere, run
-`caffeinate -i pnpm start` yourself.
+agent. It takes effect at the next login and nothing is loaded now: the Sloth you turned it on in is
+already running, and a second one on the same port would claim the state directory, die on the port and be
+restarted by `KeepAlive` every ten seconds. To load it in this login session anyway — after stopping the
+Sloth you are using — `launchctl bootstrap gui/$UID ~/Library/LaunchAgents/dev.sloth.<repo>.plist`. Only
+macOS is supported — elsewhere, run `caffeinate -i pnpm start` yourself.
 
 ### Updating itself
 
