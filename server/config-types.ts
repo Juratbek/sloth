@@ -278,4 +278,4 @@ export const defaultDirs = (name: string, home = '~/.sloth') => ({
 });
 
 /** The payloads the get-started wizard exchanges with `/api/setup/*` (`setup-types.ts`). */
-export type { FieldOption, GhLogin, SetupCheck, SetupEnv, SetupFields, SetupProject } from './setup-types';
+export type { FieldOption, GhLogin, SetupCheck, SetupEnv, SetupFields, SetupProject, SetupRepo } from './setup-types';

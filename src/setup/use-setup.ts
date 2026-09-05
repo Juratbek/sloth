@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ColumnRef, ConfigProject, RepoConfig, SetupEnv, SetupFields, SetupProject, SlothConfig, StackChoice } from '../../server/config-types';
+import type { ColumnRef, ConfigProject, RepoConfig, SetupEnv, SetupFields, SetupProject, SetupRepo, SlothConfig, StackChoice } from '../../server/config-types';
 import { fetchJson, postJson } from '../lib/api';
 import { queryKeys } from '../lib/query-keys';
 
@@ -100,6 +100,16 @@ export function useProjects() {
   return useQuery({
     queryKey: queryKeys.setupProjects,
     queryFn: () => fetchJson<SetupProject[]>('/api/setup/projects'),
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+/** The repositories the picker lists; one reading serves the wizard's step and the settings section both. */
+export function useAccessibleRepos() {
+  return useQuery({
+    queryKey: queryKeys.setupRepos,
+    queryFn: () => fetchJson<SetupRepo[]>('/api/setup/repos'),
     staleTime: 60_000,
     retry: false,
   });

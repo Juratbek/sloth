@@ -1,12 +1,10 @@
-import { useState } from 'react';
-import { defaultDirs } from '../../server/config-types';
 import type { RepoConfig, SlothConfig } from '../../server/config-types';
-import { Button, TextInput, inputStyle } from '../setup/ui';
-import { REPO_RE, newRepo, useClone, useProjectFields, useSetupEnv } from '../setup/use-setup';
+import RepoPicker from '../setup/RepoPicker';
+import { Button, TextInput } from '../setup/ui';
+import { REPO_RE, useClone, useProjectFields, useSetupEnv } from '../setup/use-setup';
 import { Row } from './ui';
 import type { SectionProps } from './ui';
 
-type DirKey = keyof ReturnType<typeof defaultDirs>;
 const repoName = (repo: string) => repo.split('/')[1] ?? '';
 
 const DIRS: { key: keyof SlothConfig & string; label: string; hint: string }[] = [
@@ -17,29 +15,13 @@ const DIRS: { key: keyof SlothConfig & string; label: string; hint: string }[] =
   { key: 'watcherLog', label: 'Watcher log', hint: 'One line per event — the log the home panel tails.' },
 ];
 
-/** One repository's row: its slug, what it is, where its checkout is, and a button to clone it now. */
-function RepoRow({ repo, several, linked, legacy, onChange, onRemove }: { repo: RepoConfig; several: boolean; linked: string[]; legacy?: boolean; onChange: (r: RepoConfig) => void; onRemove?: () => void }) {
+/** One picked repository's row: what it is, where its checkout is, and a button to clone it now. */
+function RepoRow({ repo, several, linked, legacy, onChange }: { repo: RepoConfig; several: boolean; linked: string[]; legacy?: boolean; onChange: (r: RepoConfig) => void }) {
   const clone = useClone();
   const ok = REPO_RE.test(repo.slug);
   return (
     <div className="space-y-2 rounded-md border border-edge p-3">
-      <div className="flex items-center gap-2">
-        <input
-          list="linked-repos"
-          value={repo.slug}
-          onChange={(e) => onChange({ ...repo, slug: e.target.value })}
-          placeholder="owner/repo"
-          spellCheck={false}
-          aria-label="Repository"
-          className={inputStyle}
-        />
-        {onRemove && (
-          <Button onClick={onRemove} aria-label={`Remove ${repo.slug || 'repository'}`}>
-            Remove
-          </Button>
-        )}
-      </div>
-      {!ok && repo.slug && <p className="text-xs text-red-400">A repository is owner/repo.</p>}
+      <p className="text-sm text-fg-strong">{repo.slug}</p>
       {several && (
         <TextInput value={repo.note} onChange={(note) => onChange({ ...repo, note })} placeholder="What it is, in one line — a card that names no repository is placed by this" />
       )}
@@ -49,9 +31,9 @@ function RepoRow({ repo, several, linked, legacy, onChange, onRemove }: { repo: 
           {clone.isPending ? 'Cloning…' : 'Clone'}
         </Button>
       </div>
-      {clone.data?.ok && <p className="text-xs text-emerald-400">Ready at {clone.data.path}</p>}
-      {clone.data && !clone.data.ok && <p className="text-xs text-red-400">{clone.data.error}</p>}
-      {clone.error && <p className="text-xs text-red-400">{String(clone.error)}</p>}
+      {clone.data?.ok && <p className="text-xs text-ok-fg">Ready at {clone.data.path}</p>}
+      {clone.data && !clone.data.ok && <p className="text-xs text-danger">{clone.data.error}</p>}
+      {clone.error && <p className="text-xs text-danger">{String(clone.error)}</p>}
       {linked.includes(repo.slug) && <p className="text-[11px] text-fg-faint">Linked to the board.</p>}
       {legacy && <p className="text-[11px] text-fg-faint">The first repository this Sloth watched — its files on disk carry no repository name, so it cannot be removed.</p>}
     </div>
@@ -59,33 +41,19 @@ function RepoRow({ repo, several, linked, legacy, onChange, onRemove }: { repo: 
 }
 
 /**
- * The repositories Sloth works in and where it keeps its files. Several repositories share one board:
- * a card's issue says which one its work starts in, and a Trello card that names none is placed by the
- * notes here. The first repository is where the smoke test and the stack install run.
+ * The repositories Sloth works in and where it keeps its files. They are ticked off everything the
+ * logged-in GitHub account can reach — the same picker the wizard shows. Several repositories share one
+ * board: a card's issue says which one its work starts in, and a Trello card that names none is placed by
+ * the notes here. The first repository is where the smoke test and the stack install run.
  */
 export default function RepositorySection({ draft, patch }: SectionProps) {
   const linked = useProjectFields(draft.project.id || undefined).data?.repositories ?? [];
   const home = useSetupEnv().data?.home ?? '~/.sloth';
-  const [typed, setTyped] = useState('');
   const several = draft.repos.length > 1;
-
-  const setRepos = (repos: RepoConfig[], renamed = false) => {
-    if (!renamed) return patch({ repos });
-    // The directories named after the first repository follow its rename while they are still at their default; a custom
-    // path stays. A row added or removed is not a rename: the runs under way keep their directories.
-    const was = defaultDirs(repoName(draft.repos[0]?.slug ?? ''), home);
-    const now = defaultDirs(repoName(repos[0]?.slug ?? ''), home);
-    const follow = (key: DirKey) => (draft[key] === was[key] || draft[key].endsWith(was[key].slice(1)) ? now[key] : draft[key]);
-    patch({ repos, worktreesDir: follow('worktreesDir'), sessionsDir: follow('sessionsDir') });
-  };
-  // The repository the untagged files belong to (`legacyRepo`): its runs, markers and worktrees carry no repository name, so it stays.
-  const isLegacy = (slug: string) => slug.toLowerCase() === (draft.legacyRepo || draft.repos[0]?.slug || '').toLowerCase();
-  const add = () => {
-    const slug = typed.trim();
-    if (!REPO_RE.test(slug) || draft.repos.some((r) => r.slug.toLowerCase() === slug.toLowerCase())) return;
-    setRepos([...draft.repos, newRepo(slug, home)]);
-    setTyped('');
-  };
+  // The repository the untagged files belong to (`legacyRepo`): its runs, markers and worktrees carry no
+  // repository name, so it stays ticked. Falling back to the first also keeps one repository on the list.
+  const legacy = draft.repos.find((r) => r.slug.toLowerCase() === draft.legacyRepo.toLowerCase())?.slug ?? draft.repos[0]?.slug ?? '';
+  const isLegacy = (slug: string) => slug.toLowerCase() === legacy.toLowerCase();
 
   return (
     <>
@@ -94,31 +62,20 @@ export default function RepositorySection({ draft, patch }: SectionProps) {
         starts in; a session that has to change a second one makes a PR there too. The first repository is where the smoke test and the
         stack install run.{linked.length ? ` Linked to the board: ${linked.join(', ')}.` : ''}
       </p>
-      <datalist id="linked-repos">
-        {linked.map((r) => (
-          <option key={r} value={r} />
-        ))}
-      </datalist>
       <div className="space-y-3 py-3">
+        <RepoPicker repos={draft.repos} onChange={(repos) => patch({ repos })} linked={linked} home={home} locked={legacy} />
         {draft.repos.map((r, i) => (
           <RepoRow
             key={i}
             repo={r}
             several={several}
             linked={linked}
-            onChange={(next) => setRepos(draft.repos.map((x, j) => (j === i ? next : x)), i === 0 && next.slug !== r.slug)}
-            onRemove={draft.repos.length > 1 && !isLegacy(r.slug) ? () => setRepos(draft.repos.filter((_, j) => j !== i)) : undefined}
+            onChange={(next) => patch({ repos: draft.repos.map((x, j) => (j === i ? next : x)) })}
             legacy={several && isLegacy(r.slug)}
           />
         ))}
-        <div className="flex gap-2">
-          <TextInput value={typed} onChange={setTyped} placeholder="add a repository — owner/repo" />
-          <Button disabled={!REPO_RE.test(typed.trim())} onClick={add}>
-            Add
-          </Button>
-        </div>
       </div>
-      <p className="pt-4 pb-1 text-xs text-zinc-400">
+      <p className="pt-4 pb-1 text-xs text-fg-muted">
         Where Sloth keeps its files. Changing a path does not move what is already there, and running sessions keep the paths they
         started with.
       </p>

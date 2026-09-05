@@ -47,3 +47,18 @@ export interface SetupFields {
   statusField?: { id: string; name: string; options: FieldOption[] };
   repositories: string[];
 }
+
+/**
+ * One repository the logged-in GitHub account can reach, as the picker lists it. `permission` is what
+ * that account may do in it: Sloth pushes branches and opens PRs, so `READ` and `TRIAGE` are shown but
+ * cannot be ticked.
+ */
+export interface SetupRepo {
+  slug: string;
+  description: string;
+  private: boolean;
+  archived: boolean;
+  permission: 'ADMIN' | 'MAINTAIN' | 'WRITE' | 'TRIAGE' | 'READ';
+  /** When it was last pushed to, ISO — the order the list comes in. */
+  pushedAt: string;
+}
