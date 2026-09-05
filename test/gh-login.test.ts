@@ -6,16 +6,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * reading — is watched, not run.
  */
 const h = vi.hoisted(() => ({
-  children: [] as { args: string[]; options: Record<string, any>; kill: () => void; killed: boolean; emit: (e: string, v?: unknown) => boolean; stdout: any; stderr: any }[],
+  children: [] as { args: string[]; options: Record<string, any>; kill: () => void; killed: boolean; emit: (e: string, ...v: unknown[]) => boolean; stdout: any; stderr: any }[],
   ran: [] as string[],
   health: 0,
   ghBin: '/usr/local/bin/gh' as string | undefined,
+  /** When set, `spawn` throws it on the spot — what Node does for a `.cmd` shim without a shell. */
+  spawnThrows: '' as string,
 }));
 
 vi.mock('node:child_process', async () => {
   const { EventEmitter } = await import('node:events');
   return {
     spawn: (_cmd: string, args: string[], options: Record<string, any>) => {
+      if (h.spawnThrows) throw new Error(h.spawnThrows);
       const child = Object.assign(new EventEmitter(), {
         args,
         options,
@@ -47,25 +50,28 @@ vi.mock('../server/health', () => ({
   },
 }));
 
-import { cancelGhLogin, forgetGhLogin, ghLoginStatus, parseDeviceFlow, startGhLogin } from '../server/gh-login';
+import { cancelGhLogin, ghLoginStatus, parseDeviceFlow, startGhLogin, stopGhLogin } from '../server/gh-login';
 import { handleSetup } from '../server/setup';
 import { configure, wipe } from './harness';
 
 const PROMPT = '! First copy your one-time code: 1A2B-3C4D\nOpen this URL to continue in your web browser: https://github.com/login/device\n';
-const say = (text: string) => h.children.at(-1)!.stderr.emit('data', Buffer.from(text));
-const exit = async (code: number) => {
-  h.children.at(-1)!.emit('exit', code);
+const say = (text: string, child = h.children.at(-1)!) => child.stderr.emit('data', Buffer.from(text));
+/** The child is reaped and its pipes drained — `exit`, then `close` — with the code, or the signal it died of. */
+const exit = async (code: number | null, signal: string | null = null, child = h.children.at(-1)!) => {
+  child.emit('exit', code, signal);
+  child.emit('close', code, signal);
   await new Promise((r) => setTimeout(r, 0));
 };
 
 beforeEach(() => {
   configure();
   wipe();
-  forgetGhLogin();
+  cancelGhLogin();
   h.children.length = 0;
   h.ran.length = 0;
   h.health = 0;
   h.ghBin = '/usr/local/bin/gh';
+  h.spawnThrows = '';
 });
 afterEach(() => cancelGhLogin());
 
@@ -108,6 +114,26 @@ describe('the wizard’s gh login', () => {
     expect(h.health).toBe(0);
   });
 
+  it('reads the reason still in the pipe when gh is reaped before its last line is delivered', async () => {
+    startGhLogin();
+    say(PROMPT);
+    const child = h.children[0];
+    child.emit('exit', 1, null);
+    say('error: authentication timed out\n');
+    expect(ghLoginStatus().running).toBe(true);
+    child.emit('close', 1, null);
+    expect(ghLoginStatus()).toEqual({ running: false, error: 'error: authentication timed out' });
+  });
+
+  it('does not take a gh killed by a signal for a login', async () => {
+    startGhLogin();
+    say(PROMPT);
+    await exit(null, 'SIGTERM');
+    expect(ghLoginStatus()).toEqual({ running: false, error: 'gh was stopped by SIGTERM' });
+    expect(h.ran).toEqual([]);
+    expect(h.health).toBe(0);
+  });
+
   it('runs one login at a time — a second press joins the first', () => {
     startGhLogin();
     say(PROMPT);
@@ -123,6 +149,36 @@ describe('the wizard’s gh login', () => {
     expect(ghLoginStatus()).toEqual({ running: false });
   });
 
+  it('keeps a cancelled login’s late output away from the one started after it', async () => {
+    startGhLogin();
+    const first = h.children[0];
+    cancelGhLogin();
+    startGhLogin();
+    say(PROMPT, first);
+    expect(ghLoginStatus()).toEqual({ running: true });
+    await exit(1, null, first);
+    expect(ghLoginStatus()).toEqual({ running: true });
+    say(PROMPT.replace('1A2B-3C4D', 'WXYZ-9876'));
+    expect(ghLoginStatus().code).toBe('WXYZ-9876');
+  });
+
+  it('is left startable again when spawn itself throws', () => {
+    h.spawnThrows = 'spawn EINVAL';
+    expect(startGhLogin()).toEqual({ running: false, error: 'spawn EINVAL' });
+    expect(cancelGhLogin()).toEqual({ running: false });
+    h.spawnThrows = '';
+    expect(startGhLogin()).toEqual({ running: true });
+    expect(h.children).toHaveLength(1);
+  });
+
+  it('goes down with the server, so no gh keeps polling for a code nobody sees', () => {
+    stopGhLogin();
+    startGhLogin();
+    stopGhLogin();
+    expect(h.children[0].killed).toBe(true);
+    expect(ghLoginStatus()).toEqual({ running: false });
+  });
+
   it('says so when gh is not installed instead of starting nothing', () => {
     h.ghBin = undefined;
     expect(startGhLogin()).toEqual({ running: false, error: '`gh` was not found on PATH' });
@@ -131,7 +187,9 @@ describe('the wizard’s gh login', () => {
 
   it('is reached through /api/setup/gh-login: POST starts, GET reads, POST …/cancel stops', async () => {
     expect(await handleSetup('/api/setup/gh-login', 'GET', undefined)).toEqual({ running: false });
+    expect(h.children).toHaveLength(0);
     expect(await handleSetup('/api/setup/gh-login', 'POST', {})).toEqual({ running: true });
+    expect(h.children).toHaveLength(1);
     say(PROMPT);
     expect(await handleSetup('/api/setup/gh-login', 'GET', undefined)).toMatchObject({ running: true, code: '1A2B-3C4D' });
     expect(await handleSetup('/api/setup/gh-login/cancel', 'POST', {})).toEqual({ running: false });

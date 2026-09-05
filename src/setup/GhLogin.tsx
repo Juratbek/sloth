@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { GhLogin as Status } from '../../server/config-types';
 import { fetchJson, postJson } from '../lib/api';
 import { queryKeys } from '../lib/query-keys';
@@ -16,11 +16,16 @@ const useGhLoginStatus = () =>
     retry: false,
   });
 
-/** A POST that answers with the login's new state, which becomes the status without another read. */
+/**
+ * A POST whose answer is the login's new state. The poll in flight is dropped first: a `GET` sent
+ * before the press and answered after it would put the old state back — a cancel undone for a cycle,
+ * or a start the page never polls for, sitting on "Log in" while `gh` waits.
+ */
 function useGhLoginPost(path: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => postJson<Status>(path, {}),
+    onMutate: () => queryClient.cancelQueries({ queryKey: key }),
     onSuccess: (data) => queryClient.setQueryData(key, data),
   });
 }
@@ -42,21 +47,31 @@ function Code({ code }: { code: string }) {
  * The GitHub login row's action: one button runs `gh auth login` on the machine, which opens the
  * browser there and prints a one-time code — shown here to type at the URL, and copied with a click.
  * Once `gh` reports the login, the environment checks, the boards and the health chip are read again.
+ *
+ * Only a login this page started counts as done: the server remembers its last verdict, and an `ok`
+ * from a login weeks ago, read when the wizard is opened after a logout, is not this row turning green.
  */
 export default function GhLogin({ onLoggedIn }: { onLoggedIn: () => void }) {
   const status = useGhLoginStatus();
   const start = useGhLoginPost('/api/setup/gh-login');
   const cancel = useGhLoginPost('/api/setup/gh-login/cancel');
   const queryClient = useQueryClient();
+  const started = useRef(false);
   const state = status.data;
   const running = !!state?.running;
-  const error = start.error ?? cancel.error ?? (state?.error ? new Error(state.error) : undefined);
+  const done = started.current && !running && !!state?.ok;
+  const error = start.error ?? cancel.error ?? (started.current && state?.error ? new Error(state.error) : undefined);
 
   useEffect(() => {
-    if (!state?.ok) return;
+    if (!done) return;
     for (const queryKey of [queryKeys.setupEnv, queryKeys.setupProjects, queryKeys.health]) void queryClient.invalidateQueries({ queryKey });
     onLoggedIn();
-  }, [state?.ok]);
+  }, [done]);
+
+  const press = () => {
+    started.current = true;
+    start.mutate();
+  };
 
   return (
     <div className="space-y-2">
@@ -66,12 +81,12 @@ export default function GhLogin({ onLoggedIn }: { onLoggedIn: () => void }) {
             Cancel
           </Button>
         ) : (
-          <Button variant="accent" onClick={() => start.mutate()} disabled={start.isPending}>
-            {state?.ok ? 'Log in again' : 'Log in'}
+          <Button variant="accent" onClick={press} disabled={start.isPending}>
+            Log in
           </Button>
         )}
         {running && !state?.code && <span className="text-xs text-fg-muted">Starting gh…</span>}
-        {state?.ok && !running && <span className="text-xs text-ok">Logged in — checking…</span>}
+        {done && <span className="text-xs text-ok">Logged in — checking…</span>}
       </div>
       {running && state?.code && (
         <div className="space-y-1 text-xs text-fg-muted">

@@ -16,6 +16,10 @@ import type { GhLogin } from './setup-types';
  * `gh` waits, and for the verdict once it has exited. After a login the git credential helper is set up
  * the way an interactive `gh auth login` offers to — the sessions push over HTTPS with it — and the
  * health reading is retaken, so the header chip stops saying `gh` is logged out.
+ *
+ * The verdict waits for `close`, not `exit`: the reason `gh` gives up is on stderr, and a pipe may still
+ * hold it when the process is reaped. A `gh` that died of a signal — killed from a task manager, the
+ * OOM killer — has `code` null, which is not a login.
  */
 
 const DEVICE_URL = 'https://github.com/login/device';
@@ -34,11 +38,11 @@ export function parseDeviceFlow(text: string): Pick<GhLogin, 'code' | 'url'> {
   return { ...(code ? { code, url: url ?? DEVICE_URL } : {}) };
 }
 
-/** What `gh` said about why it gave up: its last lines, the `error:` one first when there is one. */
-function reason(text: string, code: number | null): string {
+/** What `gh` said about why it gave up: its `error:` line, else its last lines, else how it ended. */
+function reason(text: string, code: number | null, signal: NodeJS.Signals | null): string {
   const lines = text.split('\n').map((l) => l.trim()).filter((l) => l && !/one-time code|Open this URL|Press Enter/i.test(l));
   const error = lines.find((l) => /^error:|failed/i.test(l));
-  return error ?? (lines.slice(-TAIL).join(' ') || `gh exited with ${code}`);
+  return error ?? (lines.slice(-TAIL).join(' ') || (signal ? `gh was stopped by ${signal}` : `gh exited with ${code}`));
 }
 
 async function afterLogin(bin: string): Promise<void> {
@@ -52,19 +56,26 @@ export function startGhLogin(): GhLogin {
   if (status.running) return status;
   const bin = which('gh');
   if (!bin) return (status = { running: false, error: '`gh` was not found on PATH' });
-  status = { running: true };
-  let text = '';
-  const proc = spawn(bin, ARGS, { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GH_PROMPT_DISABLED: '1' } });
+  let proc: ChildProcess;
+  try {
+    proc = spawn(bin, ARGS, { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GH_PROMPT_DISABLED: '1' } });
+  } catch (e) {
+    return (status = { running: false, error: e instanceof Error ? e.message : String(e) });
+  }
   child = proc;
+  status = { running: true };
   log('gh login: started');
+  let text = '';
+  const mine = () => child === proc;
   const finish = (error?: string) => {
-    if (child !== proc) return;
+    if (!mine()) return;
     child = undefined;
     status = error ? { running: false, error } : { running: false, ok: true };
     log(error ? `gh login: failed — ${error}` : 'gh login: done');
     broadcast();
   };
   const read = (chunk: Buffer) => {
+    if (!mine()) return;
     text += chunk.toString();
     const found = parseDeviceFlow(text);
     if (found.code && found.code !== status.code) {
@@ -75,27 +86,27 @@ export function startGhLogin(): GhLogin {
   proc.stdout?.on('data', read);
   proc.stderr?.on('data', read);
   proc.on('error', (e) => finish(e.message));
-  proc.on('exit', (code) => {
-    if (code) return finish(reason(text, code));
+  proc.on('close', (code, signal) => {
+    if (code !== 0) return finish(reason(text, code, signal));
     void afterLogin(bin).finally(() => finish());
   });
   return status;
 }
 
-/** Stops a login still waiting on the code; the status goes back to "nothing running". */
+/** Stops a login still waiting on the code; the status goes back to "nothing running" either way. */
 export function cancelGhLogin(): GhLogin {
   const proc = child;
-  if (!proc) return status;
   child = undefined;
-  proc.kill();
   status = { running: false };
-  log('gh login: cancelled');
-  broadcast();
+  if (proc) {
+    proc.kill();
+    log('gh login: cancelled');
+    broadcast();
+  }
   return status;
 }
 
-/** Tests only: back to "nothing ever ran". */
-export function forgetGhLogin(): void {
-  child = undefined;
-  status = { running: false };
+/** The server going down takes a waiting `gh` with it: left alone it would poll GitHub for a code no page shows any more. */
+export function stopGhLogin(): void {
+  if (child) cancelGhLogin();
 }
