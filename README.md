@@ -180,9 +180,10 @@ apart.
 - **Sessions.** A run works in its issue's repository (`SLOTH_REPO`, `SLOTH_RUNNER_ROOT`, `SLOTH_WORKTREE`
   all point there) and is told about every repository in `SLOTH_REPOS`. A fix that spans two — an API and its
   client — gets a second worktree in the same slot and a second PR whose body says `Closes owner/name#12`;
-  the server wires both PRs to the card (`closedByPullRequestsReferences` crosses repositories), reviews both,
-  moves the card on when both have passed, and with `autoMerge` merges both or neither. The plugin's
-  `session` skill has the recipe.
+  the server wires both PRs to the card (`closedByPullRequestsReferences` crosses repositories — GitHub makes
+  the link when the PR's author can write to the issue's repository, which the account Sloth runs as can),
+  reviews both, moves the card on when both have passed, and with `autoMerge` merges both or neither. The
+  plugin's `session` skill has the recipe.
 - **What runs where.** The smoke test qualifies one app: `smoke.repo`, the first repository unless chosen.
   The stack install reads every checkout and installs the union. The hours ledger's branch copy and the
   launch agent's name are the first repository's. The QA sweep pins the QA branch's head in every repository

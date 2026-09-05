@@ -146,8 +146,9 @@ consumer. Then, and only then:
 
 3. Work there as in `$WT`: install, change, verify. Push the branch and open a PR **in that repository**
    whose body starts with `Closes $SLOTH_ISSUE_REPO#$SLOTH_ISSUE` (`Closes acme/widgets#12` — the number
-   alone would point at that repository's own issue 12). The server wires both PRs to the card: both are
-   reviewed, the card moves on when both pass, and both are merged together or neither.
+   alone would point at that repository's own issue 12; GitHub links across repositories because your
+   account can write to both). The server wires both PRs to the card: both are reviewed, the card moves
+   on when both pass, and both are merged together or neither.
 4. Say so in the main PR's body (*What changed*: one line naming the other PR) and in the handoff note.
    Leave the second worktree as you leave the first; the server detaches both when the slot is returned.
 
