@@ -54,8 +54,10 @@ export interface WebhookStatus {
   state: 'off' | 'active' | 'failed';
   /** The address the provider was given — `<public URL>/api/hooks/github`, or `/api/hooks/trello` on a Trello board. */
   url?: string;
-  /** GitHub numbers its hooks; Trello names them. */
+  /** GitHub numbers its hooks; Trello names them. The first repository's, when there are several. */
   hookId?: number | string;
+  /** Every repository's hook, by repository — the ones that were pointed before a failure stopped the rest. */
+  hookIds?: Record<string, number>;
   /** Why it is not delivering; absent while it is. */
   reason?: string;
   /** When the state above was last decided. */

@@ -1,5 +1,7 @@
 import { cfg } from '../config';
 import type { WebhookEvent } from '../config-types';
+import { label, primaryRepo } from '../repos';
+import { issueUrl, repoUrl, type IssueRef } from '../repo-types';
 import { isDry, log } from './log';
 
 /**
@@ -19,7 +21,7 @@ export const helpMentions = (): string => cfg().helpLogins.map((l) => `@${l}`).j
 
 export interface Notice {
   /** The issue it is about; absent for something that happened to a review run. */
-  issue?: number;
+  issue?: IssueRef;
   title?: string;
   /** The one line Slack and Discord show — the URL is appended to it. */
   text: string;
@@ -34,7 +36,8 @@ export const notifies = (event: WebhookEvent): boolean => !!cfg().helpWebhook &&
 export async function notify(event: WebhookEvent, n: Notice): Promise<boolean> {
   const c = cfg();
   if (!notifies(event)) return false;
-  const url = n.issue ? `https://github.com/${c.repo}/issues/${n.issue}` : `https://github.com/${c.repo}`;
+  const repo = n.issue?.repo ?? primaryRepo();
+  const url = n.issue ? issueUrl(n.issue) : repoUrl(repo);
   const text = `${n.text} — ${url}`;
   if (isDry()) {
     log(`dry-run: would notify webhook: ${text}`);
@@ -48,8 +51,8 @@ export async function notify(event: WebhookEvent, n: Notice): Promise<boolean> {
         event,
         text,
         content: text,
-        repo: c.repo,
-        issue: n.issue ?? null,
+        repo,
+        issue: n.issue?.number ?? null,
         title: n.title ?? '',
         url,
         column: n.column ?? '',
@@ -58,10 +61,10 @@ export async function notify(event: WebhookEvent, n: Notice): Promise<boolean> {
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-    log(`#${n.issue ?? '?'} ${event} — webhook notified`);
+    log(`${n.issue ? label(n.issue) : '#?'} ${event} — webhook notified`);
     return true;
   } catch (e) {
-    log(`#${n.issue ?? '?'} webhook failed: ${e instanceof Error ? e.message : String(e)}`);
+    log(`${n.issue ? label(n.issue) : '#?'} webhook failed: ${e instanceof Error ? e.message : String(e)}`);
     return false;
   }
 }

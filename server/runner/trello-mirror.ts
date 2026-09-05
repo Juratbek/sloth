@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
+import { label, repoSlugs } from '../repos';
+import type { IssueRef } from '../repo-types';
 import * as trello from '../trello';
 import type { TrelloComment } from '../trello';
 import { roleOf } from '../roles';
@@ -79,9 +81,9 @@ function prune(): void {
 }
 
 /** The issues the mirror just wrote on: trigger 3 reads them this very tick, ahead of the search index. */
-const pending = new Set<number>();
-export function takePending(): number[] {
-  const out = [...pending];
+const pending = new Map<string, IssueRef>();
+export function takePending(): IssueRef[] {
+  const out = [...pending.values()];
   pending.clear();
   return out;
 }
@@ -109,24 +111,24 @@ async function cardsToIssues(): Promise<void> {
     }
     const body = `**@${c.username} on Trello:**\n\n${c.text}`;
     if (isDry()) {
-      log(`dry-run: would copy Trello comment by ${c.username} onto #${issue}`);
+      log(`dry-run: would copy Trello comment by ${c.username} onto ${label(issue)}`);
       continue;
     }
-    const copied = await gh(['api', `repos/${cfg().repo}/issues/${issue}/comments`, '-f', `body=${body}`, '--jq', '.id']);
+    const copied = await gh(['api', `repos/${issue.repo}/issues/${issue.number}/comments`, '-f', `body=${body}`, '--jq', '.id']);
     if (!copied.ok) {
-      log(`#${issue} <- Trello comment by ${c.username} failed: ${copied.err.split('\n')[0]}`);
+      log(`${label(issue)} <- Trello comment by ${c.username} failed: ${copied.err.split('\n')[0]}`);
       continue;
     }
-    log(`#${issue} <- Trello comment by ${c.username}`);
+    log(`${label(issue)} <- Trello comment by ${c.username}`);
     mark(key);
     const id = Number(copied.out.trim());
     if (id) mark(`c-${id}`);
     const role = roleOf(cfg().roles, c.username);
     // Trigger 3 reads a mention and decides; anything else written to a session that is waiting for an
     // answer is delivered as the session's own thread poll would find it, without the wait.
-    if (mention.test(c.text) || !role || !id || stateOf(issueDir(issue)).state !== 'waiting') pending.add(issue);
+    if (mention.test(c.text) || !role || !id || stateOf(issueDir(issue)).state !== 'waiting') pending.set(`${issue.repo}#${issue.number}`, issue);
     else {
-      deliver({ number: issue, issue }, { id, login: c.username, body: c.text }, role);
+      deliver({ repo: issue.repo, number: issue.number, issue }, { id, login: c.username, body: c.text }, role);
       write(path.join(cfg().stateDir, 'seen', String(id)), '');
     }
   }
@@ -134,25 +136,29 @@ async function cardsToIssues(): Promise<void> {
 
 interface IssueComment {
   id: number;
-  issue: number;
+  issue: IssueRef;
   login: string;
   body: string;
 }
 
-/** Every conversation comment in the repository since the window opened — one paginated call, the PRs' included and dropped. */
+/** Every conversation comment in the repositories since the window opened — one paginated call each, the PRs' included and dropped. */
 async function issueComments(): Promise<IssueComment[]> {
-  const r = await gh([
-    'api', `repos/${cfg().repo}/issues/comments?since=${since()}&per_page=100`, '--paginate',
-    '--jq', '.[] | { id: .id, issue: (.issue_url | split("/") | last | tonumber), login: .user.login, body: .body } | tojson | @base64',
-  ]);
-  if (!r.ok) {
-    log(`mirror: issue comments not read — ${r.err.split('\n')[0]}`);
-    return [];
+  const out: IssueComment[] = [];
+  for (const repo of repoSlugs()) {
+    const r = await gh([
+      'api', `repos/${repo}/issues/comments?since=${since()}&per_page=100`, '--paginate',
+      '--jq', '.[] | { id: .id, number: (.issue_url | split("/") | last | tonumber), login: .user.login, body: .body } | tojson | @base64',
+    ]);
+    if (!r.ok) {
+      log(`mirror: issue comments of ${repo} not read — ${r.err.split('\n')[0]}`);
+      continue;
+    }
+    for (const line of r.out.split('\n').filter(Boolean)) {
+      const c = JSON.parse(Buffer.from(line, 'base64').toString('utf8')) as { id: number; number?: number; issue?: number; login: string; body: string };
+      out.push({ id: c.id, issue: { repo, number: Number(c.number ?? c.issue) }, login: c.login, body: c.body });
+    }
   }
-  return r.out
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => JSON.parse(Buffer.from(line, 'base64').toString('utf8')) as IssueComment);
+  return out;
 }
 
 /** Issue comments onto their cards: Sloth's as they are, a person's under their login, a copy never. */
@@ -164,15 +170,15 @@ async function issuesToCards(): Promise<void> {
     if (!card) continue;
     const text = ownWords(c.body) ? c.body : `**@${c.login} on GitHub:**\n\n${c.body}`;
     if (isDry()) {
-      log(`dry-run: would copy comment ${c.id} on #${c.issue} onto its Trello card`);
+      log(`dry-run: would copy comment ${c.id} on ${label(c.issue)} onto its Trello card`);
       continue;
     }
     try {
       await trello.commentCard(card, text);
-      log(`#${c.issue} -> Trello card: comment ${c.id} by ${c.login}`);
+      log(`${label(c.issue)} -> Trello card: comment ${c.id} by ${c.login}`);
       mark(key);
     } catch (e) {
-      log(`#${c.issue} -> Trello card failed: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
+      log(`${label(c.issue)} -> Trello card failed: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
     }
   }
 }

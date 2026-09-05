@@ -10,7 +10,7 @@ import { sampleMachine, setReaders } from '../server/runner/machine';
 import { resetSpawn, spawned } from './child-process-mock';
 import { called, fail, onGh, resetGh } from './gh-mock';
 import { bootedAt } from '../server/runner/session-dirs';
-import { COLUMNS, alivePid, calmMachine, card, configure, exists, makeSession, read, readLog, sessionDir, statePath, wipe } from './harness';
+import { COLUMNS, alivePid, calmMachine, card, configure, exists, makeSession, read, readLog, ref, runRef, runnerRoot, sessionDir, statePath, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
@@ -116,10 +116,10 @@ describe('pickup (trigger 1)', () => {
     expect(exists(sessionDir('issue', 3), 'handoff.md')).toBe(false);
   });
   it('launches nothing while the runner checkout is not there yet — a comment\'s order comes this way too', async () => {
-    fs.rmSync(path.join(cfg().runnerRoot, '.git'), { recursive: true, force: true });
+    fs.rmSync(path.join(runnerRoot(), '.git'), { recursive: true, force: true });
     await pickup([card(5, 'Todo')]);
     expect(launches()).toEqual([]);
-    expect(readLog().join('\n')).toContain(`#5 not launched: no checkout at ${cfg().runnerRoot} yet`);
+    expect(readLog().join('\n')).toContain(`#5 queued (no checkout of acme/widgets at ${runnerRoot()} yet)`);
   });
 
   it('only logs in a dry run', async () => {
@@ -193,7 +193,7 @@ describe('qaVerdicts (handoff)', () => {
 describe('park', () => {
   it('blocks in place when no needs-help column is configured', async () => {
     configure({ statusField: { id: 'PVTSSF_1', columns: { ...COLUMNS, needsHelp: { id: '', name: '' } } } });
-    await park(9, 'it broke.');
+    await park(ref(9), 'it broke.');
     expect(called(/item-edit/)).toHaveLength(0);
     expect(exists(sessionDir('issue', 9), 'blocked')).toBe(true);
   });
@@ -201,7 +201,7 @@ describe('park', () => {
     makeSession('issue', 9, { retries: '2' });
     onGh(/project item-add/, 'ITEM');
     onGh(/project item-edit/, fail('HTTP 502'));
-    await park(9, 'it broke.');
+    await park(ref(9), 'it broke.');
     // Left in In Progress with the count cleared, trigger 2 picks it straight back up and parks it again
     // `maxRetries` later — the same comment over and over, and nothing escalating.
     expect(exists(sessionDir('issue', 9), 'blocked')).toBe(true);
@@ -211,7 +211,7 @@ describe('park', () => {
   });
   it('mentions the help logins', async () => {
     configure({ helpLogins: ['dana'] });
-    await park(9, 'it broke.');
+    await park(ref(9), 'it broke.');
     expect(called(/issue comment 9 [\s\S]*cc @dana$/)).toHaveLength(1);
   });
 });
@@ -714,7 +714,7 @@ describe('reap', () => {
 describe('stop', () => {
   it('ends a parked run whose process is gone: cleaned up, marked done, card untouched', async () => {
     makeSession('issue', 7, { pid: '2000000000', 'state.json': { state: 'waiting', step: 'Q' }, 'preview.json': '{}' });
-    expect(await stop('issue', 7, 'from the monitor', 'why')).toBe(true);
+    expect(await stop(runRef('issue', 7), 'from the monitor', 'why')).toBe(true);
     expect(JSON.parse(read(path.join(sessionDir('issue', 7), 'state.json')))).toMatchObject({ state: 'done' });
     expect(exists(sessionDir('issue', 7), 'preview.json')).toBe(false);
     expect(called(/item-edit/)).toHaveLength(0);
@@ -724,7 +724,7 @@ describe('stop', () => {
     try {
       makeSession('approved', 30, { pid: '12345', issue: '12', 'state.json': { state: 'working' } });
       onGh(/project item-add/, 'ITEM');
-      expect(await stop('approved', 30, 'stopped from the monitor', 'why')).toBe(true);
+      expect(await stop(runRef('approved', 30), 'stopped from the monitor', 'why')).toBe(true);
       expect(called(/issue comment 12 [\s\S]*the review of PR #30 was stopped: stopped from the monitor\./)).toHaveLength(1);
       expect(called(/item-edit .*opt-help/)).toHaveLength(1);
     } finally {
@@ -735,7 +735,7 @@ describe('stop', () => {
     const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
     try {
       makeSession('review', 8, { pid: '12345' });
-      expect(await stop('review', 8, 'stopped from the monitor', 'why')).toBe(true);
+      expect(await stop(runRef('review', 8), 'stopped from the monitor', 'why')).toBe(true);
       expect(called(/issue comment/)).toHaveLength(0);
       expect(readLog().at(-1)).toMatch(/review PR #8: no issue recorded beside the run/);
     } finally {
@@ -745,7 +745,7 @@ describe('stop', () => {
   it('has nothing to end for a dead working run or a dead review', async () => {
     makeSession('issue', 7, { pid: '2000000000', 'state.json': { state: 'working' } });
     makeSession('review', 8, { pid: '2000000000' });
-    expect(await stop('issue', 7, 'x', 'y')).toBe(false);
-    expect(await stop('review', 8, 'x', 'y')).toBe(false);
+    expect(await stop(runRef('issue', 7), 'x', 'y')).toBe(false);
+    expect(await stop(runRef('review', 8), 'x', 'y')).toBe(false);
   });
 });

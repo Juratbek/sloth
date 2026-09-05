@@ -36,6 +36,7 @@ export const DONE_DAYS = 7;
  * cards are on the view — the ones it has run on, and the unclaimed ones waiting in pickup.
  */
 export interface BoardCard {
+  repo: string;
   issue: number;
   title: string;
   /** Shown on the card; an assignee does not keep Sloth off it — `SKIP_LABEL` among `labels` does. */
@@ -76,6 +77,7 @@ export interface BoardCard {
  * and stands until a human lifts it from the home panel or moves the card out of the QA column.
  */
 export interface BlockedCard {
+  repo: string;
   issue: number;
   title: string;
   /** Why Sloth stopped, in the words the comment and the panel both use. */

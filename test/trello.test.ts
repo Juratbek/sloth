@@ -10,7 +10,7 @@ import { ensureSkipLabel } from '../server/runner/markers';
 import { sessionEnv } from '../server/runner/session-env';
 import type { TrelloCard } from '../server/trello';
 import { called, fail, onGh, resetGh } from './gh-mock';
-import { COLUMNS, baseConfig, card, configure, readLog, sessionDir } from './harness';
+import { COLUMNS, REPO, baseConfig, card, configure, readLog, ref, sessionDir } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 
@@ -104,8 +104,8 @@ describe('config', () => {
 
 describe('issueOf', () => {
   it('reads the watched repository issue off an attachment, then the description, and no other repository', () => {
-    expect(issueOf(linked('c1', 'l-todo', 12))).toBe(12);
-    expect(issueOf(trelloCard('c2', 'l-todo', { desc: 'see https://github.com/acme/widgets/issues/7 please' }))).toBe(7);
+    expect(issueOf(linked('c1', 'l-todo', 12))).toEqual(ref(12));
+    expect(issueOf(trelloCard('c2', 'l-todo', { desc: 'see https://github.com/acme/widgets/issues/7 please' }))).toEqual(ref(7));
     expect(issueOf(trelloCard('c3', 'l-todo', { attachments: [{ url: 'https://github.com/acme/other/issues/9', name: '' }] }))).toBeUndefined();
     expect(issueOf(trelloCard('c4', 'l-todo', { desc: 'https://github.com/acme/widgets/pull/9' }))).toBeUndefined();
   });
@@ -129,7 +129,7 @@ describe('fetchBoard on Trello', () => {
     expect(board?.find((i) => i.number === 1)?.labels).toEqual(['Sloth: skip']);
     expect(board?.find((i) => i.number === 2)?.labels).toEqual(['bug']);
     expect(board?.find((i) => i.number === 3)).toMatchObject({ closed: true, labels: ['Fable: approved'], title: 'Card c3' });
-    expect(pickupOrder(board!, 'Todo')).toEqual([2]);
+    expect(pickupOrder(board!, 'Todo').map((i) => i.number)).toEqual([2]);
     expect(called(/issue create/)).toHaveLength(0);
   });
   it('opens an issue for a pickup card without one and links the two, but not for a skipped card or in a dry run', async () => {
@@ -182,20 +182,20 @@ describe('moveCard on Trello', () => {
     answers[`GET /boards/${BOARD}/cards`] = [linked('c5', 'l-todo', 5)];
     onGh(/api graphql/, { data: { repository: { i5: { state: 'OPEN', labels: { nodes: [] } } } } });
     await fetchBoard();
-    expect(await moveCard(5, 'l-wip')).toBe(true);
+    expect(await moveCard(ref(5), 'l-wip')).toBe(true);
     const put = trelloCalls(/PUT \/cards\/c5/);
     expect(put).toHaveLength(1);
     expect(put[0].params.get('idList')).toBe('l-wip');
 
     answers[`GET /boards/${BOARD}/cards`] = [linked('c6', 'l-todo', 6)];
-    expect(await moveCard(6, 'l-wip')).toBe(true);
+    expect(await moveCard(ref(6), 'l-wip')).toBe(true);
     expect(trelloCalls(/PUT \/cards\/c6/)).toHaveLength(1);
     answers[`GET /boards/${BOARD}/cards`] = [];
     onGh(/issue view 7/, fail('no such issue'));
-    expect(await moveCard(7, 'l-wip')).toBe(false);
+    expect(await moveCard(ref(7), 'l-wip')).toBe(false);
     expect(readLog().at(-1)).toMatch(/#7 has no Trello card and its title could not be read: no such issue/);
     setDry(true);
-    expect(await moveCard(8, 'l-wip')).toBe(true);
+    expect(await moveCard(ref(8), 'l-wip')).toBe(true);
     expect(readLog().at(-1)).toMatch(/dry-run: would move #8 to Trello list l-wip/);
   });
 });
@@ -252,17 +252,17 @@ describe('columns and labels on Trello', () => {
 
 describe('the board API for sessions', () => {
   it('answers a card’s column live from Trello, from the last read when the card is unknown, and moves by column name', async () => {
-    expect(await cardInfo(4)).toEqual({ issue: 4, column: '', asOf: expect.any(String) });
+    expect(await cardInfo(ref(4))).toEqual({ repo: REPO, issue: 4, column: '', asOf: expect.any(String) });
     setSnapshot([card(4, 'Todo')]);
-    expect((await cardInfo(4)).column).toBe('Todo');
+    expect((await cardInfo(ref(4))).column).toBe('Todo');
     await refreshColumns();
     answers[`GET /boards/${BOARD}/cards`] = [linked('c4', 'l-todo', 4)];
     await fetchBoard();
     answers['GET /cards/c4'] = linked('c4', 'l-review', 4);
-    expect((await cardInfo(4)).column).toBe('Code Review');
+    expect((await cardInfo(ref(4))).column).toBe('Code Review');
     answers['GET /cards/c4'] = new Error('Trello is down');
-    expect((await cardInfo(4)).column).toBe('Todo');
-    expect(await moveFromSession({ issue: 4, column: 'in progress' })).toEqual({ ok: true, issue: 4, column: 'In Progress' });
+    expect((await cardInfo(ref(4))).column).toBe('Todo');
+    expect(await moveFromSession({ issue: 4, column: 'in progress' })).toEqual({ ok: true, issue: 4, repo: REPO, column: 'In Progress' });
     expect(trelloCalls(/PUT \/cards\/c4/)[0].params.get('idList')).toBe('l-wip');
     expect(await moveFromSession({ issue: 4, column: 'Planning' })).toMatchObject({ ok: false, error: expect.stringMatching(/no such column: Planning — the board has Backlog, Todo/) });
     expect(await moveFromSession({ issue: 'x', column: 'Todo' })).toMatchObject({ ok: false, error: expect.stringMatching(/issue/) });

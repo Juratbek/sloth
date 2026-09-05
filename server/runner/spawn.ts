@@ -5,6 +5,8 @@ import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { writeAtomic } from '../atomic';
 import { PLUGIN_DIR, cfg } from '../config';
+import { label, primaryRepo, repoRoot } from '../repos';
+import type { IssueRef, PrRef } from '../repo-types';
 import { announce } from './announce';
 import { moveCard } from './board';
 import { mcpConfig } from './browser';
@@ -15,19 +17,16 @@ import { cleanup } from './cleanup';
 import { statePath } from './markers';
 import { stopPreview } from './preview';
 import { APPEND_PROMPT, sessionEnv, type SessionExtras, type Target } from './session-env';
-import { approvedDir, issueDir, slotsFull, statusDir, triesOn } from './session-dirs';
+import { approvedDir, approvedRef, issueDir, issueRef, runName, slotsFull, statusDir, triesOn } from './session-dirs';
 import { machineHold } from './machine';
 import { forgetPause } from './pressure';
 import { forgetWaiting } from './waiting';
 import { leaseSlot, releaseSlot } from './slots';
-import { checkoutReady } from '../checkout';
 import { claimWarm, warmOf } from './warm';
 
 /** Why nothing may start right now: every slot taken, or the machine too loaded to take one more run. */
 export const held = (): string | undefined => (slotsFull() ? 'slots full' : machineHold());
 export const noSlot = (what: string): false => (log(`${what} queued (no free worktree slot)`), false);
-/** No checkout to fetch in yet — `checkout.ts` is making one; the launch waits for it like for a slot. */
-export const noCheckout = (what: string): false => (log(`${what} not launched: no checkout at ${cfg().runnerRoot} yet`), false);
 
 const trusted = new Set<string>();
 /** Claude Code exits silently in an untrusted directory, so headless runs need the flag pre-set. */
@@ -51,6 +50,9 @@ export function ensureTrust(root: string): void {
   log(`trusted ${root} for Claude Code`);
 }
 
+/** The checkout of the run's repository has to be there — a launch without one fails its fetch, and says so late. */
+export const checkoutMissing = (repo: string): string | undefined => (fs.existsSync(path.join(repoRoot(repo), '.git')) ? undefined : `no checkout of ${repo} at ${repoRoot(repo)} yet`);
+
 /**
  * Starts a detached `claude -p` run that survives a Sloth restart. `bookDir` holds Sloth's own pid /
  * session_id files; `sessionDir` is what the session itself works in (they differ only for a status
@@ -58,6 +60,7 @@ export function ensureTrust(root: string): void {
  * the one configured for the agent (`models` in the config). `chrome` attaches the Claude in Chrome
  * extension — only implement sessions need a browser, and its tools cost context. Exported for the
  * stack install session (`stack-session.ts`), which is no board run but starts `claude` the same way.
+ * The run's working directory is the checkout of `target.repo` — the first repository's for a run with none.
  */
 interface StartOptions {
   model: string;
@@ -69,11 +72,12 @@ interface StartOptions {
 export function start(bookDir: string, sessionDir: string, prompt: string, target: Target, logFile: string, options: StartOptions): void {
   const c = cfg();
   const { model, chrome = false, extras } = options;
+  const root = repoRoot(target.repo || primaryRepo());
   // A status reply borrows the issue's directory read-only — it must not conjure one that never ran.
   if (bookDir === sessionDir) fs.mkdirSync(path.join(sessionDir, 'inbox'), { recursive: true });
   fs.mkdirSync(bookDir, { recursive: true });
   fs.mkdirSync(c.worktreesDir, { recursive: true });
-  ensureTrust(c.runnerRoot);
+  ensureTrust(root);
   const sessionId = randomUUID();
   write(path.join(bookDir, 'session_id'), sessionId);
   // No browser at all unless one was asked for and this machine has Chrome: the session then knows it has none.
@@ -86,7 +90,7 @@ export function start(bookDir: string, sessionDir: string, prompt: string, targe
     ['-p', prompt, '--plugin-dir', PLUGIN_DIR, '--session-id', sessionId, '--model', model,
       '--no-chrome', ...(mcp ? ['--mcp-config', mcp] : []),
       '--dangerously-skip-permissions', '--append-system-prompt', APPEND_PROMPT],
-    { cwd: c.runnerRoot, detached: true, stdio: ['ignore', fd, fd], env: { ...sessionEnv(sessionDir, target, model, !!mcp, extras), ...options.env } },
+    { cwd: root, detached: true, stdio: ['ignore', fd, fd], env: { ...sessionEnv(sessionDir, target, model, !!mcp, extras), ...options.env } },
   );
   fs.closeSync(fd);
   const pid = child.pid;
@@ -109,28 +113,28 @@ export function start(bookDir: string, sessionDir: string, prompt: string, targe
   child.unref();
   // A run on an issue tells the issue where to watch it; a status reply borrows the directory and is
   // not a run of its own (`bookDir` differs), and the stack install has no issue.
-  if (target.issue && bookDir === sessionDir) void announce(target.issue, sessionId, prompt, model);
+  if (target.issue && bookDir === sessionDir) void announce({ repo: target.issueRepo ?? target.repo ?? primaryRepo(), number: target.issue }, sessionId, prompt, model);
 }
 
 /** Trigger 1 / 2 / 3: implement an issue. A fresh run clears the previous run's state and inbox. */
-export async function launch(issue: number, order?: string): Promise<boolean> {
+export async function launch(issue: IssueRef, order?: string): Promise<boolean> {
   const dir = issueDir(issue);
-  const why = held();
+  const ref = issueRef(issue);
+  const why = held() ?? checkoutMissing(issue.repo);
   if (why) {
-    log(`#${issue} queued (${why})`);
+    log(`${label(issue)} queued (${why})`);
     return false;
   }
   if (isDry()) {
-    log(`dry-run: would launch #${issue}${order ? ` (${order.slice(0, 120)})` : ''}`);
+    log(`dry-run: would launch ${label(issue)}${order ? ` (${order.slice(0, 120)})` : ''}`);
     return true;
   }
   // One environment per issue: a preview of the previous run makes way for the new one, and a crashed
   // run's leftovers go too — stopPreview alone skips a run that never wrote preview.json.
-  if (!checkoutReady()) return noCheckout(`#${issue}`);
   await stopPreview(issue, 'a new session starts on the issue');
   await cleanup(issue);
-  const slot = await leaseSlot('issue', issue);
-  if (!slot) return noSlot(`#${issue}`);
+  const slot = await leaseSlot(ref);
+  if (!slot) return noSlot(label(issue));
   fs.mkdirSync(path.join(dir, 'inbox'), { recursive: true });
   remove(path.join(dir, 'state.json'));
   remove(path.join(dir, 'blocked'));
@@ -144,10 +148,11 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
   // merged is done again, and `warmOf` below cannot tell whether the slot's stack is on the current head.
   // A launch that cannot fetch is abandoned rather than started wrong — the slot goes back, no retry is
   // spent (the callers stop on `false` before counting one), the card is still in its column, and the next tick tries again.
-  const fetched = await run('git', ['-C', cfg().runnerRoot, 'fetch', '-q', 'origin'], { timeout: 120_000 });
+  const root = repoRoot(issue.repo);
+  const fetched = await run('git', ['-C', root, 'fetch', '-q', 'origin'], { timeout: 120_000 });
   if (!fetched.ok) {
-    await releaseSlot('issue', issue);
-    log(`#${issue} not launched: git fetch origin failed — ${fetched.err.split('\n')[0]}`);
+    await releaseSlot(ref);
+    log(`${label(issue)} not launched: git fetch origin failed — ${fetched.err.split('\n')[0]}`);
     return false;
   }
   // From here the run starts. A start-over ordered before this launch (a QA fail) becomes this run's own
@@ -162,23 +167,23 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
   // `moveCard` says why it failed; the run still starts, because the card being in the wrong column is a
   // smaller wrong than nobody working the issue. Trigger 2 sees the session and leaves it alone.
   if (!(await moveCard(issue, cfg().statusField.columns.inProgress.id))) {
-    log(`#${issue} could not be moved to ${cfg().statusField.columns.inProgress.name} — launching anyway`);
+    log(`${label(issue)} could not be moved to ${cfg().statusField.columns.inProgress.name} — launching anyway`);
   }
   // The slot may hold a warm stack (`warm.ts`). "Same head" for an implement run means the branch the
   // stack last served has not moved on the remote — the fetch above just made that answerable; a branch
   // that was never pushed resolves to nothing and counts as new work, which only costs a reseed.
   let head: string | undefined;
   const w = warmOf(slot);
-  if (w?.run === `issue-${issue}` && w.branch) {
-    const r = await run('git', ['-C', cfg().runnerRoot, 'rev-parse', `origin/${w.branch}`], { timeout: 30_000 });
+  if (w?.run === runName(ref) && w.branch) {
+    const r = await run('git', ['-C', root, 'rev-parse', `origin/${w.branch}`], { timeout: 30_000 });
     if (r.ok) head = r.out.trim();
   }
-  const warm = await claimWarm('issue', issue, slot, head);
+  const warm = await claimWarm(ref, slot, head);
   const { models, orchestrator, chrome } = cfg();
   // An orchestrator session runs on its own model and hands the coding to an implementor subagent on `models.implement`.
   const model = orchestrator ? models.orchestrator : models.implement;
-  log(`launch #${issue} on ${model}${orchestrator ? ` (orchestrator, implementor on ${models.implement})` : ''}${order ? ` (${order.slice(0, 120)})` : ''}`);
-  start(dir, dir, `/sloth:implement ${issue}${order ? ` ${order}` : ''}`, { issue }, path.join(dir, 'run.log'), { model, chrome, extras: { worktree: slot, warm: !!warm, warmSame: warm?.same } });
+  log(`launch ${label(issue)} on ${model}${orchestrator ? ` (orchestrator, implementor on ${models.implement})` : ''}${order ? ` (${order.slice(0, 120)})` : ''}`);
+  start(dir, dir, `/sloth:implement ${issue.number}${order ? ` ${order}` : ''}`, { repo: issue.repo, issue: issue.number }, path.join(dir, 'run.log'), { model, chrome, extras: { worktree: slot, warm: !!warm, warmSame: warm?.same } });
   return true;
 }
 
@@ -195,29 +200,30 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
  * marker so trigger 4 comes straight back; without a count that pair is a loop, and one PR was reviewed
  * seven times in a day on the same commit.
  */
-export function launchApproved(pr: number, issue: number, sha: string): boolean {
+export function launchApproved(pr: PrRef, issue: IssueRef, sha: string): boolean {
   const c = cfg();
   const why = machineHold();
   if (why) {
-    log(`review PR #${pr} queued (${why})`);
+    log(`review PR #${pr.number} queued (${why})`);
     return false;
   }
   if (isDry()) {
-    log(`dry-run: would review PR #${pr} (issue #${issue}) on ${c.models.final}`);
+    log(`dry-run: would review PR #${pr.number} (issue ${label(issue)}) on ${c.models.final}`);
     return true;
   }
-  log(`review PR #${pr} (issue #${issue}) on ${c.models.final}`);
+  log(`review PR #${pr.number} (issue ${label(issue)}) on ${c.models.final}`);
   const dir = approvedDir(pr);
   const retries = triesOn(dir, sha);
   write(path.join(dir, 'sha'), sha);
   write(path.join(dir, 'retries'), String(retries + 1));
   // The previous run's final state must not speak for this one: `reap` reads `working` as "died without
   // a verdict" and clears the head's marker, which a leftover `done` would mask.
-  remove(path.join(approvedDir(pr), 'state.json'));
+  remove(path.join(dir, 'state.json'));
   // The directory is named after the PR; the issue it belongs to is only known here, and the monitor
-  // needs it to roll this run's cost up under the issue.
-  write(path.join(approvedDir(pr), 'issue'), String(issue));
-  start(approvedDir(pr), approvedDir(pr), `/sloth:review ${pr} final`, { pr, issue }, path.join(approvedDir(pr), 'run.log'), { model: c.models.final });
+  // needs it to roll this run's cost up under the issue — with its repository when that is not the PR's.
+  write(path.join(dir, 'issue'), String(issue.number));
+  write(path.join(dir, 'issue_repo'), issue.repo);
+  start(dir, dir, `/sloth:review ${pr.number} final`, { repo: pr.repo, pr: pr.number, issue: issue.number, issueRepo: issue.repo }, path.join(dir, 'run.log'), { model: c.models.final });
   return true;
 }
 
@@ -232,20 +238,23 @@ export function launchApproved(pr: number, issue: number, sha: string): boolean 
  * "nothing new starts either". False when it is held, so the comment is left unseen and answered on a
  * later tick instead of dropped.
  */
-export function statusReply(issue: number, commentId: string, pr?: number, review = false): boolean {
-  const on = pr ? `PR #${pr}${review ? ' (review thread)' : ''}` : `#${issue}`;
+export function statusReply(issue: IssueRef, commentId: string, pr?: PrRef, review = false): boolean {
+  const on = pr ? `PR #${pr.number}${review ? ' (review thread)' : ''}` : label(issue);
   const why = held();
   if (why) {
-    log(`#${issue} status reply for comment ${commentId} queued (${why})`);
+    log(`${label(issue)} status reply for comment ${commentId} queued (${why})`);
     return false;
   }
   if (isDry()) {
     log(`dry-run: would answer status comment ${commentId} on ${on}`);
     return true;
   }
-  log(`#${issue} status reply for comment ${commentId} on ${on}`);
+  log(`${label(issue)} status reply for comment ${commentId} on ${on}`);
   // Review comments are numbered apart from the conversation's, so their books get their own name.
-  const target: Target = { issue, pr, ...(review ? { reviewComment: Number(commentId) } : {}) };
-  start(statusDir(issue, review ? `review-${commentId}` : commentId), issueDir(issue), `/sloth:status ${issue} ${commentId}`, target, path.join(cfg().stateDir, 'status.log'), { model: cfg().models.status });
+  const target: Target = { repo: pr?.repo ?? issue.repo, issue: issue.number, issueRepo: issue.repo, pr: pr?.number, ...(review ? { reviewComment: Number(commentId) } : {}) };
+  start(statusDir(issue, review ? `review-${commentId}` : commentId), issueDir(issue), `/sloth:status ${issue.number} ${commentId}`, target, path.join(cfg().stateDir, 'status.log'), { model: cfg().models.status });
   return true;
 }
+
+/** Tests and the stack session: the review run's own bookkeeping name, for a log line. */
+export const approvedName = (pr: PrRef) => runName(approvedRef(pr));

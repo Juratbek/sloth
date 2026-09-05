@@ -24,7 +24,7 @@ import { setDry } from '../server/runner/log';
 import { tick } from '../server/runner/loop';
 import { called, fail, onCommand, onGh, resetGh } from './gh-mock';
 import { resetSpawn } from './child-process-mock';
-import { configure, readLog, wipe } from './harness';
+import { configure, readLog, runnerRoot, wipe } from './harness';
 import { forgetCheckout } from '../server/checkout';
 import { cfg } from '../server/config';
 import fs from 'node:fs';
@@ -45,7 +45,7 @@ beforeEach(() => {
 });
 
 describe('the checkout step', () => {
-  beforeEach(() => fs.rmSync(cfg().runnerRoot, { recursive: true, force: true }));
+  beforeEach(() => fs.rmSync(runnerRoot(), { recursive: true, force: true }));
 
   it('starts the clone of a runner root that is not there beside the tick, and launches from the next one', async () => {
     onCommand(/^gh repo clone/, ({ args }) => {

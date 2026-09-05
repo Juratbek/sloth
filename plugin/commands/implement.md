@@ -243,6 +243,9 @@ what both sides meant — the base's change and the branch's — and commit the 
 rebase the branch and never force-push, the PR's review comments are pinned to its commits. A conflict you
 cannot resolve without guessing is Step Q.
 From here on work **only inside `$WT`** — never the checkout at `$SLOTH_RUNNER_ROOT`, never another slot.
+A fix that has to change a second repository Sloth watches (`SLOTH_REPOS` has more than one entry) gets a
+second worktree and a second PR there, `Closes $SLOTH_REPO#$ISSUE` in its body — the `session` skill,
+*Working in a second repository*, says exactly how; nothing else about this command changes.
 
 Install dependencies the way the repo does — `CLAUDE.md` wins; otherwise detect from the lockfile:
 `pnpm-lock.yaml` → `pnpm install --frozen-lockfile`, `yarn.lock` → `yarn install --frozen-lockfile`,
@@ -545,7 +548,7 @@ REJECTED=$(gh api "repos/$SLOTH_REPO/pulls/$PR/reviews" --paginate | jq -rs --ar
 COLUMN=$(gh api graphql -f query="{ repository(owner: \"${SLOTH_REPO%/*}\", name: \"${SLOTH_REPO#*/}\") { issue(number: $SLOTH_ISSUE) {
   projectItems(first: 10) { nodes { project { number } fieldValueByName(name: \"Status\") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }" \
   --jq ".data.repository.issue.projectItems.nodes[] | select(.project.number == $SLOTH_PROJECT_NUMBER) | .fieldValueByName.name")
-# Trello: COLUMN=$(curl -s "$SLOTH_BOARD_API/card/$SLOTH_ISSUE" | jq -r '.column // empty')
+# Trello: COLUMN=$(curl -s "$SLOTH_BOARD_API/card/$SLOTH_ISSUE?repo=${SLOTH_ISSUE_REPO:-$SLOTH_REPO}" | jq -r '.column // empty')
 ```
 
 - `REJECTED` is `true` → the server's review already failed this head. **Do not move the card**: its findings

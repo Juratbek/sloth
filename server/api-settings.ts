@@ -80,7 +80,7 @@ export async function handleSettings(p: string, url: URL, req: IncomingMessage, 
   // /api/board/* — a session reading or moving a card through Sloth rather than the board's own API (`board-api.ts`).
   // Local like the rest: the sessions run on this machine, and a phone has the board page for looking.
   if (isBoardApi(p)) {
-    const body = await handleBoardApi(p, req.method ?? 'GET', req.method === 'POST' ? await readBody(req) : undefined);
+    const body = await handleBoardApi(p, req.method ?? 'GET', req.method === 'POST' ? await readBody(req) : undefined, url.searchParams.get('repo'));
     if (body === undefined) {
       res.statusCode = 404;
       res.end('not found');

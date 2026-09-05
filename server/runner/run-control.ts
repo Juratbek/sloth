@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
+import { label } from '../repos';
+import type { IssueRef } from '../repo-types';
 import { moveCard, reviewVerdict } from './board';
 import { cleanup, cleanupRun, keepWarm } from './cleanup';
 import type { HoursEnding } from '../hours-types';
@@ -13,8 +15,8 @@ import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
 import { MARKERS, markerFiles, statePath } from './markers';
 import { helpMentions, notify } from './notify';
 import { forgetPause, pausedSeconds, resumeRun } from './pressure';
-import { dirAlive, dirOf, issueDir, launchedAt, pidAlive, pidOf, predatesBoot, runDirs, stateOf } from './session-dirs';
-import type { Kind } from './session-dirs';
+import { dirAlive, dirOf, issueDir, issueOfRun, launchedAt, pidAlive, pidOf, predatesBoot, runDirs, runName, stateOf } from './session-dirs';
+import type { RunRef } from './session-dirs';
 import { ANSWER_MINUTES, answeredAt, forgetWaiting, trackWaiting, waitedSeconds } from './waiting';
 
 /**
@@ -37,15 +39,15 @@ export const pausedUntil = () => readNumber(statePath('paused_until'));
  * how each run ended (`exits.ts`), so the human learns why without opening the logs; the record is
  * forgotten once it is posted.
  */
-export async function park(issue: number, reason: string, details = ''): Promise<void> {
+export async function park(issue: IssueRef, reason: string, details = ''): Promise<void> {
   const c = cfg();
   const cc = helpMentions();
   const body = `${c.botPrefix} ${reason} A developer needs to look at it: answer in this thread and Sloth continues, or move the card back to **${c.statusField.columns.pickup.name}** to start over.${details ? `\n\n${details}` : ''}${cc ? `\n\ncc ${cc}` : ''}`;
   if (isDry()) {
-    log(`dry-run: would park #${issue} — ${reason}`);
+    log(`dry-run: would park ${label(issue)} — ${reason}`);
     return;
   }
-  await comment(c.repo, issue, body);
+  await comment(issue.repo, issue.number, body);
   const option = c.statusField.columns.needsHelp.id;
   // A move GitHub refused leaves the card in In Progress with its count cleared, where trigger 2 picks
   // it straight back up and parks it again `maxRetries` later — the same comment over and over, and
@@ -54,11 +56,11 @@ export async function park(issue: number, reason: string, details = ''): Promise
   // the marker goes with the next `launch`.
   if (!option || !(await moveCard(issue, option))) {
     write(path.join(issueDir(issue), 'blocked'), '1');
-    log(`#${issue} parked in place (${option ? 'the card could not be moved' : 'no needs-help column configured'})`);
+    log(`${label(issue)} parked in place (${option ? 'the card could not be moved' : 'no needs-help column configured'})`);
   }
   remove(path.join(issueDir(issue), 'retries'));
   forgetExits(issueDir(issue));
-  await notify('stopped', { issue, text: `Sloth stopped work on #${issue}: ${reason}` });
+  await notify('stopped', { issue, text: `Sloth stopped work on ${label(issue)}: ${reason}` });
 }
 
 /**
@@ -71,13 +73,14 @@ export async function park(issue: number, reason: string, details = ''): Promise
  * too: cleaned up and marked done, so it leaves the needs-help list; its card stays where it is, and an
  * answer on the issue starts a new run as before. Returns false when there was nothing to end.
  */
-export async function stop(kind: Kind, target: number, reason: string, why: string): Promise<boolean> {
-  const dir = dirOf(kind, target);
+export async function stop(r: RunRef, reason: string, why: string): Promise<boolean> {
+  const dir = dirOf(r);
   const pid = pidOf(dir);
-  const name = `${kind}-${target}`;
+  const name = runName(r);
+  const issue: IssueRef = { repo: r.repo, number: r.target };
   if (!pidAlive(pid)) {
     const state = stateOf(dir);
-    if (kind !== 'issue' || state.state !== 'waiting') return false;
+    if (r.kind !== 'issue' || state.state !== 'waiting') return false;
     if (isDry()) {
       log(`dry-run: would end parked ${name}: ${reason}`);
       return true;
@@ -85,14 +88,14 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
     // A pid file still here means `reap` has not booked this run yet — it stopped to ask, and is billed as
     // such. Reap takes the file with the booking, so a run it already booked is not booked a second time.
     if (fs.existsSync(path.join(dir, 'pid'))) {
-      bookRun(kind, target, dir, 'waiting');
+      bookRun(r, dir, 'waiting');
       remove(path.join(dir, 'pid'));
       forgetPause(dir);
       forgetWaiting(dir);
     }
-    await cleanup(target);
+    await cleanup(issue);
     write(path.join(dir, 'state.json'), JSON.stringify({ ...state, state: 'done', since: nowSec(), note: `parked run ended: ${reason}` }));
-    log(`#${target} parked run ended: ${reason}`);
+    log(`${label(issue)} parked run ended: ${reason}`);
     return true;
   }
   if (isDry()) {
@@ -100,37 +103,37 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
     return true;
   }
   // What the run was doing when it was killed is all the human will get: it never prints a final report.
-  if (kind === 'issue') recordExit(dir, `stopped by Sloth: ${reason}`);
+  if (r.kind === 'issue') recordExit(dir, `stopped by Sloth: ${reason}`);
   // A killed run's hours are not billed, whoever killed it: the budget is Sloth's own failing, and a stop
   // from the monitor is the human's call. Booked while `pid` and the pause files are still there.
-  bookRun(kind, target, dir, reason === BUDGET_REASON ? 'budget' : 'stopped');
+  bookRun(r, dir, reason === BUDGET_REASON ? 'budget' : 'stopped');
   // A run paused for the machine's sake is stopped cold: it has to be woken to act on the signal.
   resumeRun(dir);
   // Detached, so the run leads its own group — and on Windows a tree `taskkill` walks (`kill.ts`): either
   // way its subagents, servers and browser go with it.
   await killTree(pid!);
   remove(path.join(dir, 'pid'));
-  if (kind === 'qa' || kind === 'smoke') {
+  if (r.kind === 'qa' || r.kind === 'smoke') {
     // Its app and worktree are its own; the card stays in QA and the head keeps its marker, like a stopped
     // review — except a budget kill, where `reap` drops the marker so the sweep tests the card again.
     // A killed run's database may hold a mutation it never finished: the stack warms the slot tainted,
     // so the next test of the card reseeds instead of trusting it. A smoke test has no card and no
     // marker: stopped, it is over, and the next scheduled one runs when it is due.
-    await cleanupRun(kind, target, true);
-    log(`${kind === 'qa' ? `QA #${target}` : `smoke test ${target}`} stopped: ${reason}`);
+    await cleanupRun(r, true);
+    log(`${r.kind === 'qa' ? `QA ${label(issue)}` : `smoke test ${r.target}`} stopped: ${reason}`);
     return true;
   }
-  if (kind !== 'issue') {
-    log(`review PR #${target} stopped: ${reason}`);
+  if (r.kind !== 'issue') {
+    log(`review PR #${r.target} stopped: ${reason}`);
     // The issue the PR is wired to, written beside the run by `launchApproved`; an older run has none.
-    const issue = readNumber(path.join(dir, 'issue'));
-    if (issue) await park(issue, `the review of PR #${target} was stopped: ${reason}.`);
-    else log(`review PR #${target}: no issue recorded beside the run — its card is left where it is`);
+    const wired = issueOfRun(r, dir);
+    if (wired) await park(wired, `the review of PR #${r.target} was stopped: ${reason}.`);
+    else log(`review PR #${r.target}: no issue recorded beside the run — its card is left where it is`);
     return true;
   }
-  await cleanup(target, true);
-  log(`#${target} stopped: ${reason}`);
-  await park(target, why, exitReport(dir));
+  await cleanup(issue, true);
+  log(`${label(issue)} stopped: ${reason}`);
+  await park(issue, why, exitReport(dir));
   return true;
 }
 
@@ -141,15 +144,15 @@ export async function stop(kind: Kind, target: number, reason: string, why: stri
  * that ended with `preview.json` written is not swept — that app was handed over on purpose, and
  * `previews` tunnels it or, with previews off, cleans it up itself.
  */
-async function sweepDead(kind: Kind, target: number): Promise<void> {
-  if (kind === 'qa' || kind === 'smoke') {
-    await cleanupRun(kind, target);
+async function sweepDead(r: RunRef): Promise<void> {
+  if (r.kind === 'qa' || r.kind === 'smoke') {
+    await cleanupRun(r);
     return;
   }
-  if (kind !== 'issue') return;
-  const dir = issueDir(target);
+  if (r.kind !== 'issue') return;
+  const dir = dirOf(r);
   if (fs.existsSync(path.join(dir, 'preview.json')) || fs.existsSync(path.join(dir, 'preview-state.json'))) return;
-  await cleanup(target);
+  await cleanup({ repo: r.repo, number: r.target });
 }
 
 /**
@@ -160,15 +163,21 @@ async function sweepDead(kind: Kind, target: number): Promise<void> {
  * took the label and the card back and reviewed the same commit again — six passes in half an hour on one
  * PR, then a park for "no verdict". The PR is the record that cannot be skipped, so it is asked first.
  */
-async function verdictPosted(kind: Kind, target: number, dir: string): Promise<boolean> {
-  if (kind !== 'approved') return false;
+async function verdictPosted(r: RunRef, dir: string): Promise<boolean> {
+  if (r.kind !== 'approved') return false;
   const sha = (readFile(path.join(dir, 'sha')) ?? '').trim();
   if (!sha) return false;
-  const verdict = await reviewVerdict(target, sha);
+  const verdict = await reviewVerdict({ repo: r.repo, number: r.target }, sha);
   if (!verdict) return false;
-  log(`review PR #${target} ended without marking itself done, but its verdict (${verdict}) is on the PR — head ${sha.slice(0, 7)} stays reviewed`);
+  log(`review PR #${r.target} ended without marking itself done, but its verdict (${verdict}) is on the PR — head ${sha.slice(0, 7)} stays reviewed`);
   return true;
 }
+
+/** The head markers of a run that ended without a verdict go, so the head is looked at again. */
+const dropMarkers = (r: RunRef): void => {
+  if (r.kind === 'issue') return;
+  for (const f of markerFiles(r.kind, { repo: r.repo, number: r.target })) remove(statePath(MARKERS[r.kind], f));
+};
 
 /**
  * Forgets dead sessions, notices usage-limit exits, kills and cleans up hung ones. An issue run that died
@@ -182,10 +191,10 @@ async function verdictPosted(kind: Kind, target: number, dir: string): Promise<b
  * the sweep gives the card up once they run out, instead of stranding it in QA with a head it never tested.
  */
 export async function reap(): Promise<void> {
-  for (const { kind, target, dir } of runDirs()) {
+  for (const r of runDirs()) {
+    const { kind, target, dir, name } = r;
     const pidFile = path.join(dir, 'pid');
     if (!fs.existsSync(pidFile)) continue;
-    const name = `${kind}-${target}`;
     if (!dirAlive(dir)) {
       const limit = usageLimit(dir);
       const { state, step } = stateOf(dir);
@@ -194,9 +203,9 @@ export async function reap(): Promise<void> {
       // Only the two states the skill defines count as finished: anything else a session wrote is a run
       // that ended working — never billed on a word nobody defined.
       const said = state === 'done' || state === 'waiting';
-      const finished = said || (!limit && (await verdictPosted(kind, target, dir)));
+      const finished = said || (!limit && (await verdictPosted(r, dir)));
       const ending: HoursEnding = limit ? 'usageLimit' : state === 'done' ? (step === 'Q' ? 'noResponse' : 'done') : state === 'waiting' ? 'waiting' : finished ? 'verdict' : predatesBoot(pidFile) ? 'rebooted' : 'died';
-      bookRun(kind, target, dir, ending);
+      bookRun(r, dir, ending);
       // A dry tick booked nothing, so it forgets nothing: the real tick after it books the run once.
       if (!isDry()) {
         remove(pidFile);
@@ -208,10 +217,10 @@ export async function reap(): Promise<void> {
           if (kind === 'issue') {
             log(`${name} ended without finishing — ${exitLine(recordExit(dir, 'the session ended on its own'))}`);
           } else {
-            for (const f of markerFiles(kind, target)) remove(statePath(MARKERS[kind], f));
+            dropMarkers(r);
             log(`${name} ended without a verdict — ${kind === 'qa' ? 'the card will be tested again' : kind === 'smoke' ? 'the next scheduled smoke test runs as planned' : 'the head will be reviewed again'}`);
           }
-          await sweepDead(kind, target);
+          await sweepDead(r);
           // A run that finished on its own terms left its stack running for its slot — under the
           // warm-slots contract the session no longer kills its servers, so it moves to the slot here.
         } else {
@@ -221,7 +230,7 @@ export async function reap(): Promise<void> {
           // to park the card saying the run "stopped without finishing 2 times in a row", with no exits to
           // show for it. Only `done` counts as finished: `waiting` is a run that stopped to ask.
           if (kind === 'issue' && stateOf(dir).state === 'done' && !isDry()) remove(path.join(dir, 'retries'));
-          await keepWarm(kind, target);
+          await keepWarm(r);
         }
         continue;
       }
@@ -229,26 +238,26 @@ export async function reap(): Promise<void> {
       log(`${name} stopped on a usage limit (${limit}) — pausing ${LIMIT_PAUSE / 60} min, card untouched`);
       if (!isDry()) write(statePath('paused_until'), String(nowSec() + LIMIT_PAUSE));
       await notify('usageLimit', {
-        issue: kind === 'issue' ? target : undefined,
+        issue: kind === 'issue' ? { repo: r.repo, number: target } : undefined,
         text: `${name} stopped on a Claude usage limit — Sloth waits ${LIMIT_PAUSE / 60} minutes, the card keeps its place`,
       });
-      if (kind !== 'issue') for (const f of markerFiles(kind, target)) remove(statePath(MARKERS[kind], f));
-      await sweepDead(kind, target);
+      dropMarkers(r);
+      await sweepDead(r);
       continue;
     }
     // An issue run's card is the board's word on whether it is parked; a review or QA run never parks.
-    trackWaiting(dir, kind === 'issue' ? target : undefined);
+    trackWaiting(dir, kind === 'issue' ? { repo: r.repo, number: target } : undefined);
     const budget = budgetOf(kind) * 60;
     // The time a run spent paused for the machine, or parked waiting for an answer, is not its own: the
     // budget clock stands still meanwhile. And a run that got its answer keeps the skill's promise — the
     // session gives itself `max(remaining, 30 min)` then, so the server allows no less.
     const deadline = Math.max(launchedAt(dir) + pausedSeconds(dir) + waitedSeconds(dir) + budget, answeredAt(dir) + ANSWER_MINUTES * 60);
     if ((stateOf(dir).state ?? 'working') !== 'working' || nowSec() <= deadline + KILL_GRACE) continue;
-    const stopped = await stop(kind, target, BUDGET_REASON, 'the run for this issue hung past its time budget and was stopped by Sloth.');
+    const stopped = await stop(r, BUDGET_REASON, 'the run for this issue hung past its time budget and was stopped by Sloth.');
     // A hang is not a verdict: the head's marker goes so the sweep tests the card again, `retries` allowing.
     if (stopped && kind === 'qa' && !isDry()) {
-      for (const f of markerFiles(kind, target)) remove(statePath(MARKERS.qa, f));
-      log(`QA #${target} will be tested again`);
+      dropMarkers(r);
+      log(`QA ${label({ repo: r.repo, number: target })} will be tested again`);
     }
   }
 }

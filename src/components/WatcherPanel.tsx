@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type { BlockedCard, Overview } from '../../server/types';
-import { duration } from '../lib/format';
+import { duration, issueLabel } from '../lib/format';
 import useFollowBottom from '../hooks/use-follow-bottom';
 import useQaRun from '../hooks/use-qa-run';
 import useSmokeRun from '../hooks/use-smoke-run';
@@ -49,29 +49,29 @@ function SmokeTest({ everyDays, at, branch }: { everyDays: number; at: string; b
  * The cards Sloth has given up on — the one state it will not leave on its own. Each row says why and
  * carries the button that hands the card back to the sweep; "sweep now" beside the log tests it at once.
  */
-function Blocked({ cards, repo }: { cards: BlockedCard[]; repo: string }) {
+function Blocked({ cards, repo, several }: { cards: BlockedCard[]; repo: string; several: boolean }) {
   const unblock = useUnblock();
   return (
     <section className="shrink-0 space-y-1">
       <h3 className="text-[10px] font-semibold tracking-wide text-zinc-400 uppercase">blocked ({cards.length})</h3>
       <ul className="space-y-1">
         {cards.map((b) => (
-          <li key={b.issue} className="flex items-baseline gap-2 rounded border border-red-900 bg-red-950/30 px-1.5 py-1 text-[11px]">
+          <li key={`${b.repo}#${b.issue}`} className="flex items-baseline gap-2 rounded border border-red-900 bg-red-950/30 px-1.5 py-1 text-[11px]">
             <a
-              href={`https://github.com/${repo}/issues/${b.issue}`}
+              href={`https://github.com/${b.repo || repo}/issues/${b.issue}`}
               target="_blank"
               rel="noreferrer"
               className="shrink-0 tabular-nums text-red-300 hover:underline"
               title={b.title}
             >
-              #{b.issue}
+              {issueLabel(b.repo, b.issue, several)}
             </a>
             <span className="min-w-0 flex-1 truncate text-zinc-400" title={b.reason}>
               {b.reason}
             </span>
             <span className="shrink-0 tabular-nums text-zinc-500">{duration(Date.now() / 1000 - b.at)}</span>
             <button
-              onClick={() => unblock.mutate(b.issue)}
+              onClick={() => unblock.mutate({ repo: b.repo || repo, number: b.issue })}
               disabled={unblock.isPending}
               className="shrink-0 text-sky-400 hover:underline disabled:text-zinc-600"
               title="Forget the block and the heads already tested, so the next sweep tests this card again"
@@ -110,9 +110,9 @@ export default function WatcherPanel({ overview, onSelect }: { overview: Overvie
         </section>
       )}
 
-      {overview.blocked.length > 0 && <Blocked cards={overview.blocked} repo={config.repo} />}
+      {overview.blocked.length > 0 && <Blocked cards={overview.blocked} repo={config.repo} several={(config.repos?.length ?? 1) > 1} />}
 
-      <HoursPanel repo={config.repo} />
+      <HoursPanel repo={config.repo} several={(config.repos?.length ?? 1) > 1} />
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 md:flex-row">
         <IssuesTable issues={overview.issues} config={overview.config} />

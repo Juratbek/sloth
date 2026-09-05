@@ -9,7 +9,7 @@ import { useSaveConfig } from './use-setup';
 function payload(draft: Draft, existing: SlothConfig | null): ConfigPayload {
   return {
     ...(existing ?? {}),
-    repo: draft.repo,
+    repos: draft.repos,
     project: draft.project!,
     statusField: {
       id: draft.statusFieldId!,
@@ -23,7 +23,6 @@ function payload(draft: Draft, existing: SlothConfig | null): ConfigPayload {
         done: draft.done!,
       },
     },
-    runnerRoot: draft.runnerRoot,
     roles: { admin: draft.admin, developers: draft.developers, testers: draft.testers },
     maxActive: draft.maxActive,
     maxAlive: draft.maxAlive,
@@ -53,8 +52,8 @@ export default function StepDone({
   const columns = config.statusField.columns;
   const rows: [string, string][] = [
     ['Board', `${config.project.title} · ${boardLabel(config.project)}`],
-    ['Repository', config.repo],
-    ['Runner root', config.runnerRoot],
+    [config.repos.length > 1 ? 'Repositories' : 'Repository', config.repos.map((r) => r.slug).join(' · ')],
+    [config.repos.length > 1 ? 'Checkouts' : 'Checkout', config.repos.map((r) => r.root).join(' · ')],
     ['Watched column', columns.pickup.name],
     ['In Progress', columnLabel(columns.inProgress)],
     ['Needs help', columnLabel(columns.needsHelp)],

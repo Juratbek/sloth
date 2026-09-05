@@ -32,7 +32,7 @@ const SECTIONS: { key: Key; label: string; component: ComponentType<SectionProps
     label: 'Repository',
     component: RepositorySection,
     defaults: (c, home) => {
-      const { runnersDir, worktreesDir, sessionsDir, stateDir, watcherLog } = defaultDirs(c.repo.split('/')[1] ?? '', home);
+      const { runnersDir, worktreesDir, sessionsDir, stateDir, watcherLog } = defaultDirs(c.repos[0]?.slug.split('/')[1] ?? '', home);
       return { runnersDir, worktreesDir, sessionsDir, stateDir, watcherLog };
     },
   },

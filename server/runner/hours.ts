@@ -3,10 +3,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
 import { billable, type HoursEnding, type HoursEntry, type HoursKind } from '../hours-types';
+import { legacyRepo } from '../repos';
 import { isDry, log, nowSec, readFile, readNumber, write } from './log';
 import { statePath } from './markers';
 import { pausedSeconds } from './pressure';
-import { launchedAt, stateOf } from './session-dirs';
+import { issueOfRun, launchedAt, runName, stateOf, type RunRef } from './session-dirs';
 import { waitedSeconds } from './waiting';
 
 /**
@@ -95,9 +96,10 @@ export const runSeconds = (dir: string, until = nowSec()): number => Math.max(0,
 /** The minutes a run of this kind gets: the QA sweep and the smoke test have budgets of their own. */
 export const budgetOf = (kind: HoursKind): number => (kind === 'qa' ? cfg().qa.budgetMinutes : kind === 'smoke' ? cfg().smoke.budgetMinutes : cfg().budgetMinutes);
 
-/** The issue a run in `dir` works for: an implement or QA run is named after it, a review has it written beside it; a smoke test has none. */
-export const issueOfRun = (kind: HoursKind, target: number, dir: string): number | undefined =>
-  kind === 'issue' || kind === 'qa' ? target : readNumber(path.join(dir, 'issue')) || undefined;
+/** The repository a ledger line's run was in: what it says, or the legacy repository for a line from before there were several. */
+export const repoOfEntry = (e: Pick<HoursEntry, 'repo'>): string => e.repo ?? legacyRepo();
+/** The repository of the issue a ledger line worked for: its own, unless the line says otherwise. */
+export const issueRepoOfEntry = (e: Pick<HoursEntry, 'repo' | 'issueRepo'>): string => e.issueRepo ?? repoOfEntry(e);
 
 /** The last time the run wrote to its own log — it was alive at least until then, and not much after. */
 function lastWrote(dir: string): number {
@@ -133,8 +135,9 @@ function endedAt(dir: string, kind: HoursKind, ending: HoursEnding, startedAt: n
  * live beside it.
  * A dry tick books nothing: it forgets no pid either, so the real tick after it books the run once.
  */
-export function bookRun(kind: HoursKind, target: number, dir: string, ending: HoursEnding): HoursEntry | undefined {
-  const name = `${kind}-${target}`;
+export function bookRun(r: RunRef, dir: string, ending: HoursEnding): HoursEntry | undefined {
+  const { kind, target } = r;
+  const name = runName(r);
   if (isDry()) {
     log(`dry-run: would book ${name} in the hours ledger (${ending})`);
     return undefined;
@@ -144,11 +147,14 @@ export function bookRun(kind: HoursKind, target: number, dir: string, ending: Ho
   const paused = pausedSeconds(dir);
   const waited = waitedSeconds(dir, ended);
   const last = lastLine();
+  const wired = issueOfRun(r, dir);
   const entry: HoursEntry = {
     n: last.n + 1,
     kind,
     target,
-    issue: issueOfRun(kind, target, dir),
+    repo: r.repo,
+    issue: wired?.number,
+    ...(wired && wired.repo !== r.repo ? { issueRepo: wired.repo } : {}),
     sessionId: readFile(path.join(dir, 'session_id'))?.trim() || undefined,
     startedAt,
     endedAt: ended,

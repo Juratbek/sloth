@@ -10,6 +10,9 @@ export type { QaConfig, SmokeConfig } from './scheduled-types';
 export { BOARD_PROVIDERS, DEFAULT_COLUMN_NAMES, OPTIONAL_COLUMNS, OPT_IN_COLUMNS } from './board-config';
 export type { BoardProvider, ColumnRef, ColumnRole, ConfigColumns, ConfigProject } from './board-config';
 import type { ConfigColumns, ConfigProject } from './board-config';
+import type { RepoConfig } from './repo-types';
+export type { IssueRef, PrRef, RepoConfig } from './repo-types';
+export { REPO_RE, issueLabel, issueUrl, prUrl, repoKey, repoName, tagged, untag } from './repo-types';
 
 /** How trigger 8 merges a PR that passed the review; `''` leaves merging — and the test in Approved — to a human. */
 export type MergeMethod = '' | 'squash' | 'merge' | 'rebase';
@@ -67,12 +70,22 @@ export const AGENT_ROLES = Object.keys(DEFAULT_MODELS) as AgentRole[];
 
 export interface SlothConfig {
   version: 1;
-  repo: string;
+  /**
+   * The repositories Sloth works in, in the order they were picked. A card's issue names the one its
+   * work starts in; a Trello card, which names none, gets one chosen for it (`runner/repo-choice.ts`).
+   * Each has its checkout (`root`), cloned by Sloth itself when it is not there yet.
+   */
+  repos: RepoConfig[];
+  /**
+   * The repository whose session directories, markers and slot worktrees carry no repository tag
+   * (`repo-types.ts` `tagged`): the one an older, single-repository config named, else the first repository
+   * the picker saved. Kept once written — the files on disk were named under it.
+   */
+  legacyRepo: string;
   project: ConfigProject;
   /** The Status field the columns are options of; on Trello `id` is the board id again and the columns are its lists. */
   statusField: { id: string; columns: ConfigColumns };
-  /** The checkout the sessions run from; Sloth clones the repo here itself when the path is not one yet. */
-  runnerRoot: string;
+  /** Where a repository's checkout is cloned when its `root` is left to the default: `<runnersDir>/<name>`. */
   runnersDir: string;
   worktreesDir: string;
   sessionsDir: string;
@@ -253,11 +266,11 @@ export const CONFIG_DEFAULTS = {
 
 /**
  * Where an instance keeps its files: under its home — the directory its config file is in, `~/.sloth`
- * by default — and, for the per-repository ones, under the repository's name (the part after the slash).
+ * by default — and, for the worktrees and sessions, under the first repository's name (the part after
+ * the slash), as they always were. A repository's own checkout is `defaultRepoRoot` (`config-repos.ts`).
  */
 export const defaultDirs = (name: string, home = '~/.sloth') => ({
   runnersDir: `${home}/runners`,
-  runnerRoot: `${home}/runners/${name}`,
   worktreesDir: `${home}/worktrees/${name}`,
   sessionsDir: `${home}/sessions/${name}`,
   stateDir: `${home}/state`,

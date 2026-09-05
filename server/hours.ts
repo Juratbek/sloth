@@ -1,8 +1,9 @@
 import type { HoursEntry, HoursExcluded, HoursIssue, HoursLive, HoursMonth, HoursReport } from './hours-types';
-import { issueOfRun, readLedger, runSeconds } from './runner/hours';
+import { refKey, type IssueRef } from './repo-types';
+import { issueRepoOfEntry, readLedger, repoOfEntry, runSeconds } from './runner/hours';
 import { copyStatus } from './runner/hours-copy';
 import { nowSec } from './runner/log';
-import { dirAlive, runDirs } from './runner/session-dirs';
+import { dirAlive, issueOfRun, runDirs } from './runner/session-dirs';
 import { rateLimit, titleFor } from './watcher';
 
 /**
@@ -33,13 +34,17 @@ export const monthArg = (wanted: string | null | undefined): string => (wanted &
  * The failed entries a later billable run took up, by their line number. A start-over on the card is a
  * wall: nothing after it took up what came before, so the walk forward stops there.
  */
+/** The issue a line worked for, as a key: two repositories both have an issue 12, and their runs are not one card's. */
+const issueKeyOf = (e: HoursEntry): string | undefined => (e.issue ? refKey({ repo: issueRepoOfEntry(e), number: e.issue }) : undefined);
+
 function continuedLines(entries: HoursEntry[]): Set<number> {
   const out = new Set<number>();
   const window = CONTINUE_DAYS * 24 * 3600;
   for (const [i, e] of entries.entries()) {
-    if (e.billable || !e.issue) continue;
+    const key = issueKeyOf(e);
+    if (e.billable || !key) continue;
     for (const later of entries.slice(i + 1)) {
-      if (later.issue !== e.issue) continue;
+      if (issueKeyOf(later) !== key) continue;
       if (later.fresh || later.startedAt > e.endedAt + window) break;
       if (later.billable && later.startedAt >= e.endedAt) {
         out.add(e.n);
@@ -65,12 +70,13 @@ function months(entries: HoursEntry[], continued: Set<number>): HoursMonth[] {
   return [...out.values()].sort((a, b) => b.month.localeCompare(a.month));
 }
 
-/** The month's runs by issue, most billable hours first; a run with no issue is booked under 0. */
-function byIssue(entries: HoursEntry[], continued: Set<number>, titleOf: (issue: number) => string | undefined): HoursIssue[] {
-  const out = new Map<number, HoursIssue>();
+/** The month's runs by issue, most billable hours first; a run with no issue is booked under 0 in its own repository. */
+function byIssue(entries: HoursEntry[], continued: Set<number>, titleOf: (issue: IssueRef) => string | undefined): HoursIssue[] {
+  const out = new Map<string, HoursIssue>();
   for (const e of entries) {
-    const issue = e.issue ?? 0;
-    const row = out.get(issue) ?? { issue, title: issue ? titleOf(issue) : undefined, seconds: 0, runs: 0, byKind: {}, continuedSeconds: 0, excludedSeconds: 0, lastAt: 0 };
+    const ref: IssueRef = { repo: issueRepoOfEntry(e), number: e.issue ?? 0 };
+    const key = refKey(ref);
+    const row = out.get(key) ?? { repo: ref.repo, issue: ref.number, title: ref.number ? titleOf(ref) : undefined, seconds: 0, runs: 0, byKind: {}, continuedSeconds: 0, excludedSeconds: 0, lastAt: 0 };
     if (e.billable) {
       row.seconds += e.seconds;
       row.runs++;
@@ -78,7 +84,7 @@ function byIssue(entries: HoursEntry[], continued: Set<number>, titleOf: (issue:
     } else if (continued.has(e.n)) row.continuedSeconds += e.seconds;
     else row.excludedSeconds += e.seconds;
     row.lastAt = Math.max(row.lastAt, e.endedAt);
-    out.set(issue, row);
+    out.set(key, row);
   }
   return [...out.values()].sort((a, b) => b.seconds - a.seconds || b.continuedSeconds - a.continuedSeconds || b.lastAt - a.lastAt);
 }
@@ -86,7 +92,18 @@ function byIssue(entries: HoursEntry[], continued: Set<number>, titleOf: (issue:
 const failedOf = (entries: HoursEntry[], continued: Set<number>): HoursExcluded[] =>
   entries
     .filter((e) => !e.billable)
-    .map(({ n, kind, target, issue, seconds, ending, endedAt }) => ({ n, kind, target, issue, seconds, ending, endedAt, continued: continued.has(n) }))
+    .map((e) => ({
+      n: e.n,
+      kind: e.kind,
+      target: e.target,
+      repo: repoOfEntry(e),
+      issue: e.issue,
+      ...(e.issue && issueRepoOfEntry(e) !== repoOfEntry(e) ? { issueRepo: issueRepoOfEntry(e) } : {}),
+      seconds: e.seconds,
+      ending: e.ending,
+      endedAt: e.endedAt,
+      continued: continued.has(e.n),
+    }))
     .sort((a, b) => b.endedAt - a.endedAt);
 
 /** The runs alive right now and their seconds so far — booked when they end, shown meanwhile. */
@@ -94,7 +111,10 @@ function live(): HoursLive[] {
   const now = nowSec();
   return runDirs()
     .filter((d) => dirAlive(d.dir))
-    .map(({ kind, target, dir }) => ({ kind, target, issue: issueOfRun(kind, target, dir), seconds: runSeconds(dir, now) }))
+    .map((r) => {
+      const wired = issueOfRun(r, r.dir);
+      return { kind: r.kind, target: r.target, repo: r.repo, issue: wired?.number, ...(wired && wired.repo !== r.repo ? { issueRepo: wired.repo } : {}), seconds: runSeconds(r.dir, now) };
+    })
     .sort((a, b) => b.seconds - a.seconds);
 }
 
@@ -118,7 +138,7 @@ export async function hoursReport(wanted?: string | null): Promise<HoursReport> 
     continuedSeconds: sum(shown, isContinued),
     excludedSeconds: sum(shown, isExcluded),
     runs: shown.length,
-    issues: byIssue(shown, continued, (n) => titleFor(n, coreRemaining)),
+    issues: byIssue(shown, continued, (ref) => titleFor(ref, coreRemaining)),
     excluded: failedOf(shown, continued),
     live: alive,
     totalSeconds: sum(entries, isBillable),

@@ -13,6 +13,7 @@ afterEach(cleanup);
  */
 
 const card = (over: Partial<BoardCard> = {}): BoardCard => ({
+  repo: 'acme/widgets',
   issue: 42,
   title: 'Add a health check',
   assignees: [],

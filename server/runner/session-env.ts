@@ -3,16 +3,18 @@ import path from 'node:path';
 import { cfg } from '../config';
 import { EXTRA_DIRS } from '../install';
 import { providerEnv } from '../models';
+import { primaryRepo, repoRoot, repos } from '../repos';
 import { requiredStack } from '../stack-detect';
 import { ASSETS_BRANCH } from './browser';
 import { knownColumns } from './columns';
 import { nowSec } from './log';
 import { helpMentions } from './notify';
+import { slotWorktree } from './slots';
 
 /**
  * Everything a session learns about the world before it starts: the board and its columns, the team,
- * the models, the budget. The commands read these and never hard-code an id — `plugin/README.md` is the
- * contract. Split out of `spawn.ts`, which does the starting.
+ * the models, the budget, the repositories. The commands read these and never hard-code an id —
+ * `plugin/README.md` is the contract. Split out of `spawn.ts`, which does the starting.
  */
 
 export const APPEND_PROMPT =
@@ -22,7 +24,11 @@ export const APPEND_PROMPT =
 const PATH_EXTRA = [...EXTRA_DIRS, path.join(os.homedir(), '.local/bin')];
 
 export interface Target {
+  /** The repository the session works in — the issue's, or the PR's for a review; the first one when it has neither. */
+  repo?: string;
   issue?: number;
+  /** The issue's own repository when it differs from `repo` — a review of a PR that closes an issue elsewhere. */
+  issueRepo?: string;
   pr?: number;
   /** A status reply to a comment on a line of the PR's diff: the answer goes into that review thread. */
   reviewComment?: number;
@@ -31,7 +37,7 @@ export interface Target {
 /** What differs between the kinds of run: the budget, and the worktree slot the run leased (a review has none). */
 export interface SessionExtras {
   budgetMinutes?: number;
-  /** The run's worktree under `worktreesDir` — the slot `leaseSlot` gave it. */
+  /** The slot `leaseSlot` gave the run — `slot-<n>`; its worktree is the one of the run's repository in it. */
   worktree?: string;
   /** The slot's warm stack was inherited (`warm.ts`): servers and database are already up. */
   warm?: boolean;
@@ -41,12 +47,16 @@ export interface SessionExtras {
   smoke?: { run: number; branch: string; sha: string };
 }
 
+/** What a session is told about every repository: where its checkout is and where its worktree in this slot goes. */
+const reposEnv = (slot: string) => JSON.stringify(repos().map((r) => ({ slug: r.slug, note: r.note, root: r.root, ...(slot ? { worktree: slotWorktree(slot, r.slug) } : {}) })));
+
 export function sessionEnv(dir: string, target: Target, model: string, chrome: boolean, extras: SessionExtras = {}): NodeJS.ProcessEnv {
   const c = cfg();
   const col = c.statusField.columns;
   const start = nowSec();
   const budget = extras.budgetMinutes ?? c.budgetMinutes;
-  const worktree = extras.worktree ?? '';
+  const slot = extras.worktree ?? '';
+  const repo = target.repo || primaryRepo();
   return {
     ...process.env,
     PATH: [...new Set([...(process.env.PATH ?? '').split(path.delimiter), ...PATH_EXTRA])].filter(Boolean).join(path.delimiter),
@@ -54,7 +64,7 @@ export function sessionEnv(dir: string, target: Target, model: string, chrome: b
     // for Anthropic's own this is empty and the session keeps the machine's Claude Code credentials.
     ...providerEnv(model, process.env),
     SLOTH_SESSION_DIR: dir,
-    ...(worktree ? { SLOTH_WORKTREE: path.join(c.worktreesDir, worktree) } : {}),
+    ...(slot ? { SLOTH_WORKTREE: slotWorktree(slot, repo), SLOTH_SLOT: slot } : {}),
     // The warm-slot contract (`warm.ts`): `SLOTH_WARM_SLOTS` tells the session whether to leave its
     // stack running at teardown, the other two what it inherited and how much of the boot to skip.
     SLOTH_WARM_SLOTS: c.warmSlots ? '1' : '0',
@@ -65,7 +75,9 @@ export function sessionEnv(dir: string, target: Target, model: string, chrome: b
     ...(target.issue ? { SLOTH_ISSUE: String(target.issue) } : {}),
     ...(target.pr ? { SLOTH_PR: String(target.pr) } : {}),
     ...(target.reviewComment ? { SLOTH_REVIEW_COMMENT: String(target.reviewComment) } : {}),
-    SLOTH_REPO: c.repo,
+    SLOTH_REPO: repo,
+    SLOTH_ISSUE_REPO: target.issueRepo ?? repo,
+    SLOTH_REPOS: reposEnv(slot),
     // Which kind of board, and the local API a session reads and moves cards through on one that is not GitHub's (`board-api.ts`).
     SLOTH_BOARD: c.project.provider,
     SLOTH_BOARD_API: `http://127.0.0.1:${c.port}/api/board`,
@@ -92,7 +104,7 @@ export function sessionEnv(dir: string, target: Target, model: string, chrome: b
     SLOTH_SMOKE_BRANCH: extras.smoke?.branch ?? c.smoke.branch,
     ...(extras.smoke ? { SLOTH_SMOKE_RUN: String(extras.smoke.run), SLOTH_SMOKE_SHA: extras.smoke.sha } : {}),
     SLOTH_COLUMNS: JSON.stringify(knownColumns()),
-    SLOTH_RUNNER_ROOT: c.runnerRoot,
+    SLOTH_RUNNER_ROOT: repoRoot(repo),
     SLOTH_WORKTREES_DIR: c.worktreesDir,
     SLOTH_ADMIN_LOGIN: c.roles.admin,
     SLOTH_DEVELOPER_LOGINS: c.roles.developers.join(' '),
@@ -106,7 +118,7 @@ export function sessionEnv(dir: string, target: Target, model: string, chrome: b
     SLOTH_E2E: c.e2e ? '1' : '0',
     SLOTH_E2E_MODEL: c.models.e2e,
     SLOTH_PREVIEW_HOURS: String(c.previewHours),
-    SLOTH_STACK: requiredStack().join(' '),
+    SLOTH_STACK: requiredStack(c.stack, repoRoot(repo)).join(' '),
     SLOTH_START: String(start),
     SLOTH_DEADLINE: String(start + budget * 60),
     SLOTH_BUDGET_MIN: String(budget),

@@ -1,5 +1,6 @@
 import { cfg } from '../config';
 import { remoteStatus } from '../remote';
+import type { IssueRef } from '../repo-types';
 import { comment } from './gh';
 
 /** What the run is called on the issue: the command it runs, not the directory it books in. */
@@ -17,10 +18,10 @@ const nameOf = (prompt: string) => NAMES[/^\/sloth:(\w+)/.exec(prompt)?.[1] ?? '
  * Trigger 6 reads any Sloth comment as "the answer was taken": this one lands after the relaunch the
  * answer caused, so it changes nothing for a parked card — the next question is a newer Sloth comment.
  */
-export async function announce(issue: number, sessionId: string, prompt: string, model: string): Promise<void> {
+export async function announce(issue: IssueRef, sessionId: string, prompt: string, model: string): Promise<void> {
   const c = cfg();
   if (!c.liveLinks) return;
   const url = remoteStatus().url;
   if (!url) return;
-  await comment(c.repo, issue, `${c.botPrefix} ${nameOf(prompt)} session started on \`${model}\` — follow it live: ${url}/sessions/${sessionId}`);
+  await comment(issue.repo, issue.number, `${c.botPrefix} ${nameOf(prompt)} session started on \`${model}\` — follow it live: ${url}/sessions/${sessionId}`);
 }

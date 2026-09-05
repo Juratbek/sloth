@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { cfg } from './config';
+import { transcriptsDirs } from './repos';
 
 // One SSE stream: "change" whenever any watched file changes (debounced).
 const clients = new Set<ServerResponse>();
@@ -37,9 +38,9 @@ export function broadcast() {
 export function watchAll() {
   for (const w of watchers) w.close();
   watchers = [];
-  const { transcriptsDir, sessionsDir, stateDir, watcherLog } = cfg();
+  const { sessionsDir, stateDir, watcherLog } = cfg();
   const targets: [string, fs.WatchOptions][] = [
-    [transcriptsDir, { recursive: true }],
+    ...transcriptsDirs().map((dir): [string, fs.WatchOptions] => [dir, { recursive: true }]),
     [sessionsDir, { recursive: true }],
     [stateDir, { recursive: true }],
     [watcherLog, {}],

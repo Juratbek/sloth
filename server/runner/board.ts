@@ -1,5 +1,7 @@
 import { skipped } from '../board-types';
 import { cfg } from '../config';
+import { canonicalRepo, label } from '../repos';
+import type { IssueRef, PrRef } from '../repo-types';
 import { fetchTrelloBoard, moveTrelloCard } from './board-trello';
 import { gh, graphql } from './gh';
 import { isDry, log } from './log';
@@ -9,12 +11,12 @@ import { isDry, log } from './log';
  * (below — the Status field's options are the columns) or a Trello board (`board-trello.ts` — its lists
  * are). `cfg().project.provider` says which; every trigger sees the same `BoardItem`s and moves a card the
  * same way. What is *not* the board's — the PRs wired to an issue, a review's verdict — is GitHub's on
- * either, and stays below.
+ * either, and stays below. A card is an issue in one of the configured repositories; a Projects board may
+ * hold issues of others too, and those are not Sloth's — left out, and said once.
  */
 const onTrello = () => cfg().project.provider === 'trello';
 
-export interface BoardItem {
-  number: number;
+export interface BoardItem extends IssueRef {
   title: string;
   status: string;
   labels: string[];
@@ -37,20 +39,35 @@ const boardQuery = (priority: string) => `query($id: ID!, $cursor: String${prior
     nodes {
       fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
       ${priority ? PRIORITY_VALUE : ''}
-      content { __typename ... on Issue { number title state labels(first: 20) { nodes { name } }
+      content { __typename ... on Issue { number title state repository { nameWithOwner } labels(first: 20) { nodes { name } }
         assignees(first: 10) { nodes { login } } } }
     } } } } }`;
 
 interface RawNode {
   fieldValueByName?: { name?: string };
   priority?: { optionId?: string; field?: { options?: { id: string }[] } };
-  content?: { __typename?: string; number?: number; title?: string; state?: string; labels?: { nodes: { name: string }[] }; assignees?: { nodes: { login: string }[] } };
+  content?: { __typename?: string; number?: number; title?: string; state?: string; repository?: { nameWithOwner?: string }; labels?: { nodes: { name: string }[] }; assignees?: { nodes: { login: string }[] } };
 }
 
 /** A card's rank: the index of its option in the field, so the field's own order is the order work is taken in. */
 function rankOf(n: RawNode): number | undefined {
   const at = (n.priority?.field?.options ?? []).findIndex((o) => o.id === n.priority?.optionId);
   return n.priority?.optionId && at >= 0 ? at : undefined;
+}
+
+/** The repositories a board card was found in that Sloth is not configured for — said once each. */
+const foreign = new Set<string>();
+
+/** A card of a repository Sloth does not work in is not a card of Sloth's; a board read from before the field names none. */
+function mine(n: RawNode): string | undefined {
+  const repo = n.content?.repository?.nameWithOwner ?? cfg().repos[0]?.slug ?? '';
+  const mine = canonicalRepo(repo);
+  if (mine) return mine;
+  if (!foreign.has(repo)) {
+    foreign.add(repo);
+    log(`board: cards of ${repo || 'an unknown repository'} are left alone — it is not one of Sloth's repositories`);
+  }
+  return undefined;
 }
 
 /** Every issue card on the board, in board order; `undefined` when the board could not be read. */
@@ -70,7 +87,10 @@ async function fetchGithubBoard(): Promise<BoardItem[] | undefined> {
       const page = (await graphql(boardQuery(field), vars)).node?.items;
       for (const n of (page?.nodes ?? []) as RawNode[]) {
         if (n.content?.__typename !== 'Issue' || !n.content.number) continue;
+        const repo = mine(n);
+        if (!repo) continue;
         items.push({
+          repo,
           number: n.content.number,
           title: n.content.title ?? '',
           status: n.fieldValueByName?.name ?? '',
@@ -91,45 +111,41 @@ async function fetchGithubBoard(): Promise<BoardItem[] | undefined> {
 }
 
 /** Cards in one column that no human has held back — the `Sloth: skip` label means a person owns the card. */
-export const freeIn = (board: BoardItem[], column: string): number[] =>
-  board.filter((i) => i.status === column && !skipped(i)).map((i) => i.number);
+export const freeIn = (board: BoardItem[], column: string): BoardItem[] => board.filter((i) => i.status === column && !skipped(i));
 
 /**
  * The same cards, in the order work should be taken in: the board's priority field first — its options
  * top to bottom — and everything unprioritised after them, each group still in board order (`sort` is
  * stable). With no `priorityField` configured no card has a rank and this is plain board order.
  */
-export const pickupOrder = (board: BoardItem[], column: string): number[] =>
-  board
-    .filter((i) => i.status === column && !skipped(i))
-    .sort((a, b) => (a.priority ?? Infinity) - (b.priority ?? Infinity))
-    .map((i) => i.number);
+export const pickupOrder = (board: BoardItem[], column: string): BoardItem[] =>
+  board.filter((i) => i.status === column && !skipped(i)).sort((a, b) => (a.priority ?? Infinity) - (b.priority ?? Infinity));
 
 /** Moves an issue's card to a column — a Status option, or a Trello list — adding it to a Projects board first if it is not on it. */
-export async function moveCard(issue: number, optionId: string): Promise<boolean> {
+export async function moveCard(issue: IssueRef, optionId: string): Promise<boolean> {
   const c = cfg();
   if (!optionId) {
-    log(`#${issue} move skipped: empty option id`);
+    log(`${label(issue)} move skipped: empty option id`);
     return false;
   }
   if (onTrello()) return moveTrelloCard(issue, optionId);
   if (isDry()) {
-    log(`dry-run: would move #${issue} to ${optionId}`);
+    log(`dry-run: would move ${label(issue)} to ${optionId}`);
     return true;
   }
   const add = await gh([
     'project', 'item-add', String(c.project.number), '--owner', c.project.owner,
-    '--url', `https://github.com/${c.repo}/issues/${issue}`, '--format', 'json', '--jq', '.id',
+    '--url', `https://github.com/${issue.repo}/issues/${issue.number}`, '--format', 'json', '--jq', '.id',
   ]);
   if (!add.ok) {
-    log(`#${issue} move failed (item-add): ${add.err.split('\n')[0]}`);
+    log(`${label(issue)} move failed (item-add): ${add.err.split('\n')[0]}`);
     return false;
   }
   const edit = await gh([
     'project', 'item-edit', '--id', add.out, '--project-id', c.project.id,
     '--field-id', c.statusField.id, '--single-select-option-id', optionId,
   ]);
-  if (!edit.ok) log(`#${issue} move failed (item-edit): ${edit.err.split('\n')[0]}`);
+  if (!edit.ok) log(`${label(issue)} move failed (item-edit): ${edit.err.split('\n')[0]}`);
   return edit.ok;
 }
 
@@ -137,8 +153,9 @@ export type PrState = 'OPEN' | 'MERGED' | 'CLOSED';
 /** The PR head's combined check status: `NONE` when the repository runs no checks. */
 export type Checks = 'SUCCESS' | 'PENDING' | 'FAILURE' | 'NONE';
 export interface WiredPr {
-  issue: number;
-  pr: number;
+  issue: IssueRef;
+  /** The PR, in its own repository — the issue's, or another of Sloth's when the work spans two. */
+  pr: PrRef;
   sha: string;
   /** The head branch — `sloth/issue-<n>-…` marks a PR Sloth wrote itself. */
   head: string;
@@ -207,7 +224,7 @@ interface ReviewNode {
 const REVIEW_FIELDS = 'reviews(last: 30) { nodes { body commit { oid } } }';
 const ROLLUP_FIELDS = `statusCheckRollup { state contexts(first: 100) { nodes {
   ... on StatusContext { state description } ... on CheckRun { conclusion } } } }`;
-const PR_FIELDS = `number state isDraft headRefOid headRefName baseRefName mergeable commits(last: 1) { nodes { commit { ${ROLLUP_FIELDS} } } } ${REVIEW_FIELDS}`;
+const PR_FIELDS = `number state isDraft headRefOid headRefName baseRefName mergeable repository { nameWithOwner } commits(last: 1) { nodes { commit { ${ROLLUP_FIELDS} } } } ${REVIEW_FIELDS}`;
 
 /**
  * The verdict `/sloth:review … final` posted on a PR for the head `sha`, read off the PR itself: the
@@ -229,46 +246,50 @@ export function verdictOf(reviews: ReviewNode[] | undefined, sha: string): Verdi
 }
 
 /** `verdictOf` for one PR, for a caller that has no board read in hand — `reap`, judging a review that just ended. */
-export async function reviewVerdict(pr: number, sha: string): Promise<Verdict | undefined> {
-  const [owner, name] = cfg().repo.split('/');
+export async function reviewVerdict(pr: PrRef, sha: string): Promise<Verdict | undefined> {
+  const [owner, name] = pr.repo.split('/');
   try {
-    const data = await graphql(`{ repository(owner: "${owner}", name: "${name}") { pullRequest(number: ${pr}) { ${REVIEW_FIELDS} } } }`);
+    const data = await graphql(`{ repository(owner: "${owner}", name: "${name}") { pullRequest(number: ${pr.number}) { ${REVIEW_FIELDS} } } }`);
     return verdictOf(data.repository?.pullRequest?.reviews?.nodes, sha);
   } catch (e) {
-    log(`PR #${pr} review lookup failed: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
+    log(`PR #${pr.number} review lookup failed: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
     return undefined;
   }
 }
 
 /**
- * The PRs wired to these issues — one aliased query for all of them; open ones by default, drafts included.
- * A GitHub approval on the PR changes nothing, and neither does the draft flag: the column a card sits in is
- * the signal, never the PR's own state.
+ * The PRs wired to these issues — one aliased query per repository for all of its issues; open ones by
+ * default, drafts included. A GitHub approval on the PR changes nothing, and neither does the draft flag:
+ * the column a card sits in is the signal, never the PR's own state. A PR in another repository that
+ * closes the issue (`Closes owner/name#12`) is wired like one in its own.
  */
-export async function wiredPrs(issues: number[], { states = ['OPEN'] }: WiredOptions = {}): Promise<WiredPr[]> {
-  if (!issues.length) return [];
-  const [owner, name] = cfg().repo.split('/');
-  const parts = issues.map((n) => `i${n}: issue(number: ${n}) { closedByPullRequestsReferences(first: 5) { nodes { ${PR_FIELDS} } } }`).join(' ');
-  try {
-    const data = await graphql(`{ repository(owner: "${owner}", name: "${name}") { ${parts} } }`);
-    return Object.entries(data.repository ?? {}).flatMap(([key, value]: [string, any]) =>
-      ((value?.closedByPullRequestsReferences?.nodes ?? []) as any[])
-        .filter((p) => states.includes(p.state))
-        .map((p) => ({
-          issue: Number(key.slice(1)),
-          pr: p.number as number,
-          sha: p.headRefOid as string,
-          head: String(p.headRefName ?? ''),
-          base: String(p.baseRefName ?? ''),
-          state: p.state as PrState,
-          draft: !!p.isDraft,
-          checks: checksOf(p.commits?.nodes?.[0]?.commit?.statusCheckRollup),
-          mergeable: p.mergeable === 'MERGEABLE' || p.mergeable === 'CONFLICTING' ? p.mergeable : 'UNKNOWN',
-          verdict: verdictOf(p.reviews?.nodes, p.headRefOid),
-        })),
-    );
-  } catch (e) {
-    log(`wired PR lookup failed: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
-    return [];
+export async function wiredPrs(issues: IssueRef[], { states = ['OPEN'] }: WiredOptions = {}): Promise<WiredPr[]> {
+  const out: WiredPr[] = [];
+  for (const repo of [...new Set(issues.map((i) => i.repo))]) {
+    const numbers = [...new Set(issues.filter((i) => i.repo === repo).map((i) => i.number))];
+    const [owner, name] = repo.split('/');
+    const parts = numbers.map((n) => `i${n}: issue(number: ${n}) { closedByPullRequestsReferences(first: 5) { nodes { ${PR_FIELDS} } } }`).join(' ');
+    try {
+      const data = await graphql(`{ repository(owner: "${owner}", name: "${name}") { ${parts} } }`);
+      for (const [key, value] of Object.entries(data.repository ?? {}) as [string, any][]) {
+        for (const p of ((value?.closedByPullRequestsReferences?.nodes ?? []) as any[]).filter((p) => states.includes(p.state))) {
+          out.push({
+            issue: { repo, number: Number(key.slice(1)) },
+            pr: { repo: p.repository?.nameWithOwner ?? repo, number: p.number as number },
+            sha: p.headRefOid as string,
+            head: String(p.headRefName ?? ''),
+            base: String(p.baseRefName ?? ''),
+            state: p.state as PrState,
+            draft: !!p.isDraft,
+            checks: checksOf(p.commits?.nodes?.[0]?.commit?.statusCheckRollup),
+            mergeable: p.mergeable === 'MERGEABLE' || p.mergeable === 'CONFLICTING' ? p.mergeable : 'UNKNOWN',
+            verdict: verdictOf(p.reviews?.nodes, p.headRefOid),
+          });
+        }
+      }
+    } catch (e) {
+      log(`wired PR lookup failed: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
+    }
   }
+  return out;
 }

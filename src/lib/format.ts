@@ -73,8 +73,15 @@ export function modelName(id?: string): string | undefined {
 }
 
 const KIND: Record<string, string> = { 'sloth:implement': 'fix', 'sloth:review': 'review', 'sloth:status': 'status', 'sloth:qa': 'QA', 'sloth:smoke': 'smoke test', other: 'run' };
-/** A smoke test's number is the run's own, not an issue's — so no `#`. */
-export const label = (s: SessionSummary) => `${KIND[s.kind] ?? s.kind}${s.target ? (s.kind === 'sloth:smoke' ? ` ${s.target}` : ` #${s.target}`) : ''}`;
+/** The part of `owner/name` after the slash. */
+export const repoName = (repo: string) => repo.split('/')[1] ?? repo;
+/** `#12` while Sloth watches one repository, `widgets#12` once it watches several — the number alone would not say which. */
+export const issueLabel = (repo: string | undefined, n: number, several: boolean) => (several && repo ? `${repoName(repo)}#${n}` : `#${n}`);
+/** A smoke test's number is the run's own, not an issue's — so no `#`. `several`: name the repository too. */
+export const label = (s: SessionSummary, several = false) =>
+  `${KIND[s.kind] ?? s.kind}${s.target ? (s.kind === 'sloth:smoke' ? ` ${s.target}` : ` ${issueLabel(s.repo, s.target, several)}`) : ''}`;
+/** Whether the sessions shown span more than one repository — then every number says which. */
+export const severalRepos = (rows: { repo?: string }[]) => new Set(rows.map((r) => r.repo).filter(Boolean)).size > 1;
 
 /** Step numbers are the section headings of the plugin commands; the UI shows what the session is doing instead. */
 const IMPLEMENT_STEPS: Record<string, string> = {
@@ -142,7 +149,7 @@ export const nextAt = (at?: number) => (!at ? '—' : at < Date.now() ? 'due' : 
 export const safeUrl = (u?: string) => (u && /^https?:\/\//i.test(u) ? u : undefined);
 
 /** Link to the command's target on GitHub — the path segment comes from the configured command map; a command mapped to `''` has no target there. */
-export const githubUrl = (kind: SessionKind, n: number | undefined, config: MonitorConfig) => {
+export const githubUrl = (kind: SessionKind, n: number | undefined, config: MonitorConfig, repo = config.repo) => {
   const segment = config.commands[kind] ?? 'issues';
-  return n && config.repo && segment ? `https://github.com/${config.repo}/${segment}/${n}` : undefined;
+  return n && repo && segment ? `https://github.com/${repo}/${segment}/${n}` : undefined;
 };

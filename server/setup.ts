@@ -239,7 +239,7 @@ export async function handleSetup(pathname: string, method: string, body: unknow
     });
     // The checkout the sessions need is Sloth's to make: cloned now if the saved root is not one yet.
     checkoutThenStack();
-    // The launch agent is named after the repo and points at this checkout, so it is written from here.
+    // The launch agent is named after the first repository and points at this checkout, so it is written from here.
     const serviceError = config.autostart === was ? undefined : await applyAutostart(config.autostart);
     return { ok: true, path: CONFIG_PATH, config, serviceError };
   }

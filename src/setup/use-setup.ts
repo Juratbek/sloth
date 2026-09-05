@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ColumnRef, ConfigProject, SetupEnv, SetupFields, SetupProject, SlothConfig, StackChoice } from '../../server/config-types';
+import type { ColumnRef, ConfigProject, RepoConfig, SetupEnv, SetupFields, SetupProject, SlothConfig, StackChoice } from '../../server/config-types';
 import { fetchJson, postJson } from '../lib/api';
 import { queryKeys } from '../lib/query-keys';
 
@@ -7,12 +7,12 @@ import { queryKeys } from '../lib/query-keys';
  * What the wizard posts: the values it asks about, plus whatever the saved config already had.
  * Everything else (directories, budgets, poll intervals) gets its default on the server.
  */
-export type ConfigPayload = Pick<SlothConfig, 'repo' | 'project' | 'statusField' | 'runnerRoot' | 'roles' | 'maxActive' | 'maxAlive'> &
-  Partial<SlothConfig>;
+export type ConfigPayload = Pick<SlothConfig, 'repos' | 'project' | 'statusField' | 'roles' | 'maxActive' | 'maxAlive'> & Partial<SlothConfig>;
 
 /** The draft the wizard carries between steps; becomes the saved config on the last one. */
 export interface Draft {
-  repo: string;
+  /** The repositories the sessions work in, in the order they were picked — the first is where a run with no card of its own works. */
+  repos: RepoConfig[];
   project?: ConfigProject;
   statusFieldId?: string;
   pickup?: ColumnRef;
@@ -24,7 +24,6 @@ export interface Draft {
   /** Opt-in: the column the daily QA sweep tests; `{id:'', name:''}` means none. */
   qa?: ColumnRef;
   done?: ColumnRef;
-  runnerRoot: string;
   /** The team: one admin, developers, testers (see server/roles.ts). */
   admin: string;
   developers: string[];
@@ -40,8 +39,14 @@ export interface Draft {
   helpWebhook: string;
 }
 
+export const REPO_RE = /^[\w.-]+\/[\w.-]+$/;
+/** Where a repository's checkout goes unless the user says otherwise: under the runners directory, by name. */
+export const defaultRoot = (slug: string, home = '~/.sloth') => `${home}/runners/${slug.split('/')[1] ?? slug}`;
+/** A repository as the picker adds it: its slug, no note yet, its checkout at the default place. */
+export const newRepo = (slug: string, home = '~/.sloth'): RepoConfig => ({ slug, note: '', root: defaultRoot(slug, home) });
+
 export const draftFrom = (config: SlothConfig | null | undefined): Draft => ({
-  repo: config?.repo ?? '',
+  repos: config?.repos ?? [],
   project: config?.project,
   statusFieldId: config?.statusField.id,
   pickup: config?.statusField.columns.pickup,
@@ -52,7 +57,6 @@ export const draftFrom = (config: SlothConfig | null | undefined): Draft => ({
   approved: config?.statusField.columns.approved?.id ? config.statusField.columns.approved : undefined,
   qa: config?.statusField.columns.qa?.id ? config.statusField.columns.qa : undefined,
   done: config?.statusField.columns.done?.id ? config.statusField.columns.done : undefined,
-  runnerRoot: config?.runnerRoot ?? '',
   admin: config?.roles.admin ?? '',
   developers: config?.roles.developers ?? [],
   testers: config?.roles.testers ?? [],
@@ -63,7 +67,6 @@ export const draftFrom = (config: SlothConfig | null | undefined): Draft => ({
   helpLogins: config?.helpLogins ?? [],
   helpWebhook: config?.helpWebhook ?? '',
 });
-
 /** The saved config, or null when the user has not been through the wizard yet. */
 /** The saved config, for the wizard. Only the machine Sloth runs on may read it — a phone never asks. */
 export function useConfig(enabled = true) {

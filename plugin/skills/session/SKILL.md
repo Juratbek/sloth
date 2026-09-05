@@ -20,10 +20,13 @@ directory.
 |---|---|
 | `SLOTH_SESSION_DIR` | This run's directory (already exists) |
 | `SLOTH_ISSUE` / `SLOTH_PR` | The target — issue number, or PR number for a review run; a status reply gets both when the question was asked on the issue's PR |
-| `SLOTH_REPO` | `owner/repo` |
-| `SLOTH_RUNNER_ROOT` | The checkout sessions run from; `cwd` is inside it |
-| `SLOTH_WORKTREES_DIR` | Where Sloth's pool of worktrees lives — `slot-1 … slot-N` under it |
-| `SLOTH_WORKTREE` | The slot leased to this run (`$SLOTH_WORKTREES_DIR/slot-<n>`): reset it to your branch, work in it, leave it — the server gives it back to the pool at teardown. Never create or remove a worktree |
+| `SLOTH_REPO` | `owner/repo` — the repository this run works in: the issue's, or the PR's for a review. Every `--repo "$SLOTH_REPO"` in a command means this one |
+| `SLOTH_ISSUE_REPO` | The repository `$SLOTH_ISSUE` is in — `$SLOTH_REPO` unless the PR under review, or the PR the question was asked on, closes an issue in another of Sloth's repositories. Read the issue and label it there |
+| `SLOTH_REPOS` | Every repository Sloth works in, JSON `[{"slug","note","root","worktree"}]`: `owner/repo`, what it is in the user's words, its checkout, and the worktree of it in this run's slot. One entry while Sloth watches one repository — see *Working in a second repository* |
+| `SLOTH_RUNNER_ROOT` | The checkout of `$SLOTH_REPO` sessions run from; `cwd` is inside it |
+| `SLOTH_WORKTREES_DIR` | Where Sloth's pool of worktrees lives — `slot-1 … slot-N` under it, plus `slot-<n>@owner~name` for another repository's worktree in the same slot |
+| `SLOTH_WORKTREE` | The worktree of `$SLOTH_REPO` in the slot leased to this run: reset it to your branch, work in it, leave it — the server gives it back to the pool at teardown. Never remove a worktree; the one case a session creates one is *Working in a second repository* |
+| `SLOTH_SLOT` | The slot itself, `slot-<n>` |
 | `SLOTH_WARM_SLOTS` | `1`: the server keeps a slot's stack warm between runs — leave your servers and database running at teardown (see *Teardown*). `0`: stop and drop them yourself as before |
 | `SLOTH_WARM` | `1`: this run inherited the slot's live stack — the pids in `dev.pid` / `redis.pid` and the database in `demo.db` are already yours and running. Reset instead of booting: sync the schema onto the existing database, reseed, `FLUSHALL` Redis; no createdb, no redis-server, no build, no server start — the watch-mode servers pick the fresh checkout up. A reset step fails → kill those pids yourself and boot cold |
 | `SLOTH_WARM_SAME` | `1`: that stack last served this very issue at this very head — a retry. Reuse everything untouched: no schema sync, no reseed, no flush |
@@ -95,8 +98,9 @@ Other files the server understands, all inside `$SLOTH_SESSION_DIR`:
 
 The server drops each `$SLOTH_MENTION` comment from someone with a role into
 `$SLOTH_SESSION_DIR/inbox/<commentId>.md`: `author:`, `role:` (`admin` | `developer` | `tester`) and
-`comment:` header lines — plus `pr: <number>` when it was written on the issue's PR instead of the issue,
-and `thread: review` with `path:` and `line:` when it was written on a line of that PR's diff — then the
+`comment:` header lines — plus `pr: <number>` when it was written on the issue's PR instead of the issue
+(and `pr_repo: owner/repo` when that PR is in another of Sloth's repositories than the issue), and
+`thread: review` with `path:` and `line:` when it was written on a line of that PR's diff — then the
 body. **Check the inbox at every step boundary** (`ls "$SLOTH_SESSION_DIR/inbox"`) and every minute while
 waiting. Handle a file, then delete it. A comment from a PR is handled exactly like one from the issue;
 only the reply goes where it was written: `gh pr comment <pr>` instead of `gh issue comment`, and for a
@@ -116,6 +120,40 @@ line it points at (`gh api "repos/$SLOTH_REPO/pulls/comments/<commentId>" --jq .
 - Otherwise while `waiting` — an **answer**, from any role. Resume (below).
 - Otherwise while `working` — a **status question**. Reply in 1–3 lines (what you are doing,
   branch/PR, what is left) and carry on.
+
+## Working in a second repository
+
+Sloth may watch several repositories (`SLOTH_REPOS`) behind one board. A card's issue says where its work
+starts — that is `$SLOTH_REPO`, and everything in the commands works there as it always has. Now and then a
+fix needs a change in a second repository too — an API and the app that calls it, a shared library and its
+consumer. Then, and only then:
+
+1. Find the other repository in `SLOTH_REPOS` — its `slug`, `root` (Sloth's checkout of it) and `worktree`
+   (where its worktree goes in this run's slot). Never pick one by guessing; the `note` says what each is.
+2. Make its worktree if it is not there yet — the one time a session creates one — and reset it to a branch
+   named after the same issue:
+
+   ```bash
+   OTHER=$(echo "$SLOTH_REPOS" | jq -r '.[] | select(.slug == "acme/api")')     # the entry you picked
+   OROOT=$(echo "$OTHER" | jq -r .root); OWT=$(echo "$OTHER" | jq -r .worktree); OREPO=$(echo "$OTHER" | jq -r .slug)
+   git -C "$OROOT" fetch -q origin
+   [ -d "$OWT" ] || git -C "$OROOT" worktree add --detach "$OWT" HEAD
+   OBASE=$(gh repo view "$OREPO" --json defaultBranchRef --jq .defaultBranchRef.name)
+   git -C "$OWT" fetch origin "$OBASE"
+   git -C "$OWT" checkout -q --ignore-other-worktrees -B "$BRANCH" "origin/$OBASE"
+   git -C "$OWT" clean -fdx -e node_modules -e .turbo -e .venv -e .cache
+   ```
+
+3. Work there as in `$WT`: install, change, verify. Push the branch and open a PR **in that repository**
+   whose body starts with `Closes $SLOTH_ISSUE_REPO#$SLOTH_ISSUE` (`Closes acme/widgets#12` — the number
+   alone would point at that repository's own issue 12; GitHub links across repositories because your
+   account can write to both). The server wires both PRs to the card: both are reviewed, the card moves
+   on when both pass, and both are merged together or neither.
+4. Say so in the main PR's body (*What changed*: one line naming the other PR) and in the handoff note.
+   Leave the second worktree as you leave the first; the server detaches both when the slot is returned.
+
+Never touch a repository's checkout (`root`) itself, another slot's worktrees, or a repository that is
+not in `SLOTH_REPOS`.
 
 ## Time budget
 
