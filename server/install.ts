@@ -23,7 +23,7 @@ export function which(cmd: string): string | undefined {
   // Windows executables carry an extension (PATHEXT); `cmd` arrives without one. Only those are tried
   // there: the extensionless file beside `pnpm.cmd` or `claude.cmd` is a POSIX shell shim that Windows
   // cannot run, and it used to be found first.
-  const exts = process.platform === 'win32' ? (process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean) : [''];
+  const exts = process.platform === 'win32' ? (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean) : [''];
   // An empty PATH entry — a trailing colon, which is common — means the cwd to a shell. Here it would
   // make `path.join('', cmd)` a bare name that resolves against Sloth's own checkout, so a file called
   // `git`, `install` or `sudo` committed to the project would be run as that tool, `sudo.ts` included.

@@ -12,11 +12,13 @@ const h = vi.hoisted(() => ({
   /** `git` stdout by argv pattern, first match wins. */
   git: [] as { match: RegExp; out: string }[],
   ran: [] as string[],
-  spawns: [] as { cmd: string; args: string[] }[],
+  spawns: [] as { cmd: string; args: string[]; options?: Record<string, unknown> }[],
   /** What every step's process exits with. */
   stepExit: 0,
   /** When set, every spawn fails the way a missing program does, instead of starting. */
   spawnError: '' as string,
+  /** Where `which` finds a tool; anything not listed is its bare name. */
+  bin: {} as Record<string, string>,
 }));
 
 vi.mock('node:child_process', () => ({
@@ -26,8 +28,8 @@ vi.mock('node:child_process', () => ({
     cb(null, h.git.find((g) => g.match.test(line))?.out ?? '', '');
     return { on() {}, kill() {} };
   },
-  spawn: (cmd: string, args: string[]) => {
-    h.spawns.push({ cmd, args });
+  spawn: (cmd: string, args: string[], options: Record<string, unknown>) => {
+    h.spawns.push({ cmd, args, options });
     const handlers: Record<string, (v: unknown) => void> = {};
     queueMicrotask(() => {
       if (h.spawnError) return handlers.error?.(new Error(h.spawnError));
@@ -47,7 +49,7 @@ vi.mock('node:child_process', () => ({
 }));
 
 // Every tool the update needs is on PATH; which one is irrelevant to what is under test.
-vi.mock('../server/install', () => ({ EXTRA_DIRS: [], which: (cmd: string) => cmd }));
+vi.mock('../server/install', () => ({ EXTRA_DIRS: [], which: (cmd: string) => h.bin[cmd] ?? cmd }));
 
 const HEAD = { match: /log -1/, out: 'abc1234\n2026-09-01T10:00:00Z' };
 const BRANCH = { match: /rev-parse --abbrev-ref/, out: 'main' };
@@ -165,8 +167,30 @@ describe('restart', () => {
     expect(exit).not.toHaveBeenCalled();
     const v = await versionInfo();
     expect(v.update.restarting).toBe(false);
+    // …and is not wedged: the next update, by hand or by the hour, may run.
+    expect(v.update.running).toBe(false);
     expect(v.update.error).toMatch(/replacement process could not be started — spawn ENOENT; Sloth stays up/);
     expect(readLog().at(-1)).toMatch(/Sloth stays up/);
+  });
+
+  it('runs a Windows pnpm.cmd through a shell, quoted, with the same fixed arguments', async () => {
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    h.bin = { pnpm: 'C:\\Program Files\\nodejs\\pnpm.cmd' };
+    h.git = [HEAD, BRANCH, CLEAN, behind(1)];
+    try {
+      const { autoUpdate } = await freshUpdate();
+      await autoUpdate();
+      const install = h.spawns[1];
+      expect(install.cmd).toBe('"C:\\Program Files\\nodejs\\pnpm.cmd"');
+      expect(install.args).toEqual(['install']);
+      expect(install.options).toMatchObject({ shell: true, windowsHide: true });
+      expect(h.spawns[0]).toMatchObject({ cmd: 'git' });
+      expect(h.spawns[0].options).not.toHaveProperty('shell');
+    } finally {
+      Object.defineProperty(process, 'platform', platform);
+      h.bin = {};
+    }
   });
 
   it('only exits when the launch agent is installed — launchd starts the next Sloth, so two never run', async () => {

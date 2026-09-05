@@ -39,6 +39,8 @@ export interface StackStatus {
   installerError?: string;
   /** apt is here, Sloth is not root and `sudo -n` is refused: the user's password would unlock installing (`POST /api/stack/unlock`). */
   sudoPassword?: boolean;
+  /** sudo lets this user run apt-get with any arguments — wider than Sloth's rule; the password replaces Sloth's file with the narrow one. */
+  sudoWide?: boolean;
   install: InstallStatus;
   /** Why the install just asked for did not start. */
   installError?: string;

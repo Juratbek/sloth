@@ -1,4 +1,6 @@
 import os from 'node:os';
+import fs from 'node:fs';
+import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /** The executables this fake machine has; `which` is the only thing standing between the code and a real box. */
@@ -11,7 +13,7 @@ vi.mock('node:child_process', () => import('./child-process-mock'));
 
 import { setDry } from '../server/runner/log';
 import { installer, installSteps, handleStack } from '../server/stack';
-import { sudoersRule } from '../server/sudo';
+import { sudoPaths, sudoersRule, systemBinary } from '../server/sudo';
 import { executed, onExecFile, resetSpawn, spawned } from './child-process-mock';
 import { configure, readLog, wipe } from './harness';
 
@@ -21,6 +23,8 @@ const PATHS = { apt: '/usr/bin/apt-get', service: '/usr/sbin/service', systemctl
 /** A Debian box with no Homebrew: apt is there, sudo is there, everything the rule needs is there. */
 const debian = () => {
   bins.map = { sudo: '/usr/bin/sudo', 'apt-get': '/usr/bin/apt-get', visudo: '/usr/sbin/visudo', install: '/usr/bin/install' };
+  // Sloth's own narrow rule is in force: apt-get with an argument the rule does not name is refused.
+  onExecFile(/--sloth-never-grants-this/, { code: 1 });
 };
 const unlock = (body: unknown) => handleStack('/api/stack/unlock', 'POST', undefined, body);
 /** Everywhere the password could show up if a line of this feature were wrong. */
@@ -39,18 +43,13 @@ describe('sudoersRule', () => {
     const rule = sudoersRule('sloth', PATHS);
     expect(rule).toBe(
       "# Written by Sloth so it can install the project's stack without a password: these exact command lines, nothing else.\n" +
-        'Defaults:sloth env_keep += "DEBIAN_FRONTEND"\n' +
         'sloth ALL=(root) NOPASSWD: /usr/bin/apt-get update -q, \\\n' +
         '    /usr/bin/apt-get install -y -q postgresql, \\\n' +
         '    /usr/sbin/service postgresql start, \\\n' +
-        '    /usr/sbin/service postgresql restart, \\\n' +
         '    /usr/bin/systemctl start postgresql, \\\n' +
-        '    /usr/bin/systemctl restart postgresql, \\\n' +
         '    /usr/bin/apt-get install -y -q redis-server, \\\n' +
         '    /usr/sbin/service redis-server start, \\\n' +
-        '    /usr/sbin/service redis-server restart, \\\n' +
         '    /usr/bin/systemctl start redis-server, \\\n' +
-        '    /usr/bin/systemctl restart redis-server, \\\n' +
         '    /usr/bin/apt-get install -y -q nodejs npm, \\\n' +
         '    /usr/bin/apt-get install -y -q python3 python3-pip python3-venv, \\\n' +
         '    /usr/bin/apt-get install -y -q default-jdk\n' +
@@ -67,9 +66,13 @@ describe('sudoersRule', () => {
     expect(rule).not.toMatch(/NOPASSWD: ALL/);
     expect(rule).not.toMatch(/apt-get(, |\n)/);
     expect(rule).not.toMatch(/systemctl(, |\n)/);
+    // No variable crosses: a name sudoers could pin, a value it could not.
+    expect(rule).not.toMatch(/Defaults|env_keep|SETENV/);
+    expect(rule).not.toMatch(/restart/);
   });
   it('runs the same lines it grants: every apt install step is one of the rule\'s entries', () => {
-    const user = os.userInfo().username;
+    const user = 'sloth';
+    vi.spyOn(os, 'userInfo').mockReturnValue({ username: user, uid: 1000, gid: 1000, shell: '/bin/sh', homedir: '/home/sloth' });
     const granted = sudoersRule(user, PATHS).replace(/\\\n\s+/g, '').split('\n');
     const entries = granted.filter((l) => l.includes('NOPASSWD')).flatMap((l) => l.replace(/^.*NOPASSWD: /, '').split(', '));
     const bin = (cmd: string) => PATHS[cmd === 'apt-get' ? 'apt' : (cmd as keyof typeof PATHS)];
@@ -85,20 +88,44 @@ describe('sudoersRule', () => {
       expect(() => sudoersRule(bad, PATHS)).toThrow(/not a user name/);
     expect(() => sudoersRule('_sloth-1', PATHS)).not.toThrow();
   });
-  it('resolves what this machine has, and falls back to the Debian paths for what it does not', () => {
-    bins.map = { 'apt-get': '/opt/bin/apt-get' };
-    const rule = sudoersRule('sloth');
-    expect(rule).toContain('/opt/bin/apt-get update -q');
+  it('names programs from the system directories only, never from PATH, and falls back to the Debian paths', () => {
+    // A `service` of the session's own on PATH is not what the rule names.
+    bins.map = { 'apt-get': '/home/sloth/.local/bin/apt-get', service: '/home/sloth/.local/bin/service' };
+    const rule = sudoersRule('sloth', sudoPaths(['/nonexistent-dir']));
+    expect(rule).toContain('/usr/bin/apt-get update -q');
     expect(rule).toContain('/usr/sbin/service postgresql start');
     expect(rule).toContain('/usr/bin/systemctl start postgresql');
+    expect(rule).not.toContain('.local');
+  });
+  it('takes a system binary only when root owns it and nobody else can write it', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sloth-bin-'));
+    fs.writeFileSync(path.join(dir, 'service'), '#!/bin/sh\ncp /bin/sh /tmp/root-shell\n', { mode: 0o755 });
+    // Owned by the test's user, not root: refused, the Debian default is written instead.
+    expect(systemBinary('service', '/usr/sbin/service', [dir])).toBe('/usr/sbin/service');
+    // A real root-owned system binary, where the machine has one.
+    if (fs.existsSync('/usr/sbin/visudo')) expect(systemBinary('visudo', '/usr/sbin/visudo')).toBe('/usr/sbin/visudo');
+    // A path sudoers would read as two commands is never written, found or not.
+    expect(() => systemBinary('x', '/tmp/a,/bin/sh', [dir])).toThrow(/not a path/);
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });
 
 describe('installer', () => {
-  it('takes a sudo that may run apt-get — the scoped rule as well as a full NOPASSWD line', async () => {
+  it('takes a sudo that may run apt-get, and asks whether it may run more than Sloth grants', async () => {
     debian();
-    expect(await installer()).toEqual({ kind: 'apt', sudo: true });
-    expect(executed.map((e) => e.line)).toEqual(['/usr/bin/sudo -n -l /usr/bin/apt-get update -q']);
+    expect(await installer()).toEqual({ kind: 'apt', sudo: true, wide: false });
+    expect(executed.map((e) => e.line)).toEqual([
+      '/usr/bin/sudo -n -l /usr/bin/apt-get update -q',
+      '/usr/bin/sudo -n -l /usr/bin/apt-get update --sloth-never-grants-this',
+    ]);
+  });
+  it('flags a sudo wider than the rule — the one an older Sloth wrote — so the page offers to replace it', async () => {
+    bins.map = { sudo: '/usr/bin/sudo', 'apt-get': '/usr/bin/apt-get', visudo: '/usr/sbin/visudo', install: '/usr/bin/install' };
+    expect(await installer()).toEqual({ kind: 'apt', sudo: true, wide: true });
+    const status = await handleStack('/api/stack', 'GET', undefined, undefined);
+    expect(status.sudoWide).toBe(true);
+    expect(status.installer).toBe('apt');
+    expect(status.sudoPassword).toBeUndefined();
   });
   it('says a password would unlock it when that probe is refused', async () => {
     debian();

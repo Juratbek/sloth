@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { monitorApi } from '../server/api';
+import { remoteLink, startTunnel, stopTunnel } from '../server/remote';
 import { stopLoop } from '../server/runner/loop';
 import { configure, wipe } from './harness';
 
@@ -35,7 +36,7 @@ function get(p: string, host: string): Promise<{ status: number; body: string; h
 }
 
 beforeAll(async () => {
-  configure({ repo: 'acme/widgets' });
+  configure({ repo: 'acme/widgets', publicUrl: 'https://sloth.example.com' });
   wipe();
   dist = fs.mkdtempSync(path.join(os.tmpdir(), 'sloth-dist-'));
   fs.writeFileSync(path.join(dist, 'index.html'), '<!doctype html><html><head><title>Sloth</title></head><body></body></html>');
@@ -58,6 +59,7 @@ beforeAll(async () => {
   port = (server.address() as AddressInfo).port;
 });
 afterAll(async () => {
+  stopTunnel();
   stopLoop();
   await new Promise((resolve) => server.close(resolve));
   fs.rmSync(dist, { recursive: true, force: true });
@@ -78,7 +80,27 @@ describe('the built page under `pnpm start`', () => {
     }
   });
   it('lets the guard see the QR link\'s code instead of serving the page over it', async () => {
-    const res = await get('/?code=notacode', 'sloth.example.com');
-    expect(res.status).toBe(401);
+    expect((await get('/?code=notacode', 'sloth.example.com')).status).toBe(401);
+    // The real link: the code becomes the cookie and the page is reached on the redirect.
+    startTunnel(port);
+    const code = new URL(remoteLink().link!).searchParams.get('code')!;
+    const res = await get(`/?code=${code}`, 'sloth.example.com');
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/');
+    const cookie = String(res.headers['set-cookie']?.[0] ?? '');
+    expect(cookie).toMatch(/^sloth_remote=[a-f0-9]+; Path=\/; HttpOnly; SameSite=Lax/);
+    const signedIn = await get('/', 'sloth.example.com');
+    expect(signedIn.status).toBe(401);
+    const req = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+      const r = http.request({ host: '127.0.0.1', port, path: '/board', headers: { host: 'sloth.example.com', cookie: cookie.split(';')[0] } }, (res) => {
+        let body = '';
+        res.on('data', (c) => (body += c));
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, body }));
+      });
+      r.on('error', reject);
+      r.end();
+    });
+    expect(req.status).toBe(200);
+    expect(req.body).toContain('<title>Sloth · widgets</title>');
   });
 });

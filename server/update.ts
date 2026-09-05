@@ -172,6 +172,7 @@ export function restart(): void {
   child.unref();
   child.on('spawn', exit);
   child.on('error', (e) => {
+    status.running = false;
     status.restarting = false;
     status.step = undefined;
     status.error = `the replacement process could not be started — ${e.message}; Sloth stays up on the old code until it is restarted by hand`;

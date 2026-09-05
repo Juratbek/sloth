@@ -18,11 +18,15 @@ for argument, and `sudo -n` refuses every other line — a different flag, a dif
 package not in the table. Run them verbatim, always with `-n` (never a password prompt):
 
 ```bash
-DEBIAN_FRONTEND=noninteractive sudo -n apt-get update -q
-DEBIAN_FRONTEND=noninteractive sudo -n apt-get install -y -q <packages>   # the tool's packages, in the table's order
-sudo -n service <service> start        # or: sudo -n systemctl start <service>; `restart` is allowed the same way
-sudo -n -u postgres createuser -s "$USER"
+sudo -n apt-get update -q
+sudo -n apt-get install -y -q <packages>   # the tool's packages, in the table's order
+sudo -n service <service> start            # or: sudo -n systemctl start <service>
+sudo -n -u postgres createuser -s "$(id -un)"
 ```
+
+No environment variable reaches these commands (sudo resets the environment; the rule lets none through), so
+`DEBIAN_FRONTEND=…` in front of a line does nothing and is not needed: `-y -q` with no terminal is enough for
+debconf to answer its own questions.
 
 **Never** ask anyone for a password, never read one from a file or the environment, never run `sudo` without
 `-n`, never run any other command through sudo — it is refused, and a refusal is not a problem to work around.
@@ -35,15 +39,15 @@ On macOS use `brew install …` / `brew services start …` with no sudo at all.
 
 | id | apt | brew | service | verify |
 |---|---|---|---|---|
-| `postgresql` | `postgresql` | `postgresql@17` (link it) | `postgresql` | `psql --version`, `psql -l` as `$USER` |
+| `postgresql` | `postgresql` | `postgresql@17` (link it) | `postgresql` | `psql --version`, `psql -l` as `$(id -un)` |
 | `redis` | `redis-server` | `redis` | `redis-server` / `brew services start redis` | `redis-server --version`, `redis-cli ping` |
 | `node` | `nodejs npm` | `node` | — | `node --version` |
 | `python` | `python3 python3-pip python3-venv` | `python` | — | `python3 --version` |
 | `java` | `default-jdk` | `openjdk` (link it) | — | `java --version` |
 
-`DEBIAN_FRONTEND=noninteractive` in front of every apt call (the rule lets that one variable through). With
-PostgreSQL, make the user Sloth runs as a superuser (`createuser -s "$USER"`) so a session can `createdb` — it may
-already exist, which is fine.
+With PostgreSQL, make the user Sloth runs as a superuser (`createuser -s "$(id -un)"` — the rule names that exact
+user, which may differ from `$USER` under a service manager) so a session can `createdb` — it may already exist,
+which is fine.
 
 ## How to go about it
 

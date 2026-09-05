@@ -119,6 +119,13 @@ describe('the sudo check', () => {
     });
   }
 
+  it('fails on a sudo wider than the exact lines Sloth grants — the rule an older Sloth wrote', () => {
+    const check = sudoCheck({ kind: 'apt', sudo: true, wide: true });
+    expect(check.ok).toBe(false);
+    expect(check.skipped).toBeUndefined();
+    expect(check.detail).toMatch(/any arguments — wider than the exact lines Sloth grants/);
+  });
+
   it('fails only where the stack install needs the rule and it is not there', () => {
     const check = sudoCheck({ kind: 'none', error: 'apt-get needs passwordless sudo here', password: true });
     expect(check.ok).toBe(false);

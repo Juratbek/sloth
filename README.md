@@ -219,9 +219,10 @@ install is fixed — **PostgreSQL, Redis, Node.js, Python, Java** — with Homeb
 `apt-get` on Debian / Ubuntu / WSL when `sudo -n` works; anywhere else the log names the command to run by
 hand. Where apt is there but `sudo -n` is refused — the usual Linux box, Sloth running as an ordinary user —
 the page offers **Install with a password…**: the sudo password of that user is typed once, spent on
-`/etc/sudoers.d/sloth` (the exact command lines the install runs — `apt-get update`, `apt-get install` of each tool's packages,
-`service`/`systemctl start` of its service, `createuser` for the Sloth user — argument for argument, and nothing else: a
-session talked into any other `sudo` line is refused)
+`/etc/sudoers.d/sloth` (every line any of the five installs could run — `apt-get update`, `apt-get install` of each tool's
+packages, `service`/`systemctl start` of its service, `createuser` for the Sloth user — argument for argument, and nothing
+else: a session talked into any other `sudo` line is refused; a machine whose sudo is wider than that, the rule an older Sloth
+wrote included, is flagged on the Stack page and by the health check, and the password replaces the file)
 and forgotten — never stored, never logged, never given to a session. The install itself then runs as an **AI
 session**, `/sloth:stack <ids>` on the implement model, whose transcript the page shows while it works; the
 boot-time `ensureStack` keeps running its fixed list of commands, since nobody is watching a page there.

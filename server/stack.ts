@@ -6,7 +6,7 @@ import { installStatus, runJob, which, type Step } from './install';
 import { isDry, log } from './runner/log';
 import { startStackSession, withStackSession } from './stack-session';
 import { TOOLS, detectStack, requiredStack } from './stack-detect';
-import { APT_UPDATE, aptInstall, canSudoApt, createUser, serviceControl, sudoUser, unlockSudo } from './sudo';
+import { APT_UPDATE, aptInstall, canSudoApt, createUser, serviceControl, sudoUser, sudoWide, unlockSudo } from './sudo';
 import type { StackStatus, StackTool } from './types';
 
 export { detectStack, requiredStack } from './stack-detect';
@@ -36,7 +36,8 @@ const absent = async (ids: StackId[]): Promise<StackId[]> =>
   (await Promise.all(ids.map((id) => check(id, [])))).filter((t) => !t.installed).map((t) => t.id);
 
 /** `password` on the `none` case: nothing is missing but the user's sudo password (`sudo.ts` `unlockSudo`). */
-export type Installer = { kind: 'brew' } | { kind: 'apt'; sudo: boolean } | { kind: 'none'; error: string; password?: boolean };
+/** `wide` on the `apt` case: sudo allows more than Sloth's rule — the old rule, or a blanket line — and the password can narrow it. */
+export type Installer = { kind: 'brew' } | { kind: 'apt'; sudo: boolean; wide?: boolean } | { kind: 'none'; error: string; password?: boolean };
 
 const isRoot = () => typeof process.getuid === 'function' && process.getuid() === 0;
 
@@ -47,7 +48,7 @@ export async function installer(): Promise<Installer> {
   if (isRoot()) return { kind: 'apt', sudo: false };
   // `sudo -n -l <apt-get>` asks the one question that matters — may this user run apt-get without a
   // password — and answers it for a blanket NOPASSWD line as well as for Sloth's own scoped rule.
-  if (await canSudoApt()) return { kind: 'apt', sudo: true };
+  if (await canSudoApt()) return { kind: 'apt', sudo: true, wide: await sudoWide() };
   return {
     kind: 'none',
     password: true,
@@ -91,6 +92,7 @@ export async function stackStatus(root = cfg().runnerRoot): Promise<StackStatus>
     installer: by.kind === 'none' ? undefined : by.kind,
     installerError: by.kind === 'none' ? by.error : undefined,
     ...(by.kind === 'none' && by.password ? { sudoPassword: true } : {}),
+    ...(by.kind === 'apt' && by.wide ? { sudoWide: true } : {}),
     install: withStackSession(installStatus()),
   };
 }
