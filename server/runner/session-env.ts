@@ -104,6 +104,7 @@ export function sessionEnv(dir: string, target: Target, model: string, chrome: b
     SLOTH_DEADLINE: String(start + budget * 60),
     SLOTH_BUDGET_MIN: String(budget),
     SLOTH_WAIT_HOURS: String(c.waitHours),
+    SLOTH_REFINE_WAIT_HOURS: String(c.refineWaitHours),
     SLOTH_REVIEW_ROUNDS: String(c.reviewRounds),
     SLOTH_BOT_PREFIX: c.botPrefix,
     SLOTH_MENTION: c.mention,

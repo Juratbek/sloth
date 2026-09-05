@@ -35,7 +35,8 @@ with `SLOTH_ORCHESTRATOR=0` (or unset) ignore them and do the work yourself.
 - **Order (optional)** — text introduced by `Order from <login> (<role>, issue comment <id>)` or
   `Order from <login> (<role>, PR #<n> comment <id>)`, forwarded by the server; `<role>` is `admin` or
   `developer`. It overrides the default "implement the issue" scope ("address the review comments", "start
-  over with approach X", "stop") — within the limits of the role, below. An order given on the PR is
+  over with approach X", "stop", "refine" — the questions of Step 1.5 before any code, however clear the card
+  reads) — within the limits of the role, below. An order given on the PR is
   acknowledged and answered on that PR; everything else about the run still goes on the issue.
 - **Extra instructions (optional)** — remaining free text; fold it into the work.
 
@@ -116,6 +117,73 @@ gh issue view "$ISSUE" --repo "$SLOTH_REPO" --json comments \
   read only what you need to brief the implementor and to judge its work — the issue, the thread, the
   project's rules, the design; locating and reading the code is the implementor's job.
 
+## Step 1.5 — Refine: is the card buildable?
+
+Decide, from the issue and its thread, whether the card can be built **without guessing**. It can when a
+developer who knows the project could start now: a bug with the steps that reproduce it or the wrong state
+shown; a change whose place, scope and expected result are in the body or the thread; a body that already
+carries a `## Spec` section (an earlier run refined it — the spec is binding, read it as part of Step 1). It
+cannot when the card names a feature and little else — a title and a line; a wish without where it lives or
+who uses it; a screen with no design and no copy; two readings that would lead to different code; an
+acceptance nobody could check. A `refine` order (Step 0) makes the card not buildable whatever it says: the
+person wants the questions before any code. A review round-trip (Step 1, *Existing PR*) is never refined.
+
+Buildable → Step 2. Otherwise, before any worktree or code:
+
+1. **Answer your own questions first.** The code, the project's docs and behaviour specs, its rules and the
+   thread settle most of them — how the neighbouring feature behaves, what the conventions require, which
+   roles exist, what the design shows. Whatever they settle is not asked. **Orchestrator:** this step is this
+   session's, there is no implementor yet; read the code as far as the questions need, an `Explore`-style
+   subagent on `$SLOTH_MODEL` at most.
+2. **Ask only what changes the code.** A question qualifies when two answers lead to two different
+   implementations: "who sees this — admins only, or every member?", "an empty list: hide the section or show a
+   note?", "does the export include archived items?". Never a question the conventions decide, a request for
+   approval, or "should it be fast / look good". **At most 5**, the most important first, each in one or two
+   lines with the options and what you would do under each when the answer is not obvious (`session` skill,
+   needs-help protocol). Nothing left to ask → the card was buildable: Step 2.
+3. **Post and park** exactly as Step Q says — one comment, card to `$SLOTH_COL_NEEDS_HELP_NAME`,
+   `state: waiting` — with **`$SLOTH_REFINE_WAIT_HOURS`** as the wait window instead of `$SLOTH_WAIT_HOURS`:
+   nothing is checked out and nothing runs, and the person may need a day. No answer within it → end the run
+   as Step Q says (`set_state done Q`); the card stays parked, and a later answer starts a new run of this
+   command, which reads the thread and continues here.
+4. **The answers may open new questions** — one more round at most, asked the same way, and only about what
+   the answers brought up. What is still open after the second round is not asked again here: the spec lists
+   it under **Open**, the work starts on what is settled, and the point comes up as an ordinary Step Q
+   question when the code reaches it. Never decide it yourself.
+5. **Write the spec into the issue body.** Append a `## Spec` section, keeping everything above it as it is
+   and replacing a `## Spec` an earlier run wrote:
+
+   ```markdown
+   ## Spec
+   _Written by Sloth from the thread on <date>; the answers in the thread are binding._
+
+   **Goal** — one line: who gets what.
+   **Scope** — the changes, one line each.
+   **Out of scope** — what the thread said no to, what stays as it is.
+   **Acceptance criteria**
+   - [ ] one checkable statement each — the tester confirms every box, the reviewer holds the diff to them
+   **Edge cases** — empty states, permissions, errors, concurrency, each with its expected behaviour.
+   **Design** — the links or attachments that are the spec for the screens, when there are any.
+   **Open** — what the two rounds left undecided, when anything; asked again when the code reaches it.
+   ```
+
+   ```bash
+   gh issue view "$ISSUE" --repo "$SLOTH_REPO" --json body --jq .body | sed '/^## Spec$/,$d' >"$SESSION_DIR/body.md"
+   printf '\n' >>"$SESSION_DIR/body.md"; cat "$SESSION_DIR/spec.md" >>"$SESSION_DIR/body.md"
+   retry gh issue edit "$ISSUE" --repo "$SLOTH_REPO" --body-file "$SESSION_DIR/body.md"
+   ```
+
+   On a Trello board (`SLOTH_BOARD=trello`) the people read the card, not the issue: post the spec as a
+   comment too, `$SLOTH_BOT_PREFIX Spec:` followed by the same section — the one comment allowed past the
+   `session` skill's five lines; the mirror copies it onto the card.
+
+Then the resume of Step Q as the `session` skill says — card back to `$SLOTH_COL_IN_PROGRESS_NAME`, one
+comment `$SLOTH_BOT_PREFIX spec written into the issue — building`, the budget recomputed — and on to Step 2.
+**From here the spec is the requirement list**: Step 3 builds it and nothing beyond it, the tester (Step 4.5)
+confirms every acceptance criterion, the reviewer loop (Step 5.5) and the server's review hold the diff to
+them, and the PR's `## Why` refers to them. The `Scope so far` comment of Step 1 is written in addition only
+when an order later adds to the spec.
+
 ## Step 2 — Reset the worktree slot to the default branch
 
 `$SLOTH_WORKTREE` is a worktree Sloth leased to this run from its pool — a checkout an earlier run used,
@@ -190,8 +258,9 @@ Its brief carries everything it cannot read for itself, and nothing it can:
 
 - the worktree `$WT` — it works only there, on the branch already checked out, and never touches
   `$SLOTH_RUNNER_ROOT`, a shared database or a port another session uses;
-- the issue's number and title, its body and the binding parts of the thread (answers, orders, extra
-  instructions), quoted — it has no `gh` access to the issue and must not use any;
+- the issue's number and title, its body — the `## Spec` section included, when Step 1.5 wrote one: it is
+  the requirement list — and the binding parts of the thread (answers, orders, extra instructions), quoted —
+  it has no `gh` access to the issue and must not use any;
 - the paths of any downloaded design files, and that the design is the spec (the paragraph above);
 - where the project's rules are (`CLAUDE.md` / `AGENTS.md`, the rules and skills they point at) — it reads
   and follows them itself;
@@ -410,7 +479,8 @@ after `SLOTH_PREVIEW_HOURS` hours. A project whose app cannot answer on one port
 
 Follow the needs-help protocol in the **`session`** skill: one numbered comment with every open question and
 the done / left summary, card to `$SLOTH_COL_NEEDS_HELP_NAME`, `state: waiting`, wait up to
-`$SLOTH_WAIT_HOURS` (inbox every minute, thread every 10), stop this session's servers after 30 idle
+`$SLOTH_WAIT_HOURS` — `$SLOTH_REFINE_WAIT_HOURS` for the refine questions of Step 1.5, asked before any
+code — (inbox every minute, thread every 10), stop this session's servers after 30 idle
 minutes but keep the code, resume with `max(remaining, 30 min)` when an answer arrives, exit after the
 wait window. Never open or finish a PR built on a guess.
 
@@ -430,6 +500,9 @@ the question comment URL, whether an answer arrived, where the card is, and what
 ## Rules
 
 - **Fully autonomous** — never ask in chat, never guess; when blocked, Step Q and wait.
+- **A card that cannot be built without guessing is refined first** (Step 1.5): the questions that change the
+  code, at most five, at most two rounds, then a `## Spec` in the issue body that the tester and the reviewer
+  hold the work to. No code before it.
 - **Respect `$SLOTH_DEADLINE`** and keep `state.json` current; the server kills stale `working` sessions.
 - **Check the inbox at every step boundary.** Orders override everything here — the admin's without limit, a
   developer's within the issue (`session` skill).

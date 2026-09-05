@@ -94,6 +94,17 @@ describe('sessionEnv', () => {
     expect(env.SLOTH_CHROME).toBe('0');
   });
 
+  it('gives the refine questions their own, longer wait window — a config from before the setting gets the default', () => {
+    // The refine step (implement Step 1.5) parks before any code exists, so it may wait a day where an
+    // ordinary question waits two hours; both reach the session, each under its own name.
+    expect(fullEnv().SLOTH_REFINE_WAIT_HOURS).toBe('24');
+    expect(fullEnv().SLOTH_WAIT_HOURS).toBe('2');
+    configure({ refineWaitHours: 48, waitHours: 3 });
+    const env = fullEnv();
+    expect(env.SLOTH_REFINE_WAIT_HOURS).toBe('48');
+    expect(env.SLOTH_WAIT_HOURS).toBe('3');
+  });
+
   it('leaves out the target and the worktree a run has not got', () => {
     const env = sessionEnv('/tmp/session', { pr: 100 }, 'opus', false, {});
     expect('SLOTH_ISSUE' in env).toBe(false);

@@ -140,6 +140,12 @@ export function Sessions({ draft, patch }: SectionProps) {
       >
         <NumberInput value={draft.waitHours} onChange={(waitHours) => patch({ waitHours })} />
       </Row>
+      <Row
+        label="Refine wait hours"
+        hint="How long a session waits for the answers to its refine questions — the ones it asks before writing any code when a card is not clear enough to build. Nothing is running meanwhile, so this can be longer than Wait hours; past it the card stays parked and a later answer starts a new session."
+      >
+        <NumberInput value={draft.refineWaitHours} onChange={(refineWaitHours) => patch({ refineWaitHours })} />
+      </Row>
       <Row label="Review rounds" hint="Reviewer-loop rounds inside an implement session before it gives up and asks for help.">
         <NumberInput value={draft.reviewRounds} onChange={(reviewRounds) => patch({ reviewRounds })} />
       </Row>

@@ -43,6 +43,7 @@ directory.
 | `SLOTH_START` / `SLOTH_DEADLINE` | Epoch seconds: run start, hard deadline |
 | `SLOTH_BUDGET_MIN` | Minutes in a full budget (60) |
 | `SLOTH_WAIT_HOURS` | How long a parked session waits for an answer (2) |
+| `SLOTH_REFINE_WAIT_HOURS` | How long a session parked on its refine questions (implement Step 1.5, before any code) waits (24) |
 | `SLOTH_REVIEW_ROUNDS` | Max reviewer-agent rounds (4) |
 | `SLOTH_BOT_PREFIX` | First line of every comment Sloth writes (`**Sloth:**`) |
 | `SLOTH_MENTION` | The mention that triggers the server (`@sloth`) |
@@ -161,7 +162,8 @@ Sloth's, the reviewer loop will not pass, or time is running out.
    ```
    If `SLOTH_COL_NEEDS_HELP_ID` is empty and the name cannot be resolved: still post the comment, leave the
    card where it is, `touch "$SLOTH_SESSION_DIR/blocked"`, and say so in the report.
-3. **Wait up to `SLOTH_WAIT_HOURS`.** One Bash call per 10 minutes (`timeout: 600000`): ten `sleep 60`
+3. **Wait up to `SLOTH_WAIT_HOURS`** — `SLOTH_REFINE_WAIT_HOURS` when the questions are the refine step's
+   (implement Step 1.5), asked before any code exists. One Bash call per 10 minutes (`timeout: 600000`): ten `sleep 60`
    iterations, each checking `ls "$SLOTH_SESSION_DIR/inbox"`, and on the last one polling the thread — any
    new comment from someone with a role (admin, developer or tester) is an answer, mention or not; a
    comment from any other login is not, whatever it says:
@@ -180,7 +182,7 @@ Sloth's, the reviewer loop will not pass, or time is running out.
    `$SLOTH_BOT_PREFIX thanks — continuing`, recompute the budget (above), `SINCE=$(date +%s)`,
    `set_state working …`, bring the environment back up if you stopped it, and continue from where you
    stopped. Still a gap → ask again the same way.
-6. **`SLOTH_WAIT_HOURS` with no answer** — leave the card parked, tear down, `set_state done Q "no answer in
+6. **The wait window passed with no answer** — leave the card parked, tear down, `set_state done Q "no answer in
     h"`, report. Step `Q` on `done` is how the server knows the run ended **out of response**
    rather than finished: keep it `Q` here, and never `Q` on a `done` that finished the work.
    The server keeps watching the parked card: a later human comment in the thread starts a new session
