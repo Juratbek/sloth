@@ -3,14 +3,16 @@ import path from 'node:path';
 import { cfg } from '../config';
 import { canonicalRepo, label, primaryRepo, repoSlugs, several } from '../repos';
 import { refKey, sameSlug, type IssueRef, type PrRef } from '../repo-types';
-import { canAnswer, canOrder, roleOf } from '../roles';
+import { canAnswer, roleOf } from '../roles';
 import type { Role } from '../roles';
+import { wroteIt } from './bot';
 import { gh, graphql, react } from './gh';
 import { isDry, log, remove, write } from './log';
 import { isPaused } from './pause';
 import { snapshot } from './board-snapshot';
-import { isBlocked, issueAlive, issueDir, stateOf } from './session-dirs';
+import { issueAlive, issueDir } from './session-dirs';
 import { launch, statusReply } from './spawn';
+import { awaitingAnswer, isOrder, kindOf, orderHold, replyTo, seenKey, unwiredReply, where } from './orders';
 import { mirrorAuthor, takePending } from './trello-mirror';
 
 const LOOKBACK = 60 * 60; // search window; the seen/ markers do the real de-duplication
@@ -156,12 +158,6 @@ async function reviewCommentsOf(pr: PrRef, since: string): Promise<Comment[]> {
   ]));
 }
 
-const where = (t: Thread) => (t.pr ? `PR #${t.pr.number}` : label(t.issue));
-/** How a comment is named in the log and in an order: a review comment says so, since its id lives in another namespace. */
-const kindOf = (c: Comment) => (c.review ? 'review comment' : 'comment');
-/** The seen marker. Review comments and conversation comments are numbered apart, so the marker says which it is. */
-const seenKey = (c: Comment) => (c.review ? `review-${c.id}` : String(c.id));
-
 /** Hands a comment to the session that is already working on the issue, with the author's role and where it was written. */
 export function deliver(t: Thread, c: Comment, role: Role): void {
   const dir = path.join(issueDir(t.issue), 'inbox');
@@ -177,41 +173,6 @@ export function deliver(t: Thread, c: Comment, role: Role): void {
   ];
   write(path.join(dir, `${seenKey(c)}.md`), `${head.join('\n')}\n\n${c.body}\n`);
   log(`${label(t.issue)} inbox <- ${kindOf(c)} ${c.id} by ${c.login} (${role}) on ${where(t)}`);
-}
-
-/** A PR that closes no issue has no Sloth work behind it: say so where the comment was written — in its review thread when that is where. */
-async function unwiredReply(t: Thread, c: Comment): Promise<void> {
-  if (isDry()) {
-    log(`dry-run: would tell ${c.login} on PR #${t.number} that it is wired to no issue (${kindOf(c)} ${c.id})`);
-    return;
-  }
-  const body = `${cfg().botPrefix} This PR is not linked to an issue (no \`Closes #n\`), so there is no Sloth session behind it. Mention me on the issue, or link one to the PR.`;
-  const endpoint = c.review ? `repos/${t.repo}/pulls/${t.number}/comments/${c.id}/replies` : `repos/${t.repo}/issues/${t.number}/comments`;
-  const r = await gh(['api', endpoint, '-f', `body=${body}`]);
-  if (!r.ok) log(`PR #${t.number} reply failed: ${r.err.split('\n')[0]}`);
-  else log(`PR #${t.number}: told ${c.login} the PR is wired to no issue (${kindOf(c)} ${c.id})`);
-}
-
-/** A question ends with `?`; everything else from someone who may order is an order. */
-const isOrder = (c: Comment, role: Role) => canOrder(role) && !c.body.trimEnd().endsWith('?');
-
-/**
- * Whether this card is waiting for a human's answer: parked in the needs-help column, blocked in place
- * where there is none, or left by a run that stopped to ask. Any of the three makes a team member's
- * comment the answer trigger 6 relaunches on, which is what the docs promise — "on a card in *Sloth
- * needs help*, a comment from anyone on the team is the answer the session waits for".
- *
- * It matters here because of what a status reply would do instead. The reply is a `**Sloth:**` comment,
- * and `answerOn` reads Sloth's last comment as the question being asked: a reply written *after* the
- * tester's answer cancels it, the next board tick finds nothing newer than Sloth, and the card stays
- * parked for ever. The board is the previous tick's read, which is enough — the two markers cover a
- * card parked since it was taken.
- */
-function awaitingAnswer(issue: IssueRef): boolean {
-  const dir = issueDir(issue);
-  if (isBlocked(dir) || stateOf(dir).state === 'waiting') return true;
-  const column = cfg().statusField.columns.needsHelp.name;
-  return !!column && (snapshot()?.items ?? []).some((i) => refKey(i) === refKey(issue) && i.status === column);
 }
 
 /**
@@ -241,7 +202,7 @@ export async function comments(): Promise<void> {
       ...(source.review ? await reviewCommentsOf(source, since) : []),
     ].map(mirrorAuthor);
     for (const comment of found) {
-      if (!mention.test(comment.body) || comment.body.startsWith(c.botPrefix)) continue;
+      if (!mention.test(comment.body) || wroteIt(comment.login, comment.body)) continue;
       const seen = path.join(seenDir, seenKey(comment));
       if (fs.existsSync(seen)) continue;
       const role = roleOf(c.roles, comment.login);
@@ -256,6 +217,15 @@ export async function comments(): Promise<void> {
         // Left unseen on purpose: an order held back by the pause is picked up when Sloth resumes.
         if (isPaused()) {
           log(`paused: skipped order on ${where(t)}`);
+          continue;
+        }
+        const hold = orderHold(t.issue);
+        if (hold) {
+          log(`${where(t)}: ${named} not acted on — ${hold.why}`);
+          if (!isDry()) {
+            await replyTo(t, comment, hold.reply);
+            write(seen, '');
+          }
           continue;
         }
         const origin = t.pr ? `PR #${t.pr.number} ${named}` : `issue ${named}`;

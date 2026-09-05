@@ -8,6 +8,7 @@ import { cleanup } from './cleanup';
 import { gh } from './gh';
 import { isDry, log, remove, write } from './log';
 import { APPROVED_LABEL, OWN_BRANCH, headMarker, marker, skipped, statePath, unapprove } from './markers';
+import { workedColumns } from './columns';
 import { stopPreview } from './preview';
 import { approvedDir, dirAlive, issueAlive } from './session-dirs';
 import { launch } from './spawn';
@@ -20,12 +21,6 @@ import { park } from './run-control';
  * user asked for that, and a Code Review PR that no longer merges is sent back to be made mergeable when
  * the user asked for that too.
  */
-
-/** The columns Sloth still has something to do in — a card outside them is nobody's business here. */
-const workedColumns = (): string[] => {
-  const col = cfg().statusField.columns;
-  return [col.inProgress, col.needsHelp, col.codeReview, col.approved].map((c) => c.name).filter(Boolean);
-};
 
 const handedOverColumns = (): string[] => {
   const col = cfg().statusField.columns;
@@ -132,7 +127,10 @@ export async function failedChecks(board: BoardItem[]): Promise<void> {
   for (const { issue, pr, sha, head, checks } of await wiredPrs(cards)) {
     if (!OWN_BRANCH.test(head) || checks !== 'FAILURE') continue;
     const checked = marker('checks', `${pr.number}-${sha}`, pr);
-    if (fs.existsSync(checked) || issueAlive(issue)) continue;
+    // A review still reading this PR owns the card, as it does in every other wired-PR trigger: a session
+    // started here would push a new head while the reviewer posts its verdict on the old one and moves the
+    // card by it — a rejected head marked as reviewed, in a column that launches nothing.
+    if (fs.existsSync(checked) || issueAlive(issue) || dirAlive(approvedDir(pr))) continue;
     if (cards.find((i) => refKey(i) === refKey(issue))?.labels.includes(APPROVED_LABEL)) {
       await unapprove(issue, `the checks on PR #${pr.number} fail`);
     }

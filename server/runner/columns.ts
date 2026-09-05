@@ -51,6 +51,30 @@ export async function refreshColumns(): Promise<void> {
 /** What the last refresh saw; empty before the first one. */
 export const knownColumns = (): ColumnRef[] => known;
 
+/** Tests start a case from a board nobody has read yet, as a fresh Sloth does. */
+export const resetColumns = (): void => {
+  known = [];
+};
+
+/**
+ * The columns a card can be parked in, so trigger 6 knows where to look for a `blocked` marker: `park`
+ * leaves one wherever the card stood when the move to needs-help was refused, or when the board has no
+ * such column — In Progress, but also Code Review (a review given up or stopped) and Approved (a PR
+ * closed unmerged). The pickup column is deliberately not one of them: the park comment offers moving the
+ * card back there as the way to *start over*, and trigger 6 relaunching it first would continue the dead
+ * run instead — its handoff kept, its hours booked as continued.
+ */
+export const parkedColumns = (): string[] => {
+  const col = cfg().statusField.columns;
+  return [col.inProgress, col.needsHelp, col.codeReview, col.approved].map((c) => c.name).filter(Boolean);
+};
+
+/**
+ * The columns Sloth still has something to do in — a card outside them is nobody's business. The pickup
+ * column is one: a card left there whose issue was closed is filed away rather than picked up.
+ */
+export const workedColumns = (): string[] => [cfg().statusField.columns.pickup.name, ...parkedColumns()].filter(Boolean);
+
 const byName = (options: FieldOption[], name: string) => options.find((o) => o.name.toLowerCase() === name.toLowerCase());
 
 /** Every option as the mutation wants it — existing ones keep their id, so nothing is dropped. */

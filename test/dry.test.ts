@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { isDry, setDry, withDry } from '../server/runner/log';
 import { tick } from '../server/runner/loop';
-import { stop } from '../server/runner/run-control';
-import { onGh, resetGh } from './gh-mock';
+import { reap, stop } from '../server/runner/run-control';
+import { cleanup } from '../server/runner/cleanup';
+import { trackWaiting } from '../server/runner/waiting';
+import { setSnapshot } from '../server/runner/board-snapshot';
+import { called, onGh, resetGh } from './gh-mock';
 import { resetSpawn } from './child-process-mock';
-import { alivePid, configure, exists, makeSession, readLog, runRef, sessionDir, wipe } from './harness';
+import fs from 'node:fs';
+import { alivePid, configure, exists, makeSession, readLog, ref, runRef, sessionDir, statePath, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
@@ -56,6 +60,47 @@ describe('withDry', () => {
     } finally {
       setDry(false);
     }
+  });
+});
+
+describe('a dry reap', () => {
+  it('keeps the markers of a run that died without a verdict, and tears nothing down', async () => {
+    // `bookRun`, the pid file and the pause files all checked for dryness; the marker removal, the exit
+    // record and the sweep did not. `POST /api/tick?dry=1` against a Sloth with a review that had just
+    // died deleted `state/approved/<pr>-<sha>`, so the next real tick paid for a second review of the
+    // same commit — and for a QA run it killed the recorded servers, ran `dropdb` and freed the slot.
+    fs.mkdirSync(statePath('approved'), { recursive: true });
+    fs.writeFileSync(statePath('approved', '5-aaa'), '');
+    makeSession('approved', 5, { pid: '2000000000', sha: 'aaa', 'state.json': { state: 'working' }, 'run.log': 'died\n' });
+    const qa = makeSession('qa', 6, { pid: '2000000000', sha: 'bbb', 'state.json': { state: 'working' }, 'dev.pid': '4242\n', 'demo.db': 'sloth_qa_6\n', 'run.log': 'died\n' });
+    fs.mkdirSync(statePath('qa'), { recursive: true });
+    fs.writeFileSync(statePath('qa', '6-bbb'), '');
+    const issue = makeSession('issue', 7, { pid: '2000000000', 'state.json': { state: 'working' }, 'run.log': 'died\n' });
+
+    await withDry(() => reap());
+
+    expect(exists(statePath('approved', '5-aaa'))).toBe(true);
+    expect(exists(statePath('qa', '6-bbb'))).toBe(true);
+    expect(exists(qa, 'demo.db')).toBe(true);
+    expect(called(/dropdb/)).toHaveLength(0);
+    expect(exists(issue, 'exits.json')).toBe(false);
+    expect(exists(issue, 'pid')).toBe(true);
+    expect(readLog().join('\n')).toMatch(/dry-run: would sweep up what qa-6 left running/);
+  });
+
+  it('tears nothing down when a cleanup is reached directly, and keeps no waiting books', async () => {
+    // `sweepDead` guards the path above; `cleanupRun` guards itself, for the callers that reach it another
+    // way. And `trackWaiting` writes the very files a run's billable seconds are worked out from.
+    const dir = makeSession('issue', 8, { pid: alivePid(), 'state.json': { state: 'working' }, 'dev.pid': '4242\n', 'demo.db': 'sloth_8\n' });
+    setSnapshot([]);
+    await withDry(() => cleanup(ref(8)));
+    expect(exists(dir, 'demo.db')).toBe(true);
+    expect(exists(dir, 'dev.pid')).toBe(true);
+    expect(called(/dropdb/)).toHaveLength(0);
+    expect(readLog().join('\n')).toMatch(/dry-run: would stop the servers of issue-8/);
+    withDry(() => trackWaiting(dir, ref(8)));
+    expect(exists(dir, 'waiting')).toBe(false);
+    expect(exists(dir, 'answered')).toBe(false);
   });
 });
 

@@ -15,9 +15,9 @@ import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
 import { MARKERS, markerFiles, statePath } from './markers';
 import { helpMentions, notify } from './notify';
 import { forgetPause, pausedSeconds, resumeRun } from './pressure';
-import { dirAlive, dirOf, issueDir, issueOfRun, launchedAt, pidAlive, pidOf, predatesBoot, runDirs, runName, stateOf } from './session-dirs';
+import { dirAlive, dirOf, issueDir, issueOfRun, launchedAt, pidOf, predatesBoot, runDirs, runName, stateOf } from './session-dirs';
 import type { RunRef } from './session-dirs';
-import { ANSWER_MINUTES, answeredAt, forgetWaiting, trackWaiting, waitedSeconds } from './waiting';
+import { ANSWER_MINUTES, answeredAt, forgetWaiting, trackWaiting, waitedForDeadline } from './waiting';
 
 /**
  * A run's life after it has started: parking the card a run could not finish, stopping a run on demand,
@@ -78,7 +78,11 @@ export async function stop(r: RunRef, reason: string, why: string): Promise<bool
   const pid = pidOf(dir);
   const name = runName(r);
   const issue: IssueRef = { repo: r.repo, number: r.target };
-  if (!pidAlive(pid)) {
+  // `dirAlive`, not the bare pid check: a pid file written before the last boot names whatever holds that
+  // number now — an editor, a shell — and `killTree` signals a whole process group. `reap` has always known
+  // that, but it only runs on a tick, and the monitor's Stop is reachable while the tick chain has not
+  // started (no state claim, a config that is not configured yet) or in the seconds before the first one.
+  if (!dirAlive(dir)) {
     const state = stateOf(dir);
     if (r.kind !== 'issue' || state.state !== 'waiting') return false;
     if (isDry()) {
@@ -145,6 +149,10 @@ export async function stop(r: RunRef, reason: string, why: string): Promise<bool
  * `previews` tunnels it or, with previews off, cleans it up itself.
  */
 async function sweepDead(r: RunRef): Promise<void> {
+  if (isDry()) {
+    log(`dry-run: would sweep up what ${runName(r)} left running`);
+    return;
+  }
   if (r.kind === 'qa' || r.kind === 'smoke') {
     await cleanupRun(r);
     return;
@@ -176,6 +184,10 @@ async function verdictPosted(r: RunRef, dir: string): Promise<boolean> {
 /** The head markers of a run that ended without a verdict go, so the head is looked at again. */
 const dropMarkers = (r: RunRef): void => {
   if (r.kind === 'issue') return;
+  if (isDry()) {
+    log(`dry-run: would let the head of ${runName(r)} be looked at again`);
+    return;
+  }
   for (const f of markerFiles(r.kind, { repo: r.repo, number: r.target })) remove(statePath(MARKERS[r.kind], f));
 };
 
@@ -215,7 +227,8 @@ export async function reap(): Promise<void> {
       if (!limit) {
         if (!finished) {
           if (kind === 'issue') {
-            log(`${name} ended without finishing — ${exitLine(recordExit(dir, 'the session ended on its own'))}`);
+            const how = 'the session ended on its own';
+            log(`${name} ended without finishing — ${isDry() ? how : exitLine(recordExit(dir, how))}`);
           } else {
             dropMarkers(r);
             log(`${name} ended without a verdict — ${kind === 'qa' ? 'the card will be tested again' : kind === 'smoke' ? 'the next scheduled smoke test runs as planned' : 'the head will be reviewed again'}`);
@@ -251,7 +264,7 @@ export async function reap(): Promise<void> {
     // The time a run spent paused for the machine, or parked waiting for an answer, is not its own: the
     // budget clock stands still meanwhile. And a run that got its answer keeps the skill's promise — the
     // session gives itself `max(remaining, 30 min)` then, so the server allows no less.
-    const deadline = Math.max(launchedAt(dir) + pausedSeconds(dir) + waitedSeconds(dir) + budget, answeredAt(dir) + ANSWER_MINUTES * 60);
+    const deadline = Math.max(launchedAt(dir) + pausedSeconds(dir) + waitedForDeadline(dir) + budget, answeredAt(dir) + ANSWER_MINUTES * 60);
     if ((stateOf(dir).state ?? 'working') !== 'working' || nowSec() <= deadline + KILL_GRACE) continue;
     const stopped = await stop(r, BUDGET_REASON, 'the run for this issue hung past its time budget and was stopped by Sloth.');
     // A hang is not a verdict: the head's marker goes so the sweep tests the card again, `retries` allowing.

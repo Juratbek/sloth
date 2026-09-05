@@ -38,10 +38,15 @@ export function pausedRun(dir: string): PausedRun | undefined {
   }
 }
 
-/** Seconds this run has spent paused so far — its budget clock does not tick while it is stopped. */
-export function pausedSeconds(dir: string): number {
+/**
+ * Seconds this run has spent paused so far — its budget clock does not tick while it is stopped. Up to
+ * `until` when the ledger books a run that ended before the tick noticed, exactly as `waitedSeconds` is:
+ * a run paused when Sloth went down was measured to *now* instead, so a three-hour outage subtracted
+ * three hours from a run that had worked forty minutes, and the ledger booked it as zero.
+ */
+export function pausedSeconds(dir: string, until = nowSec()): number {
   const p = pausedRun(dir);
-  return readNumber(totalFile(dir)) + (p ? Math.max(0, nowSec() - p.since) : 0);
+  return readNumber(totalFile(dir)) + (p ? Math.max(0, Math.min(until, nowSec()) - p.since) : 0);
 }
 
 /** The pids a run consists of: its own `claude`, and every server it recorded — each with its process group. */

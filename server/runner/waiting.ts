@@ -2,7 +2,7 @@ import path from 'node:path';
 import { cfg } from '../config';
 import { refKey, type IssueRef } from '../repo-types';
 import { snapshot } from './board-snapshot';
-import { nowSec, readNumber, remove, write } from './log';
+import { isDry, nowSec, readNumber, remove, write } from './log';
 import { launchedAt, stateOf } from './session-dirs';
 
 /**
@@ -42,10 +42,12 @@ function parkedOnBoard(issue: IssueRef | undefined): boolean {
   return snapshot()?.items.some((i) => refKey(i) === refKey(issue) && i.status === column) ?? false;
 }
 
+/** The earliest moment a wait of this run could have begun: its launch, or the last answer it got. */
+const floorOf = (dir: string): number => Math.max(launchedAt(dir), answeredAt(dir));
+
 /** A mark of the session's, if it lies in the run's own life: after the launch and its last answer, not in the future. */
 function honest(dir: string, mark: number, now: number): number | undefined {
-  const floor = Math.max(launchedAt(dir), answeredAt(dir));
-  return mark > floor && mark <= now ? mark : undefined;
+  return mark > floorOf(dir) && mark <= now ? mark : undefined;
 }
 
 /** Books a wait that ran from `from` to `to`, and remembers when the run was last seen working. */
@@ -59,6 +61,8 @@ function credit(dir: string, from: number, to: number): void {
  * `issue` is the card the run works for, for the board's word on whether it is parked.
  */
 export function trackWaiting(dir: string, issue?: IssueRef): void {
+  // A dry tick books nothing: `waiting_total` and `answered` are what the run is billed and judged by.
+  if (isDry()) return;
   const since = readNumber(file(dir));
   const now = nowSec();
   const state = stateOf(dir);
@@ -67,8 +71,13 @@ export function trackWaiting(dir: string, issue?: IssueRef): void {
   if (waiting && !since) {
     // The session's `since` counts only when it said it was asking; `asked_at` it wrote when it posted the
     // question, whatever it said afterwards. Neither, and the wait began when the board was last read.
+    // …and the tick's own reading is floored the same way the session's marks are. The snapshot is the
+    // *previous* tick's board, which for a card just relaunched out of needs-help still shows it parked:
+    // an unfloored fallback credited the run a board interval it did not exist for, and pushed its
+    // deadline out by the same, on every card that ever got an answer.
     const asked = honest(dir, readNumber(path.join(dir, 'asked_at')), now);
-    const began = (said ? honest(dir, Number(state.since) || 0, now) : undefined) ?? asked ?? Math.min(now, Math.floor((snapshot()?.at ?? Infinity) / 1000));
+    const seen = Math.max(floorOf(dir), Math.min(now, Math.floor((snapshot()?.at ?? Infinity) / 1000)));
+    const began = (said ? honest(dir, Number(state.since) || 0, now) : undefined) ?? asked ?? seen;
     write(file(dir), String(began));
   } else if (!waiting && since) {
     credit(dir, since, now);
@@ -89,6 +98,29 @@ export function trackWaiting(dir: string, issue?: IssueRef): void {
 export function waitedSeconds(dir: string, until = nowSec()): number {
   const since = readNumber(file(dir));
   return readNumber(totalFile(dir)) + (since ? Math.max(0, Math.min(until, nowSec()) - since) : 0);
+}
+
+/**
+ * The wait a run's budget deadline is moved out by: every wait it has finished, and the one still open —
+ * but that one only up to `waitHours`, which is the longest a question may honestly stand before the
+ * session gives up on it.
+ *
+ * Uncapped, the open wait moved the deadline out by exactly as much as the clock advanced: substituting
+ * `total + (now - since)` into `now > launchedAt + waited + budget` cancels `now` on both sides and leaves
+ * the constant `since > launchedAt + total + budget`, so once the wait file existed the run could never be
+ * killed. A run whose card stands in needs-help while its own state still says `working` — a hung session,
+ * or a card a human dragged there — opens a wait nothing ever closes, and held its slot for ever: no
+ * `stopped` event, no ledger line, and retention would not prune it.
+ *
+ * The cap and not the whole open wait, because the honest case runs through the same window. A wait is
+ * closed by `trackWaiting` when the board says the card has left needs-help, and the board is the previous
+ * tick's read: for the minutes between a session being answered and the next board read, the run says
+ * `working` with its wait still open. Dropping the open wait outright killed it there — the very thing
+ * this module was written to prevent.
+ */
+export function waitedForDeadline(dir: string): number {
+  const since = readNumber(file(dir));
+  return readNumber(totalFile(dir)) + (since ? Math.min(Math.max(0, nowSec() - since), cfg().waitHours * 3600) : 0);
 }
 
 /** When the run last went from `waiting` back to work, or 0 if it never asked. */

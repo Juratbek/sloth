@@ -35,6 +35,8 @@ const FIXTURE = `<?xml version="1.0" encoding="UTF-8"?>
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
     <key>StandardOutPath</key>
     <string>/Users/x/.sloth/service.log</string>
     <key>StandardErrorPath</key>
@@ -75,15 +77,16 @@ describe('applyAutostart', () => {
     expect(serviceStatus()).toMatchObject({ supported: supported(), installed: false, label: 'dev.sloth.widgets' });
   });
 
-  it.runIf(supported())('registers the agent with launchctl, without starting it', async () => {
+  it.runIf(supported())('registers the agent by writing the plist, and loads nothing into this session', async () => {
     fs.mkdirSync(path.dirname(dist), { recursive: true });
     if (!fs.existsSync(dist)) fs.writeFileSync(dist, '<html></html>');
     expect(await applyAutostart(true)).toBeUndefined();
-    expect(called(/^launchctl bootstrap gui\/\d+ .*dev\.sloth\.widgets\.plist$/)).toHaveLength(1);
-    expect(called(/kickstart/)).toHaveLength(0);
+    // `bootstrap` loads the job, and `RunAtLoad` starts it the moment it is loaded: a second Sloth on the
+    // spot, which took the state directory, died on the bound port and was respawned every ten seconds.
+    expect(called(/launchctl/)).toHaveLength(0);
     expect(fs.readFileSync(plistPath(), 'utf8')).toContain('<string>/usr/bin/caffeinate</string>');
     expect(serviceStatus().installed).toBe(true);
-    expect(readLog().join('\n')).toMatch(/autostart: dev\.sloth\.widgets registered/);
+    expect(readLog().join('\n')).toMatch(/autostart: dev\.sloth\.widgets registered — it starts at next login/);
   });
 
   it.runIf(supported())('boots the agent out and deletes the plist when it is turned off', async () => {

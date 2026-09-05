@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { cfg } from '../config';
 import { tag, untagName } from '../repos';
-import type { IssueRef, PrRef } from '../repo-types';
+import { refKey, type IssueRef, type PrRef } from '../repo-types';
 import type { WatcherState } from '../types';
 import { readFile, readNumber } from './log';
 import { statePath } from './markers';
@@ -96,6 +96,18 @@ export const dirAlive = (dir: string) => pidAlive(pidOf(dir)) && !predatesBoot(p
 export const issueAlive = (i: IssueRef) => dirAlive(issueDir(i));
 
 /**
+ * Whether a review is running for this issue right now. A review is named after its PR, so `issueAlive`
+ * cannot see one: the issue it works for is written beside it (`launchApproved`), and that is what is
+ * asked here. It answers "is anyone already on this card" for a caller that has no PR number in hand.
+ */
+export const reviewAlive = (i: IssueRef): boolean =>
+  runDirs().some((r) => {
+    if (r.kind !== 'approved' || !dirAlive(r.dir)) return false;
+    const wired = issueOfRun(r, r.dir);
+    return !!wired && refKey(wired) === refKey(i);
+  });
+
+/**
  * A run's name back into the kind, target and repository it was made from — `runName` read backwards. One
  * reader, so a kind added to `KINDS` is a kind every caller sees: a directory listing, a worktree lease, the
  * monitor. Anything else (a stray file, a directory a human made) is not a run.
@@ -147,11 +159,14 @@ export const stateOf = (dir: string): RunState => readState(dir) ?? {};
  * launched by an older Sloth has no `started`, and the pid file's mtime dates it well enough.
  */
 export function launchedAt(dir: string): number {
-  // The server's own copy of the mark, outside the session's directory (`spawn.ts`), wins over the one
-  // beside the run when it is the same run's — the pid says so. A session could rewrite the one it can
-  // reach and bill ten hours it never worked; it cannot reach this one.
+  // The server's own copy of the mark, outside the session's directory (`spawn.ts`), is the answer
+  // whenever it is there: `start` rewrites it on every launch, so it always describes the run whose pid
+  // file sits beside it. It used to count only when its pid matched the one in `<dir>/pid` — a file the
+  // session writes in, which made the guard's key reachable by the very thing it guards against: a run
+  // that wrote itself a pid nobody has and a `started` ten hours old had both marks disagree, fell
+  // through to its own, and booked ten hours it never worked into the ledger.
   const own = (readFile(statePath('started', path.basename(dir))) ?? '').trim().split(' ');
-  if (own.length === 2 && own[0] === String(pidOf(dir) ?? '') && Number(own[1]) > 0) return Number(own[1]);
+  if (own.length === 2 && Number(own[1]) > 0) return Number(own[1]);
   const started = readNumber(path.join(dir, 'started'));
   if (started) return started;
   try {
