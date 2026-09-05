@@ -16,7 +16,7 @@ what the commit convention is, how designs are read — all of that comes from t
 | `commands/review.md` | `/sloth:review <pr> [feedback-only\|final]` — verdict block, inline comments, card back to In Progress; `final` (the server's review of every Code Review card) always posts the verdict on the PR, and a pass labels the issue `Fable: approved` and moves the card to Approved for a human to test |
 | `commands/status.md` | `/sloth:status <issue> <comment-id>` — answer a mention when no session is running |
 | `commands/qa.md` | `/sloth:qa <issue>` — the daily QA sweep's test of one card: check the QA branch out, boot the app, test the merged fix in the browser, post the findings on the issue, write the verdict for the server |
-| `commands/smoke.md` | `/sloth:smoke <run>` — the scheduled smoke test of the whole app: check the pinned head out, build, boot the app, walk every user role's main flows in the browser, file the blockers and majors as issues, post the GO / NO-GO report on the report issue, write the verdict for the server |
+| `commands/smoke.md` | `/sloth:smoke <run>` — the scheduled smoke test of the whole app: check the pinned head out, build, boot the app, run the project's e2e suite against it (`SLOTH_E2E=1`), walk every user role's main flows in the browser, file the blockers and majors as issues, post the GO / NO-GO report on the report issue, write the verdict for the server |
 | `commands/stack.md` | `/sloth:stack <tool-id…>` — install the project's stack on the machine Sloth runs on and verify it answers |
 | `agents/e2e-writer.md` | The `sloth:e2e-writer` subagent implement spawns while `SLOTH_E2E=1`: one Playwright test per acceptance criterion, into the project's own suite, derived from the criteria and never bent to the code |
 | `skills/board/SKILL.md` | Board reads and moves with the ids from the environment, wired-PR lookup, `retry` |
@@ -94,7 +94,7 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_MODEL` | The model this session runs on; a subagent with no model of its own runs on it too |
 | `SLOTH_TESTER_MODEL` | The model the browser tester subagent runs on (`opus`) |
 | `SLOTH_REVIEWER_MODEL` | The model the reviewer subagent runs on (`opus`) |
-| `SLOTH_E2E` | `1` when the `e2e` switch is on: implement spawns the e2e-writer subagent after the tester and the QA sweep runs the PR's added spec files. The review reads the PR's own `E2E` line, not this variable |
+| `SLOTH_E2E` | `1` when the `e2e` switch is on: implement spawns the e2e-writer subagent after the tester, the QA sweep runs the PR's added spec files and the smoke test runs the project's whole e2e suite against the app it booted. The review reads the PR's own `E2E` line, not this variable |
 | `SLOTH_E2E_MODEL` | The model the e2e-writer subagent runs on (`opus`) |
 | `SLOTH_ORCHESTRATOR` | `1` when the implement session is an orchestrator (`orchestrator` in the config): it runs on the orchestrator model and hands every code change to an implementor subagent |
 | `SLOTH_IMPLEMENTOR_MODEL` | The model the implementor subagent runs on in orchestrator mode — the config's `models.implement` (`opus`) |
@@ -163,7 +163,9 @@ The **last message of the transcript is the report** — the monitor shows it.
   steps, what was seen, screenshots — and writes `verdict`; it moves no card and never asks for help: what it
   cannot test is `inconclusive`, and the card stays for a human.
 - A `/sloth:smoke` run is the scheduled smoke test: its slot at the exact head the server pinned, the project's build as
-  the gate, the app booted the way the run skill says, and one tester subagent per user role — one at a time, in the
+  the gate, the app booted the way the run skill says, with `SLOTH_E2E=1` the project's Playwright suite run once against
+  that app (at most twenty minutes; a red test is handed to its role's tester to reproduce first, and holds the verdict at
+  GO with risks when nobody reproduces it), and one tester subagent per user role — one at a time, in the
   session's one browser — walking that role's main flows, happy paths only. Blockers and majors are filed as issues — each embedding
   the tester's screenshot of the failing screen; no image, no issue — and put on the board with no status; the report — verdict, findings with screenshots, a roles table — is a comment on
   the open issue titled `Smoke test reports`, created once. It writes `verdict` and `report_issue`, moves no card and
