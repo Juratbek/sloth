@@ -89,6 +89,9 @@ export function chromeCheck(on: boolean, browser: Browser | undefined): HealthCh
  */
 export function sudoCheck(by: Installer): HealthCheck {
   if (by.kind === 'brew') return { id: 'sudo', ok: true, skipped: true, detail: 'Homebrew installs the stack here — no sudoers rule is needed' };
+  if (by.kind === 'apt' && by.wide) {
+    return { id: 'sudo', ok: false, detail: 'sudo lets this user run apt-get with any arguments — wider than the exact lines Sloth grants (an older Sloth\'s rule, or one of the machine\'s own); Settings → Stack replaces Sloth\'s file with the password' };
+  }
   if (by.kind === 'apt') return { id: 'sudo', ok: true, detail: by.sudo ? 'apt-get runs without a password' : 'Sloth runs as root — apt-get needs no sudo' };
   if (!by.password) return { id: 'sudo', ok: true, skipped: true, detail: by.error };
   return { id: 'sudo', ok: false, detail: by.error };

@@ -226,10 +226,13 @@ export function monitorApi(): Plugin {
     name: 'sloth-api',
     transformIndexHtml: (html) => withTitle(html, cfg().title),
     configureServer: mount,
-    // The preview server transforms no HTML: the built page is served here with today's title instead.
+    // The preview server transforms no HTML: the built page is served here with today's title instead —
+    // behind the guard `mount` registers, like every other page. Registered the other way round it
+    // answered `/` and `/board` before the guard saw them: the app shell went to anyone holding the tunnel
+    // address, and the QR link's `?code=` was never consumed, so the phone never got its cookie.
     configurePreviewServer: (server) => {
-      server.middlewares.use(previewIndex(path.resolve(server.config.root, server.config.build.outDir)));
       mount(server);
+      server.middlewares.use(previewIndex(path.resolve(server.config.root, server.config.build.outDir)));
     },
   };
 }
