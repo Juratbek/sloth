@@ -117,6 +117,12 @@ surrounding flow a real user would go through, and `$SLOTH_SCREENSHOTS_DIR`. Its
    was seen against what was expected, what could not be tested and why, and the screenshot files with a
    one-line caption each.
 
+With `SLOTH_E2E=1` the fix may have brought its e2e tests along: the files the merged PR (Step 0) added under
+the checkout's Playwright `testDir` (`gh pr diff <N> --repo "$SLOTH_REPO" --name-only`). Run exactly those
+against the app from Step 2 — `npx playwright test <files> --reporter=list`, from the package that owns the
+config — and take each red test as a finding with the criterion it checks and what the app showed. They add to
+the tester's evidence, never replace it; no such files, or no Playwright setup → nothing to run, say so.
+
 `SLOTH_CHROME=0`, or the tools unavailable: test what can be tested without a browser — the API with
 `curl`, the database, the CLI, the rendered markup — and say exactly what was and was not covered. A fix
 that only shows on a screen and no browser to see it → **inconclusive**.

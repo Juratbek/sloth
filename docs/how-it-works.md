@@ -25,7 +25,10 @@ board. When it finds work, it starts a Claude Code session to do it. That is all
    pushed to a `sloth-assets` branch of the repository, which holds images only and is never merged, so
    nothing lands in your code — and the PR body embeds them under `## Screenshots`, proof of the work next
    to the description. This needs Google Chrome installed on the machine Sloth runs on; without one the
-   session says so in the PR instead. Before handing it over, it asks a reviewer agent to check the PR and fixes what
+   session says so in the PR instead. With **Write e2e tests** on (Settings → General, off by default) an
+   e2e-writer agent then turns every acceptance criterion of the card into a Playwright test in your own e2e
+   suite, runs them against the session's app, and the tests land in the same PR as the code; a red test is
+   a bug the session fixes first. Before handing it over, it asks a reviewer agent to check the PR and fixes what
    the reviewer finds (up to 4 rounds) — a PR that changes a screen and shows none is sent back. With the **orchestrator** on (the default, Settings → Models), the session
    itself never writes code: it runs on the orchestrator model (Fable by default), hands every change to
    an implementor agent on the implement model, and keeps the judging — verification, tester, reviewer, PR.

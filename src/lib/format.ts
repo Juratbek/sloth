@@ -84,6 +84,7 @@ const IMPLEMENT_STEPS: Record<string, string> = {
   '3': 'implementing',
   '4': 'verifying',
   '4.5': 'browser testing',
+  '4.6': 'writing e2e tests',
   '5': 'opening PR',
   '5.5': 'in review',
   '6': 'handing off',

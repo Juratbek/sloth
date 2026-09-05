@@ -19,6 +19,11 @@ const AGENTS: { role: AgentRole; label: string; hint: string; orchestrated?: { l
     hint: 'The subagent an implement session spawns to click through the change in a headless Chrome and screenshot it for the PR. Only used while Test in Chrome is on.',
   },
   {
+    role: 'e2e',
+    label: 'E2E test writer',
+    hint: 'The subagent that writes one Playwright test per acceptance criterion of the card into the project\'s e2e suite, runs them and hands a failing one back as a bug. Only used while Write e2e tests is on.',
+  },
+  {
     role: 'reviewer',
     label: 'Reviewer loop',
     hint: 'The subagent that reviews the PR inside the implement session, for up to the configured review rounds, before the card reaches Code Review.',

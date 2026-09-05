@@ -12,11 +12,12 @@ what the commit convention is, how designs are read — all of that comes from t
 
 | Path | What |
 |---|---|
-| `commands/implement.md` | `/sloth:implement <issue> [order]` — claim → refine with the author when the card cannot be built without guessing (`## Spec` in the body) → worktree → fix → verify → browser tester + screenshots → PR → reviewer loop → Code Review |
+| `commands/implement.md` | `/sloth:implement <issue> [order]` — claim → refine with the author when the card cannot be built without guessing (`## Spec` in the body) → worktree → fix → verify → browser tester + screenshots → e2e tests per criterion (`e2e` on) → PR → reviewer loop → Code Review |
 | `commands/review.md` | `/sloth:review <pr> [feedback-only\|final]` — verdict block, inline comments, card back to In Progress; `final` (the server's review of every Code Review card) always posts the verdict on the PR, and a pass labels the issue `Fable: approved` and moves the card to Approved for a human to test |
 | `commands/status.md` | `/sloth:status <issue> <comment-id>` — answer a mention when no session is running |
 | `commands/qa.md` | `/sloth:qa <issue>` — the daily QA sweep's test of one card: check the QA branch out, boot the app, test the merged fix in the browser, post the findings on the issue, write the verdict for the server |
 | `commands/stack.md` | `/sloth:stack <tool-id…>` — install the project's stack on the machine Sloth runs on and verify it answers |
+| `agents/e2e-writer.md` | The `sloth:e2e-writer` subagent implement spawns while `SLOTH_E2E=1`: one Playwright test per acceptance criterion, into the project's own suite, derived from the criteria and never bent to the code |
 | `skills/board/SKILL.md` | Board reads and moves with the ids from the environment, wired-PR lookup, `retry` |
 | `skills/session/SKILL.md` | `state.json`, the inbox, the time budget, the needs-help protocol, teardown |
 
@@ -91,6 +92,8 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_MODEL` | The model this session runs on; a subagent with no model of its own runs on it too |
 | `SLOTH_TESTER_MODEL` | The model the browser tester subagent runs on (`opus`) |
 | `SLOTH_REVIEWER_MODEL` | The model the reviewer subagent runs on (`opus`) |
+| `SLOTH_E2E` | `1` when the `e2e` switch is on: implement spawns the e2e-writer subagent after the tester, the reviewer refuses a criterion without a test, the QA sweep runs the PR's tests |
+| `SLOTH_E2E_MODEL` | The model the e2e-writer subagent runs on (`opus`) |
 | `SLOTH_ORCHESTRATOR` | `1` when the implement session is an orchestrator (`orchestrator` in the config): it runs on the orchestrator model and hands every code change to an implementor subagent |
 | `SLOTH_IMPLEMENTOR_MODEL` | The model the implementor subagent runs on in orchestrator mode — the config's `models.implement` (`opus`) |
 | `SLOTH_CHROME` | `1` when the server attached a headless Chrome through Playwright MCP (`browser_*` tools); implement then tests the change in it and screenshots it |
@@ -139,6 +142,10 @@ The **last message of the transcript is the report** — the monitor shows it.
 - With `SLOTH_CHROME=1` the implement session spawns one tester subagent that drives the change in a headless
   Chrome of its own — its own empty profile, nobody else's browser — with the snapshot, console and network
   checked, saves a PNG per screen it verified into `$SLOTH_SCREENSHOTS_DIR`, and fixes what it finds before the PR.
+- With `SLOTH_E2E=1` the implement session spawns the `sloth:e2e-writer` agent once the tester passed: one Playwright
+  test per acceptance criterion of the card's `## Spec` (of the issue's own behaviour without one), in the project's
+  e2e suite, run against the session's app, committed with the code. A red test is handed to the implementor as a
+  bug. A project without a Playwright setup gets none — Sloth adds no framework.
 - With `SLOTH_PREVIEW_HOURS` above 0 an implement run that reaches Code Review leaves its app, database and worktree up and
   writes `preview.json`; the server does the teardown, hours later. Every other ending tears down in the session.
 - A card in Code Review is reviewed by the server (`/sloth:review … final`), Sloth's PR or a human's: a pass moves it to

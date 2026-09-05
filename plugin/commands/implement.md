@@ -1,5 +1,5 @@
 ---
-description: Implement a GitHub issue end-to-end in an isolated worktree — claim the card, refine it with the author when it cannot be built without guessing, fix, verify, test and screenshot it in a headless Chrome, open a PR, pass a reviewer-agent loop, hand the card to Code Review; when blocked, ask on the issue and wait for the answer
+description: Implement a GitHub issue end-to-end in an isolated worktree — claim the card, refine it with the author when it cannot be built without guessing, fix, verify, test and screenshot it in a headless Chrome, write the e2e tests for its criteria when the switch is on, open a PR, pass a reviewer-agent loop, hand the card to Code Review; when blocked, ask on the issue and wait for the answer
 argument-hint: <issue-number|url> [extra instructions or an order]
 allowed-tools: Bash, Read, Edit, Write, Grep, Glob, Skill, Agent, ToolSearch, SendMessage
 ---
@@ -23,8 +23,8 @@ the repo's rules, its skills, its docs. This command only says *when* to consult
 itself** — no `Edit`, no `Write`, no fix-up in the worktree. Every change to the code is made by **one
 implementor subagent** on `$SLOTH_IMPLEMENTOR_MODEL` (spawned in Step 3, reused for every fix), while this
 session keeps everything else: the issue and its thread, the board, the worktree and its git, verification
-(Step 4), the tester (Step 4.5), the commits and the PR (Step 5), the reviewer loop (Step 5.5), Step Q. The
-implementor never talks to GitHub or the board. Steps that read differently in this mode say so below;
+(Step 4), the tester (Step 4.5), the e2e writer (Step 4.6), the commits and the PR (Step 5), the reviewer loop
+(Step 5.5), Step Q. The implementor never talks to GitHub or the board. Steps that read differently in this mode say so below;
 with `SLOTH_ORCHESTRATOR=0` (or unset) ignore them and do the work yourself.
 
 ## Step 0 — Parse, claim
@@ -385,15 +385,52 @@ A finding is a bug: fix it (**orchestrator:** hand it to the implementor verbati
 checks of Step 4, and ask the tester to re-test — **and to re-screenshot what changed**, deleting the stale
 PNGs first (`rm -f`) so the set in `$SLOTH_SCREENSHOTS_DIR` is only what is true now.
 
-**Then stop the app** — unless `SLOTH_PREVIEW_HOURS` is above `0`, when it stays up for the hand-off in
+**Then stop the app** — after Step 4.6 when it runs, since the tests run against this app — unless `SLOTH_PREVIEW_HOURS` is above `0`, when it stays up for the hand-off in
 Step 6, or `SLOTH_WARM_SLOTS=1`, when it stays up for the next run to inherit (`session` skill). The dev
 servers are the run's biggest cost in memory, and the commit, the PR and the reviewer rounds
 do not need them: kill every pid in `$SESSION_DIR/dev.pid` and `redis.pid` (their process groups too —
 `kill -- -<pid>` then `kill <pid>`), empty both files, `SERVERS=stopped`. Keep the database. A re-test in
-Step 5.5 brings the app back up the same way, on the same database. Its report is the
+Step 5.5 or a rerun of the e2e file brings the app back up the same way, on the same database. Its report is the
 browser part of the PR's `## Verification`; its files become the PR's `## Screenshots` (Step 5). A tester that
 cannot reach the screen at all is a failed Step 4 (Step Q when you cannot fix it). Skip this step only when
 the change has no screen — an API-only fix, a script — and say so in the PR.
+
+## Step 4.6 — E2E tests from the criteria (e2e-writer subagent)
+
+When `SLOTH_E2E=1` and the change has a flow a browser can drive, spawn **one** e2e-writer subagent —
+`Agent`, `subagent_type: "sloth:e2e-writer"` (the agent this plugin ships, `agents/e2e-writer.md`: its rules
+live there, not here), `model: "$SLOTH_E2E_MODEL"`, `run_in_background: false` — and reuse it via
+`SendMessage` for every rerun. `set_state working 4.6 "writing e2e tests"`. It runs **while the app from
+Step 4 is still up**, and after the tester (Step 4.5) passed: tests written against a screen the tester found
+broken would pin the wrong behaviour.
+
+Its brief carries what it cannot read for itself:
+
+- the worktree `$WT` — it writes only test files there, on the branch already checked out;
+- the app's URL and how to sign in as each role the criteria name (from the project's run skill);
+- the issue's number and title, and the **criteria**: the boxes under *Acceptance criteria* of the `## Spec`
+  when Step 1.5 wrote one, quoted one per line; otherwise the behaviour the issue describes as a user sees
+  it — one line per thing a user can see, the *Scope so far* items included. Nothing taken from the code;
+- the time it has, in minutes: what is left before Step 5 must start (`session` skill);
+- what to return: its case list, the files, the run command with its outcome, the findings, what it needs
+  from the app, what it could not do. It commits nothing and never talks to GitHub or the board.
+
+Read its report, not its transcript:
+
+- `no Playwright setup` → the step is over; the PR's E2E line says so. Sloth does not add a test framework
+  to a project.
+- A **finding** — a red test where the app does not do what a criterion says — is a bug in the change, not
+  in the test: fix it (**orchestrator:** the implementor, the finding verbatim), re-run the Step 4 checks it
+  touches, then `SendMessage` the writer to rerun its file. A criterion the change was never meant to meet
+  is a scope question → Step Q with the criterion quoted, never a deleted test.
+- **Needs from the app** — a test id, a seed the suite lacks — is a small change to the code: make it
+  (**orchestrator:** the implementor), then the writer reruns. A `data-testid` for a test is in scope.
+- *Not testable end-to-end* items go into the PR's E2E line as written.
+
+The test files are **part of the change**: same commit as the code (Step 5), never a second PR. The run is
+one line of the PR's `## Verification`. With `SLOTH_E2E=0` skip this step and write no E2E line; with
+`SLOTH_E2E=1` and no flow a browser can drive — an API-only fix, a script — the line says
+`skipped — no flow to drive`.
 
 ## Step 5 — Commit, push, draft PR
 
@@ -426,6 +463,7 @@ Root cause left: <what it is, what still breaks>          # only when the fix re
 ## Verification
 - `<command>` → <what it showed, in a few words>            # one line per Step 4 check
 - Tester (`$SLOTH_TESTER_MODEL`): <passed|N findings, all fixed> — <what was driven, every *Scope so far* item named>   # or: skipped — no screen
+- E2E (`$SLOTH_E2E_MODEL`): <N tests for N criteria, all passing — `<spec file>`; not testable end-to-end: <items>>   # SLOTH_E2E=1 only; or: skipped — no Playwright setup | no flow to drive
 - Reviewer (`$SLOTH_REVIEWER_MODEL`): passed on round <N> of `$SLOTH_REVIEW_ROUNDS`
 - Not verified: <what, and why>                                # or the single word `nothing`
 
@@ -436,7 +474,7 @@ Root cause left: <what it is, what still breaks>          # only when the fix re
 <only for a design-driven fix: the written comparison from Step 3>
 ```
 
-The tester and reviewer lines name the **subagent and the model it ran on** — a human reading the PR
+The tester, E2E and reviewer lines name the **subagent and the model it ran on** — a human reading the PR
 sees who checked what; **orchestrator:** add `- Implementor (`$SLOTH_IMPLEMENTOR_MODEL`)` above them.
 Write the reviewer line after Step 5.5 and re-edit the body then (`gh pr edit`). **No reviewer request, no
 assignee** — a human picks it up from the board. Record `PR` / `PR_URL` in `state.json`.
@@ -460,7 +498,9 @@ every numbered item on that list is a requirement, not only the latest order.
 2. `OK to merge: yes` → Step 6.
 3. Otherwise fix every bug and unmet requirement it lists (**orchestrator:** send the verdict block to the
    implementor verbatim and wait for its report), re-run Step 4, commit, push. Re-run the
-   behavioural part of Step 4 and the tester (Step 4.5) only when the behaviour they exercised changed.
+   behavioural part of Step 4 and the tester (Step 4.5) only when the behaviour they exercised changed; the
+   e2e writer (Step 4.6) reruns its file whenever the code it drives changed, and a criterion the reviewer
+   adds gets its test the same way.
    When a fix changed **what a screen shows**, the tester re-screenshots it, the new set is published again
    (`SHOTS=$(publish_shots "$SLOTH_SCREENSHOTS_DIR")`, `session` skill — it writes a fresh timestamped
    directory) and the PR body is re-written to those URLs:
@@ -529,7 +569,8 @@ with `SERVERS=preview`; the server takes the environment down later. The branch 
 Delete `$SESSION_DIR/handoff.md` — a finished run leaves no handoff.
 
 Finish with the report — it is the transcript's last message and the monitor shows it: branch, PR URL, files
-changed, what Step 4 and the tester verified and what they did not, how many screenshots the PR carries, review rounds, where the card ended up. For a blocked run:
+changed, what Step 4 and the tester verified and what they did not, how many screenshots the PR carries, the e2e
+tests written and their run, review rounds, where the card ended up. For a blocked run:
 the question comment URL, whether an answer arrived, where the card is, and what is left.
 
 ## Rules
@@ -543,7 +584,8 @@ the question comment URL, whether an answer arrived, where the card is, and what
   developer's within the issue (`session` skill).
 - Every comment starts with `$SLOTH_BOT_PREFIX`; **never write `$SLOTH_MENTION` in your own comments.**
   The tester runs on `$SLOTH_TESTER_MODEL`, the reviewer on `$SLOTH_REVIEWER_MODEL`, the implementor (orchestrator
-  mode only) on `$SLOTH_IMPLEMENTOR_MODEL`, any other subagent on `$SLOTH_MODEL`.
+  mode only) on `$SLOTH_IMPLEMENTOR_MODEL`, the e2e writer (`SLOTH_E2E=1` only) on `$SLOTH_E2E_MODEL`, any other
+  subagent on `$SLOTH_MODEL`.
 - **Orchestrator mode never edits code in this session**: one implementor subagent, spawned once and reused,
   makes every change; this session reads, verifies, tests, reviews, commits, and talks to GitHub and the board.
 - **The comment thread is part of the spec** — never re-ask what it answers.
@@ -553,6 +595,9 @@ the question comment URL, whether an answer arrived, where the card is, and what
 - **Never touch the checkout at `$SLOTH_RUNNER_ROOT`, a shared database, or a port another session uses.**
 - **Test in the browser when there is one** (Step 4.5): the tester subagent's run — and a PNG of every screen
   it verified — is part of every PR that touches a screen.
+- **With `SLOTH_E2E=1` the criteria get tests** (Step 4.6): one Playwright test per acceptance criterion, written
+  by the e2e-writer agent into the project's own suite, run against the session's app, committed with the code.
+  A red test is a bug in the change until the criterion itself is in question.
 - Do not push on a failed Step 4; do not hand a PR over before the reviewer loop passes; the PR ends
   ready for review, with `Closes #ISSUE`, no reviewer and no assignee.
 - Always clean up (Step 7), whether the run succeeds, waits out, or stops early — a preview hand-off (Step 6)

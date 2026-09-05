@@ -65,10 +65,12 @@ export interface AgentModels {
   status: string;
   /** `/sloth:qa <issue>` (trigger 9): the session that tests one QA card on the QA branch; its browser tester runs on `tester`. */
   qa: string;
+  /** The e2e-writer subagent (`plugin/agents/e2e-writer.md`) an implement session spawns while `e2e` is on: one Playwright test per acceptance criterion, committed with the PR. */
+  e2e: string;
 }
 export type AgentRole = keyof AgentModels;
 
-export const DEFAULT_MODELS: AgentModels = { orchestrator: 'fable', implement: 'opus', tester: 'opus', reviewer: 'opus', final: 'fable', status: 'opus', qa: 'opus' };
+export const DEFAULT_MODELS: AgentModels = { orchestrator: 'fable', implement: 'opus', tester: 'opus', reviewer: 'opus', final: 'fable', status: 'opus', qa: 'opus', e2e: 'opus' };
 export const AGENT_ROLES = Object.keys(DEFAULT_MODELS) as AgentRole[];
 
 export interface SlothConfig {
@@ -123,6 +125,12 @@ export interface SlothConfig {
   orchestrator: boolean;
   /** Give implement sessions a headless Chrome (Playwright MCP) for the tester subagent's screenshots. Needs Google Chrome (or Chromium) here. */
   chrome: boolean;
+  /**
+   * Have an implement session spawn the e2e-writer subagent (`models.e2e`) once the change works: one Playwright test
+   * per acceptance criterion of the card, written into the project's own e2e suite and committed with the PR; the
+   * reviewer then refuses a criterion without a test. Only in a project that already has a Playwright setup. Off by default.
+   */
+  e2e: boolean;
   /** Start Sloth when this machine is logged into, through a macOS launch agent (`server/service.ts`). */
   autostart: boolean;
   /**
@@ -231,6 +239,7 @@ export const CONFIG_DEFAULTS = {
   models: DEFAULT_MODELS,
   orchestrator: true,
   chrome: true,
+  e2e: false,
   autostart: false,
   autoUpdate: true,
   updateSeconds: 3600,

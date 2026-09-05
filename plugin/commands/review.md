@@ -97,6 +97,14 @@ ambiguous.
    A missing section, `No screen changed` on a diff that clearly changes one, or a dead image is an **unmet
    requirement**: "OK to merge" is no. `No browser attached to this session.` is accepted as written. On a PR
    from any other branch screenshots are welcome, never required.
+6. **E2E tests** — with `SLOTH_E2E=1`, on a PR on a `sloth/issue-*` branch: `## Verification` carries an `E2E`
+   line. One that counts tests → the diff adds a spec file under the project's Playwright `testDir` with **one
+   test per acceptance criterion** of the issue's `## Spec` (per behaviour the issue describes, when it has no
+   spec); a criterion without a test, a `.skip` / `.fixme` / `.only`, or an assertion that does not check the
+   criterion's visible outcome is an **unmet requirement**, named per criterion. `skipped — no Playwright setup`
+   holds only when the repository has no `playwright.config.*` (`gh api "repos/$SLOTH_REPO/git/trees/<base>?recursive=1"`
+   and look); `skipped — no flow to drive` only when the diff changes no screen. A missing line is an unmet
+   requirement. With `SLOTH_E2E=0`, and on any other branch, tests are welcome, never required.
 
 ## 4. Comment on the PR — whenever "OK to merge" is no, and always in final mode
 

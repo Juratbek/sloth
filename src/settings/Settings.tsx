@@ -22,7 +22,7 @@ const pick = <K extends keyof typeof CONFIG_DEFAULTS>(...keys: K[]) =>
 /** The sections, in nav order. `defaults` is what Restore defaults puts back; a section without one has nothing to restore. */
 /** What Restore defaults puts back; `home` is this instance's — a second instance must not be sent to the first one's directories. */
 const SECTIONS: { key: Key; label: string; component: ComponentType<SectionProps>; defaults?: (c: SlothConfig, home: string) => Partial<SlothConfig> }[] = [
-  { key: 'general', label: 'General', component: General, defaults: () => pick('mention', 'botPrefix', 'boardSeconds', 'commentSeconds', 'fallbackCommentSeconds', 'chrome', 'previewHours', 'priorityField', 'autoMerge', 'resolveConflicts') },
+  { key: 'general', label: 'General', component: General, defaults: () => pick('mention', 'botPrefix', 'boardSeconds', 'commentSeconds', 'fallbackCommentSeconds', 'chrome', 'e2e', 'previewHours', 'priorityField', 'autoMerge', 'resolveConflicts') },
   { key: 'board', label: 'Board', component: BoardSection },
   { key: 'qa', label: 'QA sweep', component: QaSection, defaults: () => pick('qa') },
   {

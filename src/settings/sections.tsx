@@ -38,6 +38,12 @@ export function General({ draft, patch }: SectionProps) {
         <Toggle checked={draft.chrome} onChange={(chrome) => patch({ chrome })} label="Test in Chrome" />
       </Row>
       <Row
+        label="Write e2e tests"
+        hint="Once a change works, an e2e-writer subagent turns every acceptance criterion of the card into a Playwright test in the project's own e2e suite, runs them against the session's app and commits them with the PR; the reviewer then refuses a criterion without a test. Only in a project that already has a Playwright setup — Sloth does not add one. Its model is under Models."
+      >
+        <Toggle checked={draft.e2e} onChange={(e2e) => patch({ e2e })} label="Write e2e tests" />
+      </Row>
+      <Row
         label="Preview hours"
         hint="How long a finished session's app stays up behind a public link posted on its PR, so a reviewer can try the change without checking it out. 0 turns previews off."
       >
