@@ -122,6 +122,22 @@ function qaOf(v: unknown, d: QaConfig): QaConfig {
   return { branch, at, budgetMinutes: int(q.budgetMinutes, d.budgetMinutes) };
 }
 
+/** The smoke test: how many days apart (0 = off), a `HH:MM` local time, a branch name safe in argv, the budget, and the brief as typed. */
+function smokeOf(v: unknown, d: SmokeConfig): SmokeConfig {
+  const q = (v ?? {}) as Record<string, unknown>;
+  const branch = text(q.branch) ?? '';
+  if (branch && !BRANCH_RE.test(branch)) throw new Error('smoke.branch must be a branch name');
+  const at = text(q.at) ?? d.at;
+  if (!TIME_RE.test(at)) throw new Error('smoke.at must be a time of day, HH:MM');
+  return {
+    everyDays: int(q.everyDays, d.everyDays, 0),
+    at,
+    branch,
+    budgetMinutes: int(q.budgetMinutes, d.budgetMinutes),
+    brief: typeof q.brief === 'string' ? q.brief.trim() : d.brief,
+  };
+}
+
 /** A config from before boards had a provider names none, and is a GitHub one. */
 function providerOf(v: unknown): BoardProvider {
   if (v === undefined || v === null || v === '') return 'github';
