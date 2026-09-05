@@ -176,8 +176,9 @@ Sloth's, the reviewer loop will not pass, or time is running out.
 4. **30 idle minutes** — free the machine, keep the code: stop the processes and drop the database this
    session started (its own pids / database name only), leave the slot and the branch,
    `set_state waiting Q "<note>"` with `SERVERS=stopped` and `SINCE=$ASKED`.
-5. **An answer arrives** — re-read the whole thread, never re-ask what it answers. With what you need:
-   move the card back to In Progress, `rm -f "$SLOTH_SESSION_DIR/blocked"`, comment
+5. **An answer arrives** — re-read the whole thread, never re-ask what it answers. (A refine question —
+   implement Step 1.5 — resumes silently: the move and the comment below come once with the spec.) With what
+   you need: move the card back to In Progress, `rm -f "$SLOTH_SESSION_DIR/blocked"`, comment
    `$SLOTH_BOT_PREFIX thanks — continuing`, recompute the budget (above), `SINCE=$(date +%s)`,
    `set_state working …`, bring the environment back up if you stopped it, and continue from where you
    stopped. Still a gap → ask again the same way.
@@ -194,7 +195,8 @@ Sloth's, the reviewer loop will not pass, or time is running out.
 - **Never write `$SLOTH_MENTION` in your own comments** — the server reads it as a new trigger.
 - **Short.** A comment is at most 5 lines after the prefix, each line one fact: what happened, the branch
   and PR link, what is needed. No preamble, no restating the question, no list of everything you did,
-  no reasoning, no apologies. Whoever wants more asks in the thread — that is what the inbox is for.
+  no reasoning, no apologies. Whoever wants more asks in the thread — that is what the inbox is for. The one
+  exception: the `Spec:` comment implement Step 1.5 posts on a Trello board, which carries the whole spec.
 - A screenshot in a PR is always a file the tester saved and `publish_shots` pushed (below) — never claim or
   link one that was not taken; what was not screenshotted is described **in words**.
 - Orders come from the admin (`$SLOTH_ADMIN_LOGIN`, anything) and the developers (`$SLOTH_DEVELOPER_LOGINS`, within the

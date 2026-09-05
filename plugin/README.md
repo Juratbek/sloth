@@ -12,7 +12,7 @@ what the commit convention is, how designs are read — all of that comes from t
 
 | Path | What |
 |---|---|
-| `commands/implement.md` | `/sloth:implement <issue> [order]` — claim → worktree → fix → verify → browser tester + screenshots → PR → reviewer loop → Code Review |
+| `commands/implement.md` | `/sloth:implement <issue> [order]` — claim → refine with the author when the card cannot be built without guessing (`## Spec` in the body) → worktree → fix → verify → browser tester + screenshots → PR → reviewer loop → Code Review |
 | `commands/review.md` | `/sloth:review <pr> [feedback-only\|final]` — verdict block, inline comments, card back to In Progress; `final` (the server's review of every Code Review card) always posts the verdict on the PR, and a pass labels the issue `Fable: approved` and moves the card to Approved for a human to test |
 | `commands/status.md` | `/sloth:status <issue> <comment-id>` — answer a mention when no session is running |
 | `commands/qa.md` | `/sloth:qa <issue>` — the daily QA sweep's test of one card: check the QA branch out, boot the app, test the merged fix in the browser, post the findings on the issue, write the verdict for the server |
