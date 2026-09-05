@@ -3,6 +3,7 @@ import path from 'node:path';
 import { CONFIG_PATH, reloadConfig } from './config';
 import { SLOTH_HOME_LABEL } from './env';
 import { run } from './exec';
+import { cancelGhLogin, ghLoginStatus, startGhLogin } from './gh-login';
 import { expandPath, normalizeConfig, readConfigFile, writeConfigFile } from './config-file';
 import { watchAll } from './events';
 import { ensureTrelloLists } from './runner/board-trello';
@@ -196,6 +197,8 @@ async function connectTrello(body: unknown): Promise<TrelloInfo & { username?: s
 export async function handleSetup(pathname: string, method: string, body: unknown): Promise<unknown> {
   const fields = /^\/api\/setup\/projects\/([\w-]+)\/fields$/.exec(pathname);
   if (pathname === '/api/setup/env') return environment();
+  if (pathname === '/api/setup/gh-login') return method === 'POST' ? startGhLogin() : ghLoginStatus();
+  if (pathname === '/api/setup/gh-login/cancel' && method === 'POST') return cancelGhLogin();
   if (pathname === '/api/setup/trello') return method === 'POST' ? connectTrello(body) : trelloInfo();
   if (pathname === '/api/setup/projects') return projects();
   if (fields) return TRELLO_ID.test(fields[1]) ? trelloFields(fields[1]) : projectFields(fields[1]);

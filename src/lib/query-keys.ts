@@ -45,6 +45,7 @@ export const queryKeys = {
   setup: ['setup'] as const,
   setupConfig: ['setup', 'config'] as const,
   setupEnv: ['setup', 'env'] as const,
+  setupGhLogin: ['setup', 'gh-login'] as const,
   setupProjects: ['setup', 'projects'] as const,
   setupFields: (projectId: string | undefined) => ['setup', 'fields', projectId] as const,
 };

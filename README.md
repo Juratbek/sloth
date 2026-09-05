@@ -13,7 +13,7 @@ pnpm dev            # http://localhost:4400 — UI and watcher in one process
 
 One Sloth watches one board. Everything it owns lives under `~/.sloth/`. Watching stops when the
 process stops — there is no daemon. The first time you open the UI a **Get started** wizard checks
-`claude` and `gh`, lets you pick the board, its columns, the repository and the checkout the sessions
+`claude` and `gh` (a **Log in** button runs `gh auth login` for you, showing the one-time code), lets you pick the board, its columns, the repository and the checkout the sessions
 run from, then writes `~/.sloth/config.json`. The gear in the header opens **Settings**, where every value in
 that file — the board, the team, the caps, which model each agent runs on — can be changed; the wizard can be
 re-run from there. Its **About** section shows the version and commit Sloth runs (`major.minor` from `package.json`,
@@ -341,7 +341,8 @@ the QR itself always points at `/`.
 
 Read: `GET /api/overview`, `/api/sessions/:id`, `/api/sessions/:id/agents/:agentId`, `/api/usage?days=N`,
 `/api/hours?month=YYYY-MM` (the hours ledger, one month), `/api/events` (SSE). Write: `POST /api/tick` (`?dry=1`), `/api/pause`, `/api/resume`, `/api/qa/run` (opens a QA sweep now and ticks), `/api/smoke/run` (asks for a smoke test now and ticks; dropped while one is running), `/api/sessions/:id/stop` (ends the run, parks an issue's card), `/api/previews/:issue/stop` (takes a preview down now), `/api/setup/config`,
-`/api/setup/clone`. Wizard reads: `GET /api/setup/env`, `/api/setup/projects`, `/api/setup/projects/:id/fields`,
+`/api/setup/clone`, `/api/setup/gh-login` (runs `gh auth login --web` on the machine; `GET` reads the one-time code while it
+waits, `POST …/cancel` stops it). Wizard reads: `GET /api/setup/env`, `/api/setup/projects`, `/api/setup/projects/:id/fields`,
 `/api/setup/config`. `GET /api/remote` (the QR's link and the tunnel tool's state), `POST /api/remote/rotate`
 (a new link) and `POST /api/remote/install` (brew installs the tool). `GET /api/update` (version, commit, commits
 behind), `POST /api/update/check` (fetches), `POST /api/update/run` (pull, install, build, restart). Everything under
