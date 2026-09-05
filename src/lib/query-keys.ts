@@ -47,5 +47,7 @@ export const queryKeys = {
   setupEnv: ['setup', 'env'] as const,
   setupGhLogin: ['setup', 'gh-login'] as const,
   setupProjects: ['setup', 'projects'] as const,
+  /** Every repository the logged-in gh account can reach — what the repository picker ticks from. */
+  setupRepos: ['setup', 'repos'] as const,
   setupFields: (projectId: string | undefined) => ['setup', 'fields', projectId] as const,
 };

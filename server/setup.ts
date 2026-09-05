@@ -13,7 +13,7 @@ import * as trello from './trello';
 import { trelloReady } from './trello';
 import { credentialsFile, forgetTrelloCredentials, saveTrelloCredentials, trelloInfo } from './trello-credentials';
 import type { TrelloCredentials, TrelloInfo } from './trello-credentials';
-import { graphql as ghGraphql } from './runner/gh';
+import { accessibleRepos, graphql, notFound } from './setup-repos';
 import { startTunnel } from './remote';
 import { betweenTicks, startLoop } from './runner/loop';
 import { applyAutostart } from './service';
@@ -22,7 +22,6 @@ import { log } from './runner/log';
 import type { ColumnRef, ColumnRole, FieldOption, SetupCheck, SetupEnv, SetupFields, SetupProject } from './config-types';
 
 const firstLine = (s: string) => s.split('\n')[0].trim();
-const notFound = (err: string, cmd: string) => (/ENOENT/.test(err) ? `\`${cmd}\` was not found on PATH` : err);
 
 async function version(cmd: string): Promise<SetupCheck> {
   const r = await run(cmd, ['--version'], { timeout: 20_000 });
@@ -59,19 +58,6 @@ async function trelloAuth(): Promise<SetupCheck> {
 async function environment(): Promise<SetupEnv> {
   const [claude, gh, auth, trelloCheck] = await Promise.all([version('claude'), version('gh'), ghAuth(), trelloReady() ? trelloAuth() : undefined]);
   return { home: SLOTH_HOME_LABEL, claude, gh, ghAuth: auth, ...(trelloCheck ? { trello: trelloCheck } : {}) };
-}
-
-/**
- * The runner's `graphql` — the same single retry every other GitHub call gets, because the wizard reads
- * the same flaky API. Only the wording is the wizard's: a `gh` that is not on PATH is a thing the user
- * can fix, and "ENOENT" does not say so.
- */
-async function graphql(query: string, variables: string[] = []): Promise<any> {
-  try {
-    return await ghGraphql(query, variables);
-  } catch (e) {
-    throw new Error(notFound(e instanceof Error ? e.message : String(e), 'gh'));
-  }
 }
 
 const PROJECT_FIELDS = `id number title closed url owner { ... on User { login } ... on Organization { login } } items { totalCount }`;
@@ -223,6 +209,7 @@ export async function handleSetup(pathname: string, method: string, body: unknow
   if (pathname === '/api/setup/gh-login/cancel' && method === 'POST') return cancelGhLogin();
   if (pathname === '/api/setup/trello') return method === 'POST' ? connectTrello(body) : trelloInfo();
   if (pathname === '/api/setup/projects') return projects();
+  if (pathname === '/api/setup/repos') return accessibleRepos();
   if (fields) return TRELLO_ID.test(fields[1]) ? trelloFields(fields[1]) : projectFields(fields[1]);
   if (pathname === '/api/setup/clone' && method === 'POST') return clone(body);
   if (pathname === '/api/setup/config' && method === 'POST') {

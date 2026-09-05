@@ -13,8 +13,9 @@ pnpm dev            # http://localhost:4400 — UI and watcher in one process
 
 One Sloth watches one board, for one or several repositories (see *Several repositories*). Everything it owns lives under `~/.sloth/`. Watching stops when the
 process stops — there is no daemon. The first time you open the UI a **Get started** wizard checks
-`claude` and `gh` (a **Log in** button runs `gh auth login` for you, showing the one-time code), lets you pick the board, its columns, the repositories and where their checkouts go,
-then writes `~/.sloth/config.json`. The gear in the header opens **Settings**, where every value in
+`claude` and `gh` (a **Log in** button runs `gh auth login` for you, showing the one-time code), lets you pick the board and its columns,
+tick the repositories Sloth may work in off every repository that GitHub account can reach — write access is needed, and a name can still be typed for one not on the list —
+and say where their checkouts go, then writes `~/.sloth/config.json`. The gear in the header opens **Settings**, where every value in
 that file — the board, the team, the caps, which model each agent runs on — can be changed; the wizard can be
 re-run from there. Its **About** section shows the version and commit Sloth runs (`major.minor` from `package.json`,
 the patch the number of PRs merged into the branch, so it goes up with every merge by itself), how far behind `origin` it is,
@@ -161,11 +162,12 @@ rides the 5-minute poll (`GET /api/health`, `POST /api/health/check`).
 
 ## Several repositories
 
-One board, several repositories: the wizard's repository step (and Settings → *Repository*) takes a list —
-the board's linked repositories as toggles, any other typed as `owner/repo` — each with its own checkout and
-a one-line **note** saying what it is. Everything Sloth does is then keyed on *repository and number*, never
-the number alone: two repositories both have an issue 12, and their cards, runs, markers and hours are kept
-apart.
+One board, several repositories: the wizard's repository step (and Settings → *Repository*) lists every
+repository the logged-in `gh` account can reach — search it and tick the ones Sloth may work in; one it can only
+read is shown but cannot be ticked, because Sloth pushes branches and opens PRs, and a repository the list has
+not got is still added by typing its `owner/repo`. Each gets its own checkout and a one-line **note** saying
+what it is. Everything Sloth does is then keyed on *repository and number*, never the number alone: two
+repositories both have an issue 12, and their cards, runs, markers and hours are kept apart.
 
 - **Which repository a card is in.** A Projects board says: its issue's repository. A card whose repository
   is not one of Sloth's is left alone (and said once in the log). A Trello card names no issue, so the issue
@@ -379,7 +381,7 @@ the QR itself always points at `/`.
 Read: `GET /api/overview`, `/api/sessions/:id`, `/api/sessions/:id/agents/:agentId`, `/api/usage?days=N`,
 `/api/hours?month=YYYY-MM` (the hours ledger, one month), `/api/events` (SSE). Write: `POST /api/tick` (`?dry=1`), `/api/pause`, `/api/resume`, `/api/qa/run` (opens a QA sweep now and ticks), `/api/smoke/run` (asks for a smoke test now and ticks; dropped while one is running), `/api/sessions/:id/stop` (ends the run, parks an issue's card), `/api/previews/:issue/stop` (takes a preview down now), `/api/setup/config`,
 `/api/setup/clone` (the Settings button — the same clone Sloth makes on its own), `/api/setup/gh-login` (runs `gh auth login --web` on the machine; `GET` reads the one-time code while it
-waits, `POST …/cancel` stops it). Wizard reads: `GET /api/setup/env`, `/api/setup/projects`, `/api/setup/projects/:id/fields`,
+waits, `POST …/cancel` stops it). Wizard reads: `GET /api/setup/env`, `/api/setup/projects`, `/api/setup/projects/:id/fields`, `/api/setup/repos` (the repositories the logged-in account can reach — what the picker ticks from),
 `/api/setup/config`. `GET /api/remote` (the QR's link and the tunnel tool's state), `POST /api/remote/rotate`
 (a new link) and `POST /api/remote/install` (brew installs the tool). `GET /api/update` (version, commit, commits
 behind), `POST /api/update/check` (fetches), `POST /api/update/run` (pull, install, build, restart). Everything under
