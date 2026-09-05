@@ -26,9 +26,20 @@ async function version(cmd: string): Promise<SetupCheck> {
   return r.ok ? { ok: true, version: firstLine(r.out) } : { ok: false, error: notFound(r.err, cmd) };
 }
 
+/**
+ * The account `gh auth status` names — "Logged in to github.com account alice (keyring)" — read off the
+ * machine's own gh config, so it is there even while the token check behind the line fails. Older gh
+ * versions print the status to stderr, so both streams are read; the active account comes first.
+ */
+export function accountFrom(text: string): string | undefined {
+  return /github\.com account (\S+)/.exec(text)?.[1];
+}
+
 async function ghAuth(): Promise<SetupCheck> {
   const status = await run('gh', ['auth', 'status'], { timeout: 20_000 });
-  if (!status.ok) return { ok: false, error: notFound(status.err, 'gh') || 'not logged in' };
+  const login = accountFrom(`${status.out}\n${status.err}`);
+  if (!status.ok) return { ok: false, error: notFound(status.err, 'gh') || 'not logged in', ...(login ? { login } : {}) };
+  if (login) return { ok: true, login };
   const who = await run('gh', ['api', 'user', '--jq', '.login'], { timeout: 20_000 });
   return who.ok ? { ok: true, login: who.out } : { ok: false, error: who.err };
 }

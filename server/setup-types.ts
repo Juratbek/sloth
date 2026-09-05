@@ -6,6 +6,7 @@ import type { BoardProvider, ColumnRef } from './config-types';
 export interface SetupCheck {
   ok: boolean;
   version?: string;
+  /** The GitHub or Trello account; for the GitHub login, the name gh keeps locally is read even when the check fails. */
   login?: string;
   error?: string;
 }
