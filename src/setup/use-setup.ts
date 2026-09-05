@@ -80,12 +80,15 @@ export function useConfig(enabled = true) {
   });
 }
 
+/**
+ * Re-read on every mount, but kept between the steps: the Team step prefills the admin with the login
+ * this reading found, and would otherwise sit empty while `gh` is asked again.
+ */
 export function useSetupEnv() {
   return useQuery({
     queryKey: queryKeys.setupEnv,
     queryFn: () => fetchJson<SetupEnv>('/api/setup/env'),
     staleTime: 0,
-    gcTime: 0,
     retry: false,
   });
 }

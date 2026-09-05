@@ -12,6 +12,7 @@ import { openSweep } from './runner/qa';
 import { requestSmoke, smokeAlive } from './runner/smoke';
 import { stop as stopRun } from './runner/run-control';
 import { handleSettings, isSettings } from './api-settings';
+import { stopGhLogin } from './gh-login';
 import { previewIndex, withTitle } from './preview-index';
 import { healthStatus, refreshHealth, startHealth } from './health';
 import { guard, isLocal, sameOrigin, startTunnel, stopTunnel } from './remote';
@@ -213,6 +214,7 @@ export function monitorApi(): Plugin {
       stopLoop();
       stopTunnel();
       closeTunnels();
+      stopGhLogin();
     };
     http?.on('close', stop);
     process.once('exit', stop);

@@ -20,6 +20,7 @@ const MOUNTED = {
   service: queryKeys.service,
   config: queryKeys.setupConfig,
   env: queryKeys.setupEnv,
+  ghLogin: queryKeys.setupGhLogin,
   projects: queryKeys.setupProjects,
   fields: queryKeys.setupFields('PVT_1'),
 };
@@ -64,7 +65,7 @@ describe('queryKeys', () => {
   });
 
   it('nests everything the wizard asks the server under the setup prefix', () => {
-    expect(reachedBy(queryKeys.setup)).toEqual(['config', 'env', 'fields', 'projects']);
+    expect(reachedBy(queryKeys.setup)).toEqual(['config', 'env', 'fields', 'ghLogin', 'projects']);
   });
 
   it('keeps the standalone keys standalone — one invalidation, one query', () => {
