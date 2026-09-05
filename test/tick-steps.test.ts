@@ -47,13 +47,17 @@ beforeEach(() => {
 describe('the checkout step', () => {
   beforeEach(() => fs.rmSync(cfg().runnerRoot, { recursive: true, force: true }));
 
-  it('clones a runner root that is not there before anything is launched', async () => {
+  it('starts the clone of a runner root that is not there beside the tick, and launches from the next one', async () => {
     onCommand(/^gh repo clone/, ({ args }) => {
       fs.mkdirSync(path.join(args[3], '.git'), { recursive: true });
       return '';
     });
     await tick({ board: true });
     expect(called(/^gh repo clone acme\/widgets/)).toHaveLength(1);
+    // This tick did not wait for the clone — the chain it holds is the one every button queues on.
+    expect(h.ran).toEqual([]);
+    await new Promise((r) => setTimeout(r, 0));
+    await tick({ board: true });
     expect(h.ran).toEqual(['reviews', 'handover', 'retryStranded', 'pickup']);
   });
 

@@ -18,8 +18,7 @@ import { healthStatus, refreshHealth, startHealth } from './health';
 import { guard, isLocal, sameOrigin, startTunnel, stopTunnel } from './remote';
 import { agentDetail, overview, sessionDetail, watcherOf } from './sessions';
 import { ensureSkipLabel } from './runner/markers';
-import { ensureStack } from './stack';
-import { ensureCheckout } from './checkout';
+import { checkoutThenStack } from './setup';
 import { usageSeries } from './usage';
 import { hoursReport } from './hours';
 import { ensureWebhook, startWebhook, webhookInfo } from './webhook';
@@ -195,8 +194,8 @@ export function monitorApi(): Plugin {
     watchAll();
     // The watcher is this process: it starts with the server and stops when the server stops.
     startLoop();
-    // The checkout first, then the stack: a stack set to `auto` is read off the checkout's files.
-    void ensureCheckout().finally(() => ensureStack());
+    // The runner checkout, cloned if it is not there, and then whatever the project's stack still lacks.
+    checkoutThenStack();
     // The skip label people hold cards back with has to exist in the repo before anyone can apply it.
     void ensureSkipLabel();
     // Can this machine do the work at all? Asked once here and every ten minutes from the board tick.

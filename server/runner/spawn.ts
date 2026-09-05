@@ -20,11 +20,14 @@ import { machineHold } from './machine';
 import { forgetPause } from './pressure';
 import { forgetWaiting } from './waiting';
 import { leaseSlot, releaseSlot } from './slots';
+import { checkoutReady } from '../checkout';
 import { claimWarm, warmOf } from './warm';
 
 /** Why nothing may start right now: every slot taken, or the machine too loaded to take one more run. */
 export const held = (): string | undefined => (slotsFull() ? 'slots full' : machineHold());
 export const noSlot = (what: string): false => (log(`${what} queued (no free worktree slot)`), false);
+/** No checkout to fetch in yet — `checkout.ts` is making one; the launch waits for it like for a slot. */
+export const noCheckout = (what: string): false => (log(`${what} not launched: no checkout at ${cfg().runnerRoot} yet`), false);
 
 const trusted = new Set<string>();
 /** Claude Code exits silently in an untrusted directory, so headless runs need the flag pre-set. */
@@ -123,6 +126,7 @@ export async function launch(issue: number, order?: string): Promise<boolean> {
   }
   // One environment per issue: a preview of the previous run makes way for the new one, and a crashed
   // run's leftovers go too — stopPreview alone skips a run that never wrote preview.json.
+  if (!checkoutReady()) return noCheckout(`#${issue}`);
   await stopPreview(issue, 'a new session starts on the issue');
   await cleanup(issue);
   const slot = await leaseSlot('issue', issue);

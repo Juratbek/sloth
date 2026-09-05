@@ -115,6 +115,13 @@ describe('pickup (trigger 1)', () => {
     // A pickup is a start-over: the dead run's handoff note must not steer the fresh session.
     expect(exists(sessionDir('issue', 3), 'handoff.md')).toBe(false);
   });
+  it('launches nothing while the runner checkout is not there yet — a comment\'s order comes this way too', async () => {
+    fs.rmSync(path.join(cfg().runnerRoot, '.git'), { recursive: true, force: true });
+    await pickup([card(5, 'Todo')]);
+    expect(launches()).toEqual([]);
+    expect(readLog().join('\n')).toContain(`#5 not launched: no checkout at ${cfg().runnerRoot} yet`);
+  });
+
   it('only logs in a dry run', async () => {
     setDry(true);
     await pickup([card(3, 'Todo')]);

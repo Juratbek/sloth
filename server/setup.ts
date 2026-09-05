@@ -1,10 +1,9 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { CONFIG_PATH, reloadConfig } from './config';
 import { SLOTH_HOME_LABEL } from './env';
 import { run } from './exec';
 import { cancelGhLogin, ghLoginStatus, startGhLogin } from './gh-login';
-import { cloneRepo, ensureCheckout } from './checkout';
+import { checkoutInBackground, cloneRepo } from './checkout';
 import type { CloneResult } from './checkout';
 import { expandPath, normalizeConfig, readConfigFile, writeConfigFile } from './config-file';
 import { watchAll } from './events';
@@ -18,6 +17,8 @@ import { graphql as ghGraphql } from './runner/gh';
 import { startTunnel } from './remote';
 import { betweenTicks, startLoop } from './runner/loop';
 import { applyAutostart } from './service';
+import { ensureStack } from './stack';
+import { log } from './runner/log';
 import type { ColumnRef, ColumnRole, FieldOption, SetupCheck, SetupEnv, SetupFields, SetupProject } from './config-types';
 
 const firstLine = (s: string) => s.split('\n')[0].trim();
@@ -157,7 +158,22 @@ async function projectFields(id: string): Promise<SetupFields> {
 }
 
 /** The Settings button: the same clone the boot and the tick make on their own, shared with one in flight. */
-const clone = (body: any): Promise<CloneResult> => cloneRepo(String(body?.repo ?? ''), expandPath(String(body?.path ?? '')));
+function clone(body: any): Promise<CloneResult> {
+  const target = String(body?.path ?? '').trim();
+  if (!target) return Promise.resolve({ ok: false, error: 'a path to clone into is needed' });
+  return cloneRepo(String(body?.repo ?? ''), expandPath(target));
+}
+
+/**
+ * The checkout, then the stack: a stack set to `auto` is read off the checkout's files, so it is judged
+ * only once they are there. Neither the boot nor a config save waits on either; the health chip says
+ * "cloning" meanwhile.
+ */
+export function checkoutThenStack(): void {
+  void checkoutInBackground()
+    .then(() => ensureStack())
+    .catch((e) => log(`stack: ${(e instanceof Error ? e.message : String(e)).split('\n')[0]}`));
+}
 
 const ROLES: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved', 'qa', 'done'];
 
@@ -221,9 +237,8 @@ export async function handleSetup(pathname: string, method: string, body: unknow
       startLoop();
       startTunnel();
     });
-    // The checkout the sessions need is Sloth's to make: cloned now if the saved root is not one yet,
-    // without the save waiting on it — the health chip says "cloning" until it is there.
-    void ensureCheckout();
+    // The checkout the sessions need is Sloth's to make: cloned now if the saved root is not one yet.
+    checkoutThenStack();
     // The launch agent is named after the repo and points at this checkout, so it is written from here.
     const serviceError = config.autostart === was ? undefined : await applyAutostart(config.autostart);
     return { ok: true, path: CONFIG_PATH, config, serviceError };
