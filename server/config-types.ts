@@ -1,25 +1,15 @@
 /** The saved configuration (~/.sloth/config.json, path overridden with SLOTH_CONFIG) and the
  *  payloads the get-started wizard exchanges with /api/setup/*. */
 
+import { DEFAULT_QA, DEFAULT_SMOKE, type QaConfig, type SmokeConfig } from './scheduled-types';
+/** The scheduled runs' own settings (`scheduled-types.ts`), re-exported so every reader of the config finds them here. */
+export { DEFAULT_QA, DEFAULT_SMOKE } from './scheduled-types';
+export type { QaConfig, SmokeConfig } from './scheduled-types';
+
 /** The board — where it lives and which of its columns Sloth uses — is typed in `board-config.ts`, re-exported here. */
 export { BOARD_PROVIDERS, DEFAULT_COLUMN_NAMES, OPTIONAL_COLUMNS, OPT_IN_COLUMNS } from './board-config';
 export type { BoardProvider, ColumnRef, ColumnRole, ConfigColumns, ConfigProject } from './board-config';
 import type { ConfigColumns, ConfigProject } from './board-config';
-
-/**
- * The QA sweep (trigger 9): once a day, at `at` (`HH:MM`, this machine's clock), every card in the QA
- * column gets its own `/sloth:qa <issue>` session that checks the issue out on `branch` — the branch the
- * fixes are deployed from — boots the app and tests the fix as a user would. A pass moves the card to
- * Done, a fail to In Progress with the findings on the issue. No QA column, or an empty `at`, means no sweep.
- */
-export interface QaConfig {
-  /** The branch the sweep tests; empty is the repository's default branch. */
-  branch: string;
-  /** Local time of day the sweep starts, `HH:MM`; empty turns the sweep off. */
-  at: string;
-  /** A QA session's own time budget — one issue, one app boot, one browser run. */
-  budgetMinutes: number;
-}
 
 /** How trigger 8 merges a PR that passed the review; `''` leaves merging — and the test in Approved — to a human. */
 export type MergeMethod = '' | 'squash' | 'merge' | 'rebase';
@@ -29,7 +19,7 @@ export const MERGE_METHODS: MergeMethod[] = ['', 'squash', 'merge', 'rebase'];
  * What the `helpWebhook` hears about. `needsHelp` is the one Sloth has always sent, and the only one a
  * config that predates the rest gets: an existing setup keeps behaving exactly as it did.
  */
-export const WEBHOOK_EVENTS = ['needsHelp', 'codeReview', 'finalPassed', 'finalFailed', 'merged', 'qaPassed', 'qaFailed', 'blocked', 'stopped', 'usageLimit', 'hoursTampered'] as const;
+export const WEBHOOK_EVENTS = ['needsHelp', 'codeReview', 'finalPassed', 'finalFailed', 'merged', 'qaPassed', 'qaFailed', 'smokePassed', 'smokeFailed', 'blocked', 'stopped', 'usageLimit', 'hoursTampered'] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 
 /** One admin, any number of developers and testers. A login holds one role: admin wins, then developer. */
@@ -65,12 +55,14 @@ export interface AgentModels {
   status: string;
   /** `/sloth:qa <issue>` (trigger 9): the session that tests one QA card on the QA branch; its browser tester runs on `tester`. */
   qa: string;
+  /** `/sloth:smoke <n>` (trigger 11): the session that smoke-tests the whole app for a release; its role testers run on `tester`. */
+  smoke: string;
   /** The e2e-writer subagent (`plugin/agents/e2e-writer.md`) an implement session spawns while `e2e` is on: one Playwright test per acceptance criterion, committed with the PR. */
   e2e: string;
 }
 export type AgentRole = keyof AgentModels;
 
-export const DEFAULT_MODELS: AgentModels = { orchestrator: 'fable', implement: 'opus', tester: 'opus', reviewer: 'opus', final: 'fable', status: 'opus', qa: 'opus', e2e: 'opus' };
+export const DEFAULT_MODELS: AgentModels = { orchestrator: 'fable', implement: 'opus', tester: 'opus', reviewer: 'opus', final: 'fable', status: 'opus', qa: 'opus', e2e: 'opus', smoke: 'fable' };
 export const AGENT_ROLES = Object.keys(DEFAULT_MODELS) as AgentRole[];
 
 export interface SlothConfig {
@@ -195,10 +187,9 @@ export interface SlothConfig {
   stack: StackChoice;
   /** The daily QA sweep of the QA column (trigger 9, `runner/qa.ts`); off until `at` is set. */
   qa: QaConfig;
+  /** The scheduled smoke test of the whole app (trigger 11, `runner/smoke.ts`); off until `everyDays` is set. */
+  smoke: SmokeConfig;
 }
-
-/** The sweep is on as soon as a QA column is chosen — at eight in the evening, once the day's merges are deployed. */
-export const DEFAULT_QA: QaConfig = { branch: '', at: '20:00', budgetMinutes: 60 };
 
 export const DEFAULT_TUNNEL = ['cloudflared', 'tunnel', '--url', 'http://localhost:{port}'];
 
@@ -257,6 +248,7 @@ export const CONFIG_DEFAULTS = {
   publicUrl: '',
   stack: 'auto' as StackChoice,
   qa: DEFAULT_QA,
+  smoke: DEFAULT_SMOKE,
 } satisfies Partial<SlothConfig>;
 
 /**

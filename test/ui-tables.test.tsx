@@ -24,9 +24,12 @@ const config = (over: Partial<MonitorConfig> = {}): MonitorConfig => ({
   pickupColumn: 'Todo',
   maxActive: 2,
   maxAlive: 3,
-  models: { orchestrator: 'fable', implement: 'opus', tester: 'opus', reviewer: 'opus', final: 'fable', status: 'fable', qa: 'opus', e2e: 'opus' },
+  models: { orchestrator: 'fable', implement: 'opus', tester: 'opus', reviewer: 'opus', final: 'fable', status: 'fable', qa: 'opus', e2e: 'opus', smoke: 'fable' },
   qaColumn: '',
   qaAt: '',
+  smokeEveryDays: 0,
+  smokeAt: '06:00',
+  smokeBranch: '',
   ...over,
 });
 

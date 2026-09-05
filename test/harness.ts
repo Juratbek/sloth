@@ -79,7 +79,7 @@ export function wipe(): void {
   fs.rmSync(c.watcherLog, { force: true });
 }
 
-type Kind = 'issue' | 'review' | 'approved' | 'qa';
+type Kind = 'issue' | 'review' | 'approved' | 'qa' | 'smoke';
 export const sessionDir = (kind: Kind, n: number) => path.join(reloadConfig().sessionsDir, `${kind}-${n}`);
 
 /** A session directory with the given files (`state.json` may be given as an object). */

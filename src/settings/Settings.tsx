@@ -9,12 +9,13 @@ import MachineSection from './MachineSection';
 import NotificationsSection from './NotificationsSection';
 import QaSection from './QaSection';
 import RepositorySection from './RepositorySection';
+import SmokeSection from './SmokeSection';
 import StackSection from './StackSection';
 import { Models } from './ModelsSection';
 import { General, Remote, Sessions, Team } from './sections';
 import type { SectionProps } from './ui';
 
-type Key = 'general' | 'board' | 'qa' | 'repository' | 'stack' | 'team' | 'notifications' | 'models' | 'sessions' | 'remote' | 'machine' | 'about';
+type Key = 'general' | 'board' | 'qa' | 'smoke' | 'repository' | 'stack' | 'team' | 'notifications' | 'models' | 'sessions' | 'remote' | 'machine' | 'about';
 
 const pick = <K extends keyof typeof CONFIG_DEFAULTS>(...keys: K[]) =>
   Object.fromEntries(keys.map((k) => [k, CONFIG_DEFAULTS[k]])) as Pick<typeof CONFIG_DEFAULTS, K>;
@@ -25,6 +26,7 @@ const SECTIONS: { key: Key; label: string; component: ComponentType<SectionProps
   { key: 'general', label: 'General', component: General, defaults: () => pick('mention', 'botPrefix', 'boardSeconds', 'commentSeconds', 'fallbackCommentSeconds', 'chrome', 'e2e', 'previewHours', 'priorityField', 'autoMerge', 'resolveConflicts') },
   { key: 'board', label: 'Board', component: BoardSection },
   { key: 'qa', label: 'QA sweep', component: QaSection, defaults: () => pick('qa') },
+  { key: 'smoke', label: 'Smoke test', component: SmokeSection, defaults: () => pick('smoke') },
   {
     key: 'repository',
     label: 'Repository',

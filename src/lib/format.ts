@@ -72,8 +72,9 @@ export function modelName(id?: string): string | undefined {
   return version ? `${family} ${version}` : family;
 }
 
-const KIND: Record<string, string> = { 'sloth:implement': 'fix', 'sloth:review': 'review', 'sloth:status': 'status', 'sloth:qa': 'QA', other: 'run' };
-export const label = (s: SessionSummary) => `${KIND[s.kind] ?? s.kind}${s.target ? ` #${s.target}` : ''}`;
+const KIND: Record<string, string> = { 'sloth:implement': 'fix', 'sloth:review': 'review', 'sloth:status': 'status', 'sloth:qa': 'QA', 'sloth:smoke': 'smoke test', other: 'run' };
+/** A smoke test's number is the run's own, not an issue's — so no `#`. */
+export const label = (s: SessionSummary) => `${KIND[s.kind] ?? s.kind}${s.target ? (s.kind === 'sloth:smoke' ? ` ${s.target}` : ` #${s.target}`) : ''}`;
 
 /** Step numbers are the section headings of the plugin commands; the UI shows what the session is doing instead. */
 const IMPLEMENT_STEPS: Record<string, string> = {
@@ -108,7 +109,16 @@ const QA_STEPS: Record<string, string> = {
   '4': 'reporting',
   '5': 'cleaning up',
 };
-const STEPS: Record<WatcherSession['kind'], Record<string, string>> = { issue: IMPLEMENT_STEPS, review: REVIEW_STEPS, approved: REVIEW_STEPS, qa: QA_STEPS };
+const SMOKE_STEPS: Record<string, string> = {
+  '0': 'planning roles',
+  '1': 'checking out',
+  '2': 'booting app',
+  '3': 'browser testing',
+  '4': 'filing findings',
+  '5': 'reporting',
+  '6': 'cleaning up',
+};
+const STEPS: Record<WatcherSession['kind'], Record<string, string>> = { issue: IMPLEMENT_STEPS, review: REVIEW_STEPS, approved: REVIEW_STEPS, qa: QA_STEPS, smoke: SMOKE_STEPS };
 /** Human words for a session's current step; unknown values fall back to "step N" so nothing is hidden. */
 export const stepLabel = (kind: WatcherSession['kind'], step?: string) =>
   step ? (STEPS[kind]?.[step.trim()] ?? `step ${step}`) : undefined;
@@ -131,6 +141,8 @@ export const nextAt = (at?: number) => (!at ? '—' : at < Date.now() ? 'due' : 
 /** Only http(s) URLs are safe as an href — a session writes `state.json`, so a `javascript:` value must not render. */
 export const safeUrl = (u?: string) => (u && /^https?:\/\//i.test(u) ? u : undefined);
 
-/** Link to the command's target on GitHub — the path segment comes from the configured command map. */
-export const githubUrl = (kind: SessionKind, n: number | undefined, config: MonitorConfig) =>
-  n && config.repo ? `https://github.com/${config.repo}/${config.commands[kind] ?? 'issues'}/${n}` : undefined;
+/** Link to the command's target on GitHub — the path segment comes from the configured command map; a command mapped to `''` has no target there. */
+export const githubUrl = (kind: SessionKind, n: number | undefined, config: MonitorConfig) => {
+  const segment = config.commands[kind] ?? 'issues';
+  return n && config.repo && segment ? `https://github.com/${config.repo}/${segment}/${n}` : undefined;
+};

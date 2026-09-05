@@ -76,8 +76,8 @@ export interface SessionLoad {
 
 export interface WatcherSession {
   name: string;
-  /** `issue` implements, `approved` reviews a PR (`review` is that kind's older name), `qa` tests a card on the QA branch. */
-  kind: 'issue' | 'review' | 'approved' | 'qa';
+  /** `issue` implements, `approved` reviews a PR (`review` is that kind's older name), `qa` tests a card on the QA branch, `smoke` smoke-tests the app. */
+  kind: 'issue' | 'review' | 'approved' | 'qa' | 'smoke';
   target: number;
   pid?: number;
   alive: boolean;
@@ -167,6 +167,10 @@ export interface MonitorConfig {
   /** The QA sweep as configured: its column (empty: none) and its time of day (empty: not scheduled). */
   qaColumn: string;
   qaAt: string;
+  /** The smoke test as configured: days between runs (0: not scheduled), its time of day, and its branch (empty: the default branch). */
+  smokeEveryDays: number;
+  smokeAt: string;
+  smokeBranch: string;
 }
 
 /** The last reading of the machine's memory, CPU and disk (`runner/machine.ts`), taken before a tick may launch. */

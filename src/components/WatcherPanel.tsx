@@ -3,12 +3,14 @@ import type { BlockedCard, Overview } from '../../server/types';
 import { duration } from '../lib/format';
 import useFollowBottom from '../hooks/use-follow-bottom';
 import useQaRun from '../hooks/use-qa-run';
+import useSmokeRun from '../hooks/use-smoke-run';
 import useUnblock from '../hooks/use-unblock';
 import { queued } from '../lib/queued';
 import HoursPanel from './HoursPanel';
 import IssuesTable from './IssuesTable';
 import Chip from './ui/Chip';
 import ErrorNote from './ui/ErrorNote';
+import { everyLabel } from '../settings/SmokeSection';
 import UsageChart from './UsageChart';
 
 /** The QA sweep's line on the panel: its column, when it runs, and a button that runs it now. Nothing without a column. */
@@ -21,6 +23,23 @@ function QaSweep({ column, at }: { column: string; at: string }) {
       <button onClick={() => run.mutate()} disabled={run.isPending} className="text-sky-400 hover:underline disabled:text-zinc-600" title="Test every card in the QA column now">
         {run.isPending ? 'sweeping…' : 'sweep now'}
       </button>{' '}
+      <ErrorNote error={run.error} />
+    </span>
+  );
+}
+
+/** The smoke test's line on the panel: its schedule and branch, and a button that runs one now. */
+function SmokeTest({ everyDays, at, branch }: { everyDays: number; at: string; branch: string }) {
+  const run = useSmokeRun();
+  const dropped = run.data && !run.data.ok;
+  return (
+    <span>
+      {' '}
+      · smoke test of {branch || 'the default branch'} {everyDays > 0 ? `${everyLabel(everyDays)} at ${at}` : 'not scheduled'}{' '}
+      <button onClick={() => run.mutate()} disabled={run.isPending} className="text-sky-400 hover:underline disabled:text-zinc-600" title="Smoke-test the whole app now — a GO / NO-GO report on the report issue">
+        {run.isPending ? 'starting…' : 'test now'}
+      </button>{' '}
+      {dropped && <span className="text-amber-300">one is already running</span>}
       <ErrorNote error={run.error} />
     </span>
   );
@@ -103,6 +122,7 @@ export default function WatcherPanel({ overview, onSelect }: { overview: Overvie
           <p className="text-[11px] text-zinc-500">
             seen comments {watcher.seen} · reviewed heads {watcher.reviewed}
             {config.qaColumn && <QaSweep column={config.qaColumn} at={config.qaAt} />}
+            <SmokeTest everyDays={config.smokeEveryDays} at={config.smokeAt} branch={config.smokeBranch} />
           </p>
           <pre
             ref={logRef}

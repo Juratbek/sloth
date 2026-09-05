@@ -2,7 +2,7 @@ import type { HoursEnding, HoursExcluded, HoursIssue, HoursKind, HoursLive } fro
 import { dayLabel, hrs } from '../../lib/format';
 
 /** How a kind of run reads in a cell. */
-export const KIND_LABEL: Record<HoursKind, string> = { issue: 'implement', approved: 'review', review: 'review', qa: 'QA' };
+export const KIND_LABEL: Record<HoursKind, string> = { issue: 'implement', approved: 'review', review: 'review', qa: 'QA', smoke: 'smoke test' };
 /** How a run ended, in the words the failed-runs list shows. */
 export const ENDING_LABEL: Record<HoursEnding, string> = {
   done: 'finished',

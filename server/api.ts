@@ -9,6 +9,7 @@ import { closeTunnels, stopPreview } from './runner/preview';
 import { unblock } from './runner/blocked';
 import { log } from './runner/log';
 import { openSweep } from './runner/qa';
+import { requestSmoke, smokeAlive } from './runner/smoke';
 import { stop as stopRun } from './runner/run-control';
 import { handleSettings, isSettings } from './api-settings';
 import { previewIndex, withTitle } from './preview-index';
@@ -84,6 +85,14 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       const sweep = await serial('sweep now', () => openSweep(true));
       if (sweep) await tick({ board: true });
       body = { ok: !!sweep, sweep };
+    } else if (p === '/api/smoke/run' && req.method === 'POST') {
+      // A smoke test now, whatever the schedule says. The request is written for the tick, and the board
+      // tick that follows starts the run — or leaves the request standing when the slots or the machine are
+      // full, for the tick that can. One at a time: with a run going, the request is dropped, not queued.
+      const running = smokeAlive();
+      if (!running) await serial('smoke now', () => requestSmoke());
+      if (!running) await tick({ board: true });
+      body = { ok: !running, running };
     } else if (unblockIssue && req.method === 'POST') {
       // Lifts a give-up. The card is only handed back to the sweep — the next one tests it, and "sweep
       // now" beside it makes that next one immediate.
