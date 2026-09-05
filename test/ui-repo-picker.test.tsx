@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
@@ -87,6 +87,62 @@ describe('the repository picker', () => {
     expect(changed[1]).toEqual([]);
   });
 
+  it('leaves a repository where the list put it when it is ticked', async () => {
+    h.repos = [listed('acme/widgets'), listed('acme/api'), listed('acme/attic')];
+    mount({ repos: [picked('acme/api')] });
+    await screen.findByRole('checkbox', { name: 'acme/attic' });
+    expect(boxes()).toEqual(['acme/widgets', 'acme/api', 'acme/attic']);
+  });
+
+  it("puts the board's own repositories first, whether they are picked or not", async () => {
+    h.repos = [listed('acme/widgets'), listed('acme/api'), listed('acme/attic')];
+    mount({ linked: ['acme/attic'] });
+    await screen.findByRole('checkbox', { name: 'acme/widgets' });
+    expect(boxes()).toEqual(['acme/attic', 'acme/widgets', 'acme/api']);
+  });
+
+  it('filters by whether a repository is selected, together with the search', async () => {
+    h.repos = [listed('acme/widgets'), listed('acme/api'), listed('acme/attic')];
+    mount({ repos: [picked('acme/api')] });
+    await screen.findByRole('checkbox', { name: 'acme/attic' });
+    await userEvent.click(screen.getByRole('button', { name: 'Selected' }));
+    expect(boxes()).toEqual(['acme/api']);
+    expect(screen.getByText('1 of 3 shown')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Selected' }).getAttribute('aria-pressed')).toBe('true');
+    await userEvent.click(screen.getByRole('button', { name: 'Not selected' }));
+    expect(boxes()).toEqual(['acme/widgets', 'acme/attic']);
+    await userEvent.type(screen.getByLabelText('Search repositories'), 'attic');
+    expect(boxes()).toEqual(['acme/attic']);
+    await userEvent.click(screen.getByRole('button', { name: 'All' }));
+    expect(boxes()).toEqual(['acme/attic']);
+  });
+
+  it('takes every repository it may write to when the all-repositories switch goes on', async () => {
+    h.repos = [listed('acme/widgets'), listed('acme/api'), listed('acme/attic', { archived: true }), listed('other/docs', { permission: 'READ' })];
+    mount({ repos: [picked('acme/api')] });
+    await screen.findByRole('checkbox', { name: 'other/docs' });
+    const all = screen.getByRole('switch', { name: 'All repositories' });
+    expect(all.getAttribute('aria-checked')).toBe('false');
+    await userEvent.click(all);
+    expect(changed[0].map((r) => r.slug)).toEqual(['acme/api', 'acme/widgets']);
+  });
+
+  it('gives every repository back when the switch goes off, keeping the locked one', async () => {
+    h.repos = [listed('acme/widgets'), listed('acme/api')];
+    mount({ repos: [picked('acme/widgets'), picked('acme/api')], locked: 'acme/widgets' });
+    // Both rows are there off the picked list alone; the switch only knows its answer once the list is in.
+    const all = screen.getByRole('switch', { name: 'All repositories' });
+    await waitFor(() => expect(all.getAttribute('aria-checked')).toBe('true'));
+    await userEvent.click(all);
+    expect(changed).toEqual([[picked('acme/widgets')]]);
+  });
+
+  it('does not offer the switch a list it has not read yet', async () => {
+    h.pending = true;
+    mount();
+    expect(screen.getByRole<HTMLButtonElement>('switch', { name: 'All repositories' }).disabled).toBe(true);
+  });
+
   it('will not let the locked repository go — its files on disk carry no repository name', async () => {
     h.repos = [listed('acme/widgets'), listed('acme/api')];
     mount({ repos: [picked('acme/widgets'), picked('acme/api')], locked: 'acme/widgets' });
@@ -118,11 +174,11 @@ describe('the repository picker', () => {
     expect(boxes()).toEqual(['acme/api']);
   });
 
-  it('still shows a picked repository GitHub did not name, ticked and first, so it can be dropped', async () => {
+  it('still shows a picked repository GitHub did not name, ticked and last, so it can be dropped', async () => {
     h.repos = [listed('acme/widgets')];
     mount({ repos: [picked('gone/repo')] });
     await screen.findByRole('checkbox', { name: 'acme/widgets' });
-    expect(boxes()).toEqual(['gone/repo', 'acme/widgets']);
+    expect(boxes()).toEqual(['acme/widgets', 'gone/repo']);
     expect(box('gone/repo').checked).toBe(true);
     expect(screen.getByText('not in your list')).toBeTruthy();
     await userEvent.click(box('gone/repo'));
@@ -165,6 +221,33 @@ describe('the repository picker', () => {
     await screen.findByRole('checkbox', { name: 'acme/api' });
     expect(screen.getByText('options for acme/widgets at 0')).toBeTruthy();
     expect(screen.queryByText(/options for acme\/api/)).toBeNull();
+  });
+
+  it('folds a picked row away behind its chevron and opens it again, leaving the tick alone', async () => {
+    h.repos = [listed('acme/widgets'), listed('acme/api')];
+    mount({ repos: [picked('acme/widgets')], details: (repo) => <p>{`options for ${repo.slug}`}</p> });
+    await screen.findByRole('checkbox', { name: 'acme/api' });
+    expect(screen.getByText('options for acme/widgets')).toBeTruthy();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse acme/widgets' }));
+    expect(screen.queryByText('options for acme/widgets')).toBeNull();
+    // Folded, the header still says where the checkout goes.
+    expect(screen.getByText('~/.sloth/runners/widgets')).toBeTruthy();
+    // The chevron is outside the label, so folding is not ticking.
+    expect(box('acme/widgets').checked).toBe(true);
+    expect(changed).toEqual([]);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Expand acme/widgets' }));
+    expect(screen.getByText('options for acme/widgets')).toBeTruthy();
+    expect(screen.queryByText('~/.sloth/runners/widgets')).toBeNull();
+  });
+
+  it('gives the chevron only to a row that has something to fold', async () => {
+    h.repos = [listed('acme/widgets'), listed('acme/api')];
+    mount({ repos: [picked('acme/widgets')], details: (repo) => <p>{`options for ${repo.slug}`}</p> });
+    await screen.findByRole('checkbox', { name: 'acme/api' });
+    expect(screen.getByRole('button', { name: 'Collapse acme/widgets' }).getAttribute('aria-expanded')).toBe('true');
+    expect(screen.queryByRole('button', { name: /acme\/api/ })).toBeNull();
   });
 
   it('puts the list in a scroll box of its own only where the page asks for one', async () => {

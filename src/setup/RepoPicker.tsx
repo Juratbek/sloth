@@ -1,98 +1,20 @@
 import { useState, type ReactNode } from 'react';
-import type { RepoConfig, SetupRepo } from '../../server/config-types';
+import type { RepoConfig } from '../../server/config-types';
+import { Toggle } from '../settings/ui';
+import RepoRow from './RepoRow';
+import { STATUSES, filtered, grantable, ordered, same, type Status } from './pick-order';
 import { Button, Error, Loading, TextInput, inputStyle } from './ui';
 import { REPO_RE, newRepo, useAccessibleRepos } from './use-setup';
 
 /**
  * Which repositories Sloth may work in, ticked off the list of everything the logged-in `gh` account can
  * reach. The wizard's repository step and Settings → *Repositories* show the same one, so a repository is
- * added the same way whichever page the user is on. Selection order is kept: the first repository is
- * where a run with no card of its own — the smoke test, the stack install — works. A picked row opens on
- * whatever the page gives `details` — its checkout, its note — so the options are read where the tick is.
+ * added the same way whichever page the user is on. The list keeps the order it was read in — ticking
+ * moves nothing — and the config's own order is what says which repository is first, the one a run with
+ * no card of its own works in. A picked row opens on whatever the page gives `details` — its checkout,
+ * its note — so the options are read where the tick is, and folds away again behind its chevron. The
+ * search, the Selected/Not selected filter and the all-repositories switch stay at the top of the list.
  */
-
-/** Sloth pushes branches and opens PRs, so reading a repository is not enough to be given it. */
-const canWrite = (permission: SetupRepo['permission']) => permission !== 'READ' && permission !== 'TRIAGE';
-
-interface Row {
-  slug: string;
-  description: string;
-  private: boolean;
-  archived: boolean;
-  writable: boolean;
-  /** A picked repository the read list does not hold — access lost, or past the thousand. Never while the list is still unread. */
-  missing: boolean;
-}
-
-const rowOf = (repo: SetupRepo): Row => ({ slug: repo.slug, description: repo.description, private: repo.private, archived: repo.archived, writable: canWrite(repo.permission), missing: false });
-const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
-
-/**
- * The picked first (in the order they were picked), then the board's own, then the rest as the server
- * sent them. `read` is whether the list has come back at all: until it has, a picked repository is not
- * missing from anything, it is only waiting, and saying otherwise reads as bad news that is not there.
- */
-function ordered(listed: SetupRepo[], picked: RepoConfig[], linked: string[], read: boolean): Row[] {
-  const byslug = new Map(listed.map((r) => [r.slug.toLowerCase(), r]));
-  const taken = new Set<string>();
-  const rows: Row[] = [];
-  const push = (row: Row) => {
-    if (taken.has(row.slug.toLowerCase())) return;
-    taken.add(row.slug.toLowerCase());
-    rows.push(row);
-  };
-  for (const { slug } of picked) {
-    const listing = byslug.get(slug.toLowerCase());
-    push(listing ? rowOf(listing) : { slug, description: '', private: false, archived: false, writable: true, missing: read });
-  }
-  for (const slug of linked) {
-    const listing = byslug.get(slug.toLowerCase());
-    if (listing) push(rowOf(listing));
-  }
-  for (const listing of listed) push(rowOf(listing));
-  return rows;
-}
-
-const matches = (row: Row, filter: string) => `${row.slug} ${row.description}`.toLowerCase().includes(filter);
-
-const Badge = ({ children }: { children: string }) => <span className="shrink-0 rounded border border-edge px-1 text-[10px] text-fg-faint">{children}</span>;
-
-/** Why a row cannot be ticked, or why it is on the list at all when GitHub did not name it. */
-function hintFor(row: Row, locked: boolean): string {
-  if (!row.writable) return 'read access only — Sloth pushes branches and opens PRs';
-  if (locked) return 'the first repository this Sloth watched — its files on disk carry no repository name, so it cannot be removed';
-  return row.missing ? 'not in your list' : '';
-}
-
-function RepoRow({ row, picked, linked, locked, onToggle, details }: { row: Row; picked: boolean; linked: boolean; locked: boolean; onToggle: () => void; details?: ReactNode }) {
-  const disabled = locked || (!row.writable && !picked);
-  const hint = hintFor(row, locked);
-  return (
-    <div className={`rounded-md border ${picked ? 'border-ok-edge-strong bg-ok-tint/30' : 'border-edge hover:bg-surface-raised'} ${!row.writable && !picked ? 'opacity-60' : ''}`}>
-      <label className="flex items-start gap-2 px-3 py-2">
-        <input
-          type="checkbox"
-          checked={picked}
-          disabled={disabled}
-          aria-label={row.slug}
-          onChange={onToggle}
-          className="mt-0.5 h-4 w-4 shrink-0 accent-accent disabled:opacity-40"
-        />
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1.5">
-            <span className="truncate text-sm text-fg-strong">{row.slug}</span>
-            {linked && <Badge>linked to the board</Badge>}
-            {row.private && <Badge>private</Badge>}
-            {row.archived && <Badge>archived</Badge>}
-          </span>
-          {row.description && <span className="block truncate text-xs text-fg-muted">{row.description}</span>}
-          {hint && <span className="block text-[11px] text-fg-faint">{hint}</span>}
-        </span>
-      </label>
-      {picked && details && <div className="border-t border-edge px-3 pt-3 pb-3">{details}</div>}
-    </div>
-  );
-}
 
 /** The name typed in for a repository the list has not got — kept, but out of the way of the ticking. */
 function AddByName({ onAdd, taken }: { onAdd: (slug: string) => void; taken: (slug: string) => boolean }) {
@@ -116,6 +38,24 @@ function AddByName({ onAdd, taken }: { onAdd: (slug: string) => void; taken: (sl
       <Button disabled={!REPO_RE.test(slug) || taken(slug)} onClick={add}>
         Add
       </Button>
+    </div>
+  );
+}
+
+function StatusFilter({ status, onStatus }: { status: Status; onStatus: (s: Status) => void }) {
+  return (
+    <div className="flex shrink-0 items-center gap-0.5 rounded-md border border-edge p-0.5">
+      {STATUSES.map(({ key, label }) => (
+        <button
+          key={key}
+          type="button"
+          aria-pressed={status === key}
+          onClick={() => onStatus(key)}
+          className={`rounded px-2 py-1 text-xs ${status === key ? 'bg-surface-raised text-fg-strong' : 'text-fg-muted hover:text-fg-soft'}`}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -147,24 +87,49 @@ export default function RepoPicker({
 }) {
   const { data, error, isFetching } = useAccessibleRepos();
   const [filter, setFilter] = useState('');
+  const [status, setStatus] = useState<Status>('all');
+  // Folded away, not opened: a picked repository is worth reading in full the moment it is picked, so the
+  // set holds what the user has shut rather than what is open, and a newly ticked repository is in neither.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const fold = (slug: string) =>
+    setCollapsed((shut) => {
+      const next = new Set(shut);
+      if (!next.delete(slug.toLowerCase())) next.add(slug.toLowerCase());
+      return next;
+    });
 
   const at = (slug: string) => repos.findIndex((r) => same(r.slug, slug));
-  const toggle = (slug: string) => onChange(at(slug) >= 0 ? repos.filter((r) => !same(r.slug, slug)) : [...repos, newRepo(slug, home)]);
+  const picked = (slug: string) => at(slug) >= 0;
+  const toggle = (slug: string) => onChange(picked(slug) ? repos.filter((r) => !same(r.slug, slug)) : [...repos, newRepo(slug, home)]);
   const rows = ordered(data ?? [], repos, linked, !!data);
   const needle = filter.trim().toLowerCase();
-  const shown = needle ? rows.filter((row) => matches(row, needle)) : rows;
+  const shown = filtered(rows, needle, status, picked);
   const message = error ? messageOf(error) : '';
+
+  // Derived, never saved: "all" is true when nothing writable is left out, and turning it off leaves the
+  // locked repository behind — the files on disk carry its name, so it is not the user's to drop.
+  const all = grantable(data ?? []);
+  const allPicked = all.length > 0 && all.every((r) => picked(r.slug));
+  const setAll = (on: boolean) =>
+    onChange(on ? [...repos, ...all.filter((r) => !picked(r.slug)).map((r) => newRepo(r.slug, home))] : repos.filter((r) => !!locked && same(r.slug, locked)));
 
   return (
     <div className="space-y-2">
-      <input
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        placeholder="Search repositories"
-        aria-label="Search repositories"
-        spellCheck={false}
-        className={inputStyle}
-      />
+      <div className="sticky top-0 z-10 -mt-2 flex flex-wrap items-center gap-2 bg-surface py-2">
+        <input
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="Search repositories"
+          aria-label="Search repositories"
+          spellCheck={false}
+          className={`${inputStyle} min-w-48 flex-1`}
+        />
+        <StatusFilter status={status} onStatus={setStatus} />
+        <span className="flex shrink-0 items-center gap-2 pl-1 text-xs text-fg-muted" title="Sloth may work in every repository this account can write to">
+          <Toggle checked={allPicked} onChange={setAll} label="All repositories" disabled={!data || !!error} />
+          All repositories
+        </span>
+      </div>
       {message && (
         <>
           <Error>{message}</Error>
@@ -185,16 +150,19 @@ export default function RepoPicker({
               locked={!!locked && same(locked, row.slug)}
               onToggle={() => toggle(row.slug)}
               details={index >= 0 && details ? details(repos[index], index) : undefined}
+              open={!collapsed.has(row.slug.toLowerCase())}
+              onOpen={() => fold(row.slug)}
+              checkout={index >= 0 ? repos[index].root : undefined}
             />
           );
         })}
       </div>
-      {needle && (
+      {(needle || status !== 'all') && (
         <p className="text-[11px] text-fg-faint">
           {shown.length} of {rows.length} shown
         </p>
       )}
-      <AddByName onAdd={(slug) => onChange([...repos, newRepo(slug, home)])} taken={(slug) => at(slug) >= 0} />
+      <AddByName onAdd={(slug) => onChange([...repos, newRepo(slug, home)])} taken={picked} />
     </div>
   );
 }
