@@ -123,7 +123,7 @@ run is in. The files: the Playwright spec files the merged PR (Step 0) **added**
 kept to those under the checkout's Playwright `testDir` (`playwright.config.*` outside `node_modules`; none →
 nothing to run, say so). Run exactly those against the app from Step 2 the way the `e2e-writer` agent does
 (`agents/e2e-writer.md`, procedure 4, its snippet included): a `playwright.sloth.config.ts` beside the
-project's that points every `baseURL` — top-level and per project — at this app, drops `webServer` (the app
+project's that points every `baseURL` — top-level, and per project when it declares any — at this app, drops `webServer` (the app
 is never booted twice) and sets `outputDir` under `$SESSION_DIR`; `npx playwright test --config … <files>
 --reporter=list`; one `npx playwright install chromium` when the browsers are missing; the run config
 deleted afterwards. That throwaway config is the one file the read-only worktree gets (Rules). A red test is a finding with the criterion it checks and what the app

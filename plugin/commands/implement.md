@@ -442,8 +442,8 @@ Read its report, not its transcript:
 
 Before Step 5 confirm the writer added nothing but spec files and helpers: `git status` shows no
 `playwright.sloth.config.*` (the writer deletes it after its run), no Playwright output (its `outputDir` is
-under `$SESSION_DIR`), no edit under the application's source. The code changes from Step 3 are expected
-there. The test files are **part of the change**: same commit as the code, never a second PR.
+under `$SESSION_DIR`), no edit of its own under the application's source. The worktree also holds the
+code changes from Step 3, which are expected. The test files are **part of the change**: same commit as the code, never a second PR.
 
 **The reasons** an E2E line can give, when no tests were written: `skipped — no flow to drive`,
 `skipped — no Playwright setup`, `skipped — out of time`, `skipped — could not run: <why>`.

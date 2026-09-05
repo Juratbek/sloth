@@ -66,8 +66,9 @@ failure is your most valuable output.
    named `playwright.sloth.config.ts` (Playwright transpiles it whatever the project's config language is),
    that imports the project's config **with its real extension**, keeps everything in it, points every
    `baseURL` at the brief's URL — the top-level `use` and each project's `use`, since a project's wins —
-   drops `webServer`, and sends the output outside the worktree — the import names the file that is really
-   there, `.ts`, `.js` or `.mjs`, and the snippet carries no comment, like every file Sloth writes:
+   drops `webServer`, and sends the output outside the worktree. The import names the file that is really
+   there: `.ts`, `.js` or `.mjs`. A config without `projects` keeps none — an empty array would run no test.
+   The snippet carries no comment, like every file Sloth writes:
    ```ts
    import { defineConfig } from '@playwright/test';
    import base from './playwright.config.ts';
@@ -76,8 +77,8 @@ failure is your most valuable output.
    export default defineConfig({
      ...rest,
      use: { ...rest.use, baseURL },
-     projects: (rest.projects ?? []).map((p) => ({ ...p, use: { ...p.use, baseURL } })),
-     outputDir: '<$SLOTH_SESSION_DIR>/playwright-out',
+     ...(rest.projects ? { projects: rest.projects.map((p) => ({ ...p, use: { ...p.use, baseURL } })) } : {}),
+     outputDir: '<the value of $SLOTH_SESSION_DIR in your environment>/playwright-out',
    });
    ```
    `globalSetup` / `globalTeardown` stay as the project has them; one that boots the app itself is a
@@ -92,7 +93,8 @@ failure is your most valuable output.
    run; a failure, or a Linux `install-deps` prompt (it needs sudo, which you have not got) → report it,
    with the error, as *could not run*. **Delete `playwright.sloth.config.*` when the run is over**, pass or
    fail — it is never committed. With `outputDir` outside the worktree and `--reporter=list`, the run writes
-   nothing else into the checkout; `git status` after your run shows your spec files and helpers only.
+   nothing else into the checkout; `git status` after your run shows nothing of yours but the spec files and
+   helpers — the application changes already in the worktree are the implementor's, not your concern.
 5. **Read every failure.** A failure from your side — wrong selector, a race, a sign-in step the suite
    does differently — is yours to fix, then rerun. A failure where the app does not do what the criterion
    says is **a finding, left red**: quote the criterion, say what the app showed instead, name the
