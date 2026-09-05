@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button, Choice, Field, NumberInput, TextInput } from './ui';
 import type { Draft } from './use-setup';
-import { useClone, useProjectFields } from './use-setup';
+import { useProjectFields } from './use-setup';
 
 export default function StepRunner({
   draft,
@@ -14,7 +14,6 @@ export default function StepRunner({
 }) {
   const { data } = useProjectFields(draft.project?.id);
   const linked = data?.repositories ?? [];
-  const clone = useClone();
   const [repo, setRepo] = useState(draft.repo);
   const [typed, setTyped] = useState(!!draft.repo && !linked.includes(draft.repo));
   const [root, setRoot] = useState<string | undefined>(draft.runnerRoot || undefined);
@@ -42,21 +41,12 @@ export default function StepRunner({
         {(typed || linked.length === 0) && <TextInput value={repo} onChange={setRepo} placeholder="owner/repo" />}
       </div>
 
-      <Field label="Runner root" hint="The checkout the sessions run from. The worktree slots the sessions work in are made next to it, under ~/.sloth/worktrees.">
+      <Field
+        label="Runner root"
+        hint="The checkout the sessions run from. Sloth clones the repository there itself once the setup is saved, if the folder is not there yet. The worktree slots the sessions work in are made next to it, under ~/.sloth/worktrees."
+      >
         <TextInput value={runnerRoot} onChange={setRoot} placeholder="~/.sloth/runners/repo" />
       </Field>
-      <div className="flex items-center gap-2">
-        <Button disabled={!ready || clone.isPending} onClick={() => clone.mutate({ repo, path: runnerRoot })}>
-          {clone.isPending ? 'Cloning…' : 'Clone it'}
-        </Button>
-        <span className="text-xs text-zinc-400">
-          {clone.data?.ok
-            ? `Ready at ${clone.data.path}`
-            : clone.error
-              ? String(clone.error)
-              : 'Only needed if that folder does not exist yet.'}
-        </span>
-      </div>
 
       <div className="grid grid-cols-3 gap-3">
         <Field label="Max active sessions" hint="how many run at once">

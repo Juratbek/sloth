@@ -16,6 +16,9 @@ import {
 import type { Installer } from '../server/stack';
 import type { Health, HealthId } from '../server/types';
 import { configure, readLog, wipe } from './harness';
+import { cloneRepo, forgetCheckout } from '../server/checkout';
+import { cfg } from '../server/config';
+import fs from 'node:fs';
 
 /**
  * The four questions the header's chip answers. Two of them shell out and are pinned through the
@@ -50,6 +53,27 @@ describe('checkHealth', () => {
     expect(of(health, 'gh').detail).toContain('Logged in to github.com');
     expect(of(health, 'git').ok).toBe(true);
     expect(of(health, 'git').detail).toContain(configure().runnerRoot);
+  });
+
+  it('reports a runner root that is not there yet as Sloth\'s to clone, without asking git', async () => {
+    allWell();
+    fs.rmSync(cfg().runnerRoot, { recursive: true, force: true });
+    const check = of(await checkHealth(), 'git');
+    expect(check.ok).toBe(false);
+    expect(check.detail).toContain('Sloth clones acme/widgets there');
+    expect(executed.some((e) => e.line.includes('git ls-remote'))).toBe(false);
+  });
+
+  it('is not a fault while the clone is running, and is the clone\'s error once it failed', async () => {
+    allWell();
+    forgetCheckout();
+    fs.rmSync(cfg().runnerRoot, { recursive: true, force: true });
+    onExecFile(/gh repo clone/, { code: 1, stderr: 'could not read Username' });
+    const cloning = cloneRepo('acme/widgets', cfg().runnerRoot);
+    expect(of(await checkHealth(), 'git')).toMatchObject({ ok: true, detail: `cloning acme/widgets into ${cfg().runnerRoot}` });
+    await cloning;
+    expect(of(await checkHealth(), 'git')).toMatchObject({ ok: false, detail: 'could not read Username' });
+    forgetCheckout();
   });
 
   it('asks origin from the runner checkout, not from wherever Sloth was started', async () => {

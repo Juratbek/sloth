@@ -32,21 +32,44 @@ export interface RunOptions {
    * variable in `/proc`.
    */
   stdin?: string;
+  /**
+   * On timeout, end the child *and everything it started*, not the child alone: `execFile`'s own
+   * timeout signals one process, and a `gh repo clone` killed that way leaves its `git` writing on. The
+   * child is started as the leader of its own group so the group can be signalled (`runner/kill.ts`).
+   */
+  killTree?: boolean;
 }
 
 const TIMEOUT = 60_000;
 const MAX_BUFFER = 32 << 20;
 
 export function run(cmd: string, args: string[], options: RunOptions = {}): Promise<Ran> {
-  const { timeout = TIMEOUT, cwd, maxBuffer = MAX_BUFFER, env, stdin } = options;
+  const { timeout = TIMEOUT, cwd, maxBuffer = MAX_BUFFER, env, stdin, killTree } = options;
   return new Promise((resolve) => {
-    const child = execFile(cmd, args, { timeout, cwd, maxBuffer, ...(env ? { env } : {}) }, (error, stdout, stderr) =>
-      resolve({
-        ok: !error,
-        out: String(stdout ?? '').trim(),
-        err: (String(stderr ?? '').trim() || String(error ?? '')).trim(),
-      }),
+    let timedOut = false;
+    let timer: NodeJS.Timeout | undefined;
+    const child = execFile(
+      cmd,
+      args,
+      { ...(killTree ? { detached: process.platform !== 'win32' } : { timeout }), cwd, maxBuffer, ...(env ? { env } : {}) },
+      (error, stdout, stderr) => {
+        clearTimeout(timer);
+        resolve({
+          ok: !error && !timedOut,
+          out: String(stdout ?? '').trim(),
+          err: timedOut ? `timed out after ${Math.round(timeout / 1000)}s` : (String(stderr ?? '').trim() || String(error ?? '')).trim(),
+        });
+      },
     );
+    if (killTree && child?.pid) {
+      const pid = child.pid;
+      timer = setTimeout(async () => {
+        timedOut = true;
+        // Lazily: `kill.ts` shells out through this very seam for `taskkill`, so a plain import would be a cycle.
+        const { killTree: kill } = await import('./runner/kill');
+        await kill(pid, 'SIGKILL');
+      }, timeout);
+    }
     if (stdin !== undefined) child?.stdin?.end(stdin);
   });
 }

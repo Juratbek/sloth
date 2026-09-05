@@ -5,7 +5,8 @@ import { run } from './gh';
 import { isDry, log, remove, write } from './log';
 import { qaDir, smokeDir, triesOn } from './session-dirs';
 import { leaseSlot, releaseSlot } from './slots';
-import { held, noSlot, start } from './spawn';
+import { held, noCheckout, noSlot, start } from './spawn';
+import { checkoutReady } from '../checkout';
 import { claimWarm } from './warm';
 
 /**
@@ -35,6 +36,7 @@ export async function launchQa(issue: number, sha: string, branch: string): Prom
     log(`dry-run: would launch QA #${issue} on ${c.models.qa} (${where})`);
     return true;
   }
+  if (!checkoutReady()) return noCheckout(`QA #${issue}`);
   const slot = await leaseSlot('qa', issue);
   if (!slot) return noSlot(`QA #${issue}`);
   // Before the books are written: a test of a head the checkout has not fetched is a test of the wrong
@@ -82,6 +84,7 @@ export async function launchSmoke(n: number, sha: string, branch: string): Promi
     log(`dry-run: would launch smoke test ${n} on ${c.models.smoke} (${where})`);
     return true;
   }
+  if (!checkoutReady()) return noCheckout(`smoke test ${n}`);
   const slot = await leaseSlot('smoke', n);
   if (!slot) return noSlot(`smoke test ${n}`);
   // A test of a head the checkout has not fetched is a test of the wrong code — see `launchQa`.

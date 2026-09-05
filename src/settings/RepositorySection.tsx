@@ -54,8 +54,8 @@ export default function RepositorySection({ draft, patch }: SectionProps) {
         label="Runner root"
         hint={
           <>
-            The checkout the sessions run from; Sloth fetches there and makes its worktree slots from it. Clone it if the folder does not exist
-            yet.
+            The checkout the sessions run from; Sloth fetches there and makes its worktree slots from it. A folder that is not there yet is
+            cloned on save; the button clones it now.
             {clone.data?.ok && <span className="block text-emerald-400">Ready at {clone.data.path}</span>}
             {clone.data && !clone.data.ok && <span className="block text-red-400">{clone.data.error}</span>}
             {clone.error && <span className="block text-red-400">{String(clone.error)}</span>}

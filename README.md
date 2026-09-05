@@ -242,6 +242,7 @@ gear in the header) edits every key, by section; whatever is left out defaults:
 
 | Key | Default | Means |
 |---|---|---|
+| `runnerRoot` | `~/.sloth/runners/<repo>` | The checkout the sessions fetch in and the worktree slots are made from. Sloth clones the repository there itself — at boot, after a config save and from every board tick — when the path is not there yet or is an empty folder; a folder with other files in it is left alone and the health chip says why. The clone is made beside the root and renamed into place when it is whole, so a half-made one is never taken for a checkout. Until the checkout is there no launch goes ahead — not from the board, not from a comment's order; a clone that failed is tried again after ten minutes, or at once when the repository or the root changed |
 | `runnersDir` / `worktreesDir` / `sessionsDir` / `stateDir` / `watcherLog` | under `~/.sloth/` | Where checkouts, worktrees, session directories, markers and the log live |
 | `roles` | `{admin, developers, testers}` | The team: the one login that orders anything, the logins that order within an issue, the logins that answer and ask — GitHub logins, or Trello usernames on a Trello board. A config from before roles keeps its `orderLogin` as the admin |
 | `mention` / `botPrefix` | `@sloth` / `**Sloth:**` | The keyword that wakes Sloth; the first line of every comment it writes |
@@ -341,7 +342,7 @@ the QR itself always points at `/`.
 
 Read: `GET /api/overview`, `/api/sessions/:id`, `/api/sessions/:id/agents/:agentId`, `/api/usage?days=N`,
 `/api/hours?month=YYYY-MM` (the hours ledger, one month), `/api/events` (SSE). Write: `POST /api/tick` (`?dry=1`), `/api/pause`, `/api/resume`, `/api/qa/run` (opens a QA sweep now and ticks), `/api/smoke/run` (asks for a smoke test now and ticks; dropped while one is running), `/api/sessions/:id/stop` (ends the run, parks an issue's card), `/api/previews/:issue/stop` (takes a preview down now), `/api/setup/config`,
-`/api/setup/clone`, `/api/setup/gh-login` (runs `gh auth login --web` on the machine; `GET` reads the one-time code while it
+`/api/setup/clone` (the Settings button — the same clone Sloth makes on its own), `/api/setup/gh-login` (runs `gh auth login --web` on the machine; `GET` reads the one-time code while it
 waits, `POST …/cancel` stops it). Wizard reads: `GET /api/setup/env`, `/api/setup/projects`, `/api/setup/projects/:id/fields`,
 `/api/setup/config`. `GET /api/remote` (the QR's link and the tunnel tool's state), `POST /api/remote/rotate`
 (a new link) and `POST /api/remote/install` (brew installs the tool). `GET /api/update` (version, commit, commits

@@ -64,6 +64,8 @@ export function configure(overrides: Record<string, unknown> = {}): ResolvedConf
   writeConfigFile(CONFIG_PATH, config);
   const c = reloadConfig();
   for (const dir of [c.runnerRoot, c.worktreesDir, c.sessionsDir, c.stateDir]) fs.mkdirSync(dir, { recursive: true });
+  // The runner root is a checkout, as far as the code that looks for one is concerned (`checkout.ts`).
+  fs.mkdirSync(path.join(c.runnerRoot, '.git'), { recursive: true });
   calmMachine();
   noProcesses();
   return c;

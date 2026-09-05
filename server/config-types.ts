@@ -71,7 +71,7 @@ export interface SlothConfig {
   project: ConfigProject;
   /** The Status field the columns are options of; on Trello `id` is the board id again and the columns are its lists. */
   statusField: { id: string; columns: ConfigColumns };
-  /** The checkout the sessions run from; Sloth clones the repo here. */
+  /** The checkout the sessions run from; Sloth clones the repo here itself when the path is not one yet. */
   runnerRoot: string;
   runnersDir: string;
   worktreesDir: string;
