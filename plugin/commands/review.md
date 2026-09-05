@@ -63,7 +63,9 @@ ambiguous.
 ## 3. Assess
 
 1. **Issue resolution** — does the diff implement what the issue asks? Check every requirement and
-   acceptance criterion in the body *and* the thread, not just the headline. A `Scope so far:` comment from
+   acceptance criterion in the body *and* the thread, not just the headline. A `## Spec` section in the body
+   is Sloth's refinement of the card from the thread's answers: every acceptance criterion in it is a
+   requirement, and its *Out of scope* is a boundary the diff must not cross. A `Scope so far:` comment from
    Sloth numbers them: every item on it is a requirement, the latest order included, none of them instead of
    the rest. On a reported bug, a PR whose `## Why` carries no `Root cause left:` line claims to have removed
    the cause — check that it did; one that carries the line is judged on what it says it fixes.

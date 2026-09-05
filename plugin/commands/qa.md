@@ -39,8 +39,9 @@ gh pr view <N> --repo "$SLOTH_REPO" --json number,title,body,state,mergedAt,merg
 ```
 
 From the issue and its thread write down, before touching anything: **the behaviour to confirm** (every
-requirement and acceptance criterion, the body *and* the thread — earlier answers are binding), **the old
-behaviour that must be gone**, and **the role** — which user of the app meets this screen. A behaviour spec
+requirement and acceptance criterion, the body *and* the thread — earlier answers are binding; a `## Spec`
+section in the body is Sloth's refinement of the card, and every box under its *Acceptance criteria* is one
+thing to confirm), **the old behaviour that must be gone**, and **the role** — which user of the app meets this screen. A behaviour spec
 in the repo (`docs/` or equivalent) that covers the flow is the reference for what "correct" means.
 
 No merged PR wired to the issue, or one merged into a branch that is not `$SLOTH_QA_BRANCH` and not merged

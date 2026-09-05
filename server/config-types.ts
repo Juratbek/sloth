@@ -101,6 +101,11 @@ export interface SlothConfig {
   minIdleDisk: number;
   budgetMinutes: number;
   waitHours: number;
+  /**
+   * How long an implement run waits for the answers to its refine questions (implement Step 1.5) — asked
+   * before any code exists, with no worktree or app to keep, so it may wait far longer than `waitHours`.
+   */
+  refineWaitHours: number;
   reviewRounds: number;
   maxRetries: number;
   boardSeconds: number;
@@ -222,6 +227,7 @@ export const CONFIG_DEFAULTS = {
   minIdleDisk: 10,
   budgetMinutes: 60,
   waitHours: 2,
+  refineWaitHours: 24,
   reviewRounds: 4,
   maxRetries: 2,
   boardSeconds: 300,

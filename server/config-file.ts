@@ -193,6 +193,7 @@ export function normalizeConfig(input: unknown): SlothConfig {
     minIdleDisk: percent(b.minIdleDisk, d.minIdleDisk),
     budgetMinutes: int(b.budgetMinutes, d.budgetMinutes),
     waitHours: int(b.waitHours, d.waitHours),
+    refineWaitHours: int(b.refineWaitHours, d.refineWaitHours),
     reviewRounds: int(b.reviewRounds, d.reviewRounds),
     maxRetries: int(b.maxRetries, d.maxRetries, 0),
     boardSeconds: int(b.boardSeconds, d.boardSeconds, 30),
