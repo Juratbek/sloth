@@ -100,7 +100,6 @@ The server sets these on every session; the commands read them and never hard-co
 | `SLOTH_START`, `SLOTH_DEADLINE` | Epoch seconds: run start, hard deadline |
 | `SLOTH_BUDGET_MIN` | Minutes in a full budget (60; a QA test gets `qa.budgetMinutes`) |
 | `SLOTH_WAIT_HOURS` | How long a parked session waits (2) |
-| `SLOTH_REFINE_WAIT_HOURS` | How long a session parked on its refine questions — before any code — waits (24) |
 | `SLOTH_REVIEW_ROUNDS` | Max reviewer-agent rounds (4) |
 | `SLOTH_BOT_PREFIX` | First line of every comment Sloth writes (`**Sloth:**`) |
 | `SLOTH_MENTION` | The mention that triggers the server (`@sloth`) |

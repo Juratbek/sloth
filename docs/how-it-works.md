@@ -13,7 +13,7 @@ board. When it finds work, it starts a Claude Code session to do it. That is all
    guessing — a feature named in a line, a screen with no design, two readings that would lead to different
    code — is **refined first**: the session answers what the code and your docs settle, asks the rest on the
    issue (the questions whose answer changes the code, five at most, two rounds at most), parks the card in
-   *Sloth needs help* and waits up to `refineWaitHours` (24) for the answers — nothing is running meanwhile.
+   *Sloth needs help* and waits for the answers as it does for any question (`waitHours`).
    Then it writes a `## Spec` into the issue body — goal, scope, out of scope, acceptance criteria, edge
    cases — and builds to it; the tester and the reviewer hold the work to that spec. A comment
    `@sloth refine` on the issue asks for the questions even on a card that reads clear. Then it follows your
@@ -88,7 +88,7 @@ one is on to begin with, so a Sloth that was set up before this keeps saying exa
 
 - Anyone on the team — the admin, a developer or a tester — answers in the issue thread, and the
   session continues. A comment from someone with no role is not an answer.
-- No answer within 2 hours — 24 for the refine questions asked before any code (`refineWaitHours`)? The
+- No answer within 2 hours (`waitHours`, the one window for every question, the refine step's too)? The
   session stops, the card stays in *Sloth needs help*. Sloth keeps
   watching that column: an answer written later starts a new session on the issue, which re-reads the
   whole thread and continues. Moving the card back to the pickup column instead starts over.

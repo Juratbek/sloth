@@ -142,10 +142,10 @@ Buildable → Step 2. Otherwise, before any worktree or code:
    lines with the options and what you would do under each when the answer is not obvious (`session` skill,
    needs-help protocol). Nothing left to ask → the card was buildable: Step 2.
 3. **Post and park** exactly as Step Q says — one comment, card to `$SLOTH_COL_NEEDS_HELP_NAME`,
-   `state: waiting` — with **`$SLOTH_REFINE_WAIT_HOURS`** as the wait window instead of `$SLOTH_WAIT_HOURS`:
-   nothing is checked out and nothing runs, and the person may need a day. No answer within it → end the run
-   as Step Q says (`set_state done Q`); the card stays parked, and a later answer starts a new run of this
-   command, which reads the thread and continues here.
+   `state: waiting`, the same `$SLOTH_WAIT_HOURS` window as any question. An answer inside it continues this
+   session, which still holds what it read. No answer within it → end the run as Step Q says (`set_state done
+   Q`); the card stays parked at no cost, and a later answer starts a new run of this command, which reads
+   the thread and continues here — cheaper than keeping this one alive for a day.
 4. **The answers may open new questions** — one more round at most, asked the same way, and only about what
    the answers brought up. What is still open after the second round is not asked again here: the spec lists
    it under **Open**, the work starts on what is settled, and the point comes up as an ordinary Step Q
@@ -479,8 +479,7 @@ after `SLOTH_PREVIEW_HOURS` hours. A project whose app cannot answer on one port
 
 Follow the needs-help protocol in the **`session`** skill: one numbered comment with every open question and
 the done / left summary, card to `$SLOTH_COL_NEEDS_HELP_NAME`, `state: waiting`, wait up to
-`$SLOTH_WAIT_HOURS` — `$SLOTH_REFINE_WAIT_HOURS` for the refine questions of Step 1.5, asked before any
-code — (inbox every minute, thread every 10), stop this session's servers after 30 idle
+`$SLOTH_WAIT_HOURS` (inbox every minute, thread every 10), stop this session's servers after 30 idle
 minutes but keep the code, resume with `max(remaining, 30 min)` when an answer arrives, exit after the
 wait window. Never open or finish a PR built on a guess.
 
