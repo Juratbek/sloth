@@ -32,7 +32,8 @@ const KEY_RE = /^(.*)@([\w.-]+~[\w.-]+)$/;
  * repository whose names carry no tag: the files an older Sloth wrote for its single repository keep
  * their names, so nothing on disk has to move when a second repository is added.
  */
-export const tagged = (base: string, slug: string, legacy: string): string => (slug === legacy ? base : `${base}@${repoKey(slug)}`);
+export const sameSlug = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
+export const tagged = (base: string, slug: string, legacy: string): string => (sameSlug(slug, legacy) ? base : `${base}@${repoKey(slug)}`);
 
 /** `tagged` read backwards: the base name and the repository — the legacy one when the name carries no tag. */
 export function untag(name: string, legacy: string): { base: string; repo: string } {
@@ -47,7 +48,6 @@ export interface IssueRef {
 }
 export type PrRef = IssueRef;
 
-export const sameRef = (a: IssueRef, b: IssueRef): boolean => a.repo === b.repo && a.number === b.number;
 /** A map key for a ref — `owner/name#12`. */
 export const refKey = (r: IssueRef): string => `${r.repo}#${r.number}`;
 

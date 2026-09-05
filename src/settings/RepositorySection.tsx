@@ -18,7 +18,7 @@ const DIRS: { key: keyof SlothConfig & string; label: string; hint: string }[] =
 ];
 
 /** One repository's row: its slug, what it is, where its checkout is, and a button to clone it now. */
-function RepoRow({ repo, several, linked, onChange, onRemove }: { repo: RepoConfig; several: boolean; linked: string[]; onChange: (r: RepoConfig) => void; onRemove?: () => void }) {
+function RepoRow({ repo, several, linked, legacy, onChange, onRemove }: { repo: RepoConfig; several: boolean; linked: string[]; legacy?: boolean; onChange: (r: RepoConfig) => void; onRemove?: () => void }) {
   const clone = useClone();
   const ok = REPO_RE.test(repo.slug);
   return (
@@ -53,6 +53,7 @@ function RepoRow({ repo, several, linked, onChange, onRemove }: { repo: RepoConf
       {clone.data && !clone.data.ok && <p className="text-xs text-red-400">{clone.data.error}</p>}
       {clone.error && <p className="text-xs text-red-400">{String(clone.error)}</p>}
       {linked.includes(repo.slug) && <p className="text-[11px] text-fg-faint">Linked to the board.</p>}
+      {legacy && <p className="text-[11px] text-fg-faint">The first repository this Sloth watched — its files on disk carry no repository name, so it cannot be removed.</p>}
     </div>
   );
 }
@@ -68,13 +69,17 @@ export default function RepositorySection({ draft, patch }: SectionProps) {
   const [typed, setTyped] = useState('');
   const several = draft.repos.length > 1;
 
-  const setRepos = (repos: RepoConfig[]) => {
-    // The directories named after the first repository follow a rename while they are still at their default; a custom path stays.
+  const setRepos = (repos: RepoConfig[], renamed = false) => {
+    if (!renamed) return patch({ repos });
+    // The directories named after the first repository follow its rename while they are still at their default; a custom
+    // path stays. A row added or removed is not a rename: the runs under way keep their directories.
     const was = defaultDirs(repoName(draft.repos[0]?.slug ?? ''), home);
     const now = defaultDirs(repoName(repos[0]?.slug ?? ''), home);
     const follow = (key: DirKey) => (draft[key] === was[key] || draft[key].endsWith(was[key].slice(1)) ? now[key] : draft[key]);
     patch({ repos, worktreesDir: follow('worktreesDir'), sessionsDir: follow('sessionsDir') });
   };
+  // The repository the untagged files belong to (`legacyRepo`): its runs, markers and worktrees carry no repository name, so it stays.
+  const isLegacy = (slug: string) => slug.toLowerCase() === (draft.legacyRepo || draft.repos[0]?.slug || '').toLowerCase();
   const add = () => {
     const slug = typed.trim();
     if (!REPO_RE.test(slug) || draft.repos.some((r) => r.slug.toLowerCase() === slug.toLowerCase())) return;
@@ -101,8 +106,9 @@ export default function RepositorySection({ draft, patch }: SectionProps) {
             repo={r}
             several={several}
             linked={linked}
-            onChange={(next) => setRepos(draft.repos.map((x, j) => (j === i ? next : x)))}
-            onRemove={draft.repos.length > 1 ? () => setRepos(draft.repos.filter((_, j) => j !== i)) : undefined}
+            onChange={(next) => setRepos(draft.repos.map((x, j) => (j === i ? next : x)), i === 0 && next.slug !== r.slug)}
+            onRemove={draft.repos.length > 1 && !isLegacy(r.slug) ? () => setRepos(draft.repos.filter((_, j) => j !== i)) : undefined}
+            legacy={several && isLegacy(r.slug)}
           />
         ))}
         <div className="flex gap-2">

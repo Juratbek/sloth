@@ -1,6 +1,6 @@
 import { cfg } from '../config';
 import type { WebhookEvent } from '../config-types';
-import { primaryRepo } from '../repos';
+import { label, primaryRepo } from '../repos';
 import { issueUrl, repoUrl, type IssueRef } from '../repo-types';
 import { isDry, log } from './log';
 
@@ -61,10 +61,10 @@ export async function notify(event: WebhookEvent, n: Notice): Promise<boolean> {
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-    log(`#${n.issue?.number ?? '?'} ${event} — webhook notified`);
+    log(`${n.issue ? label(n.issue) : '#?'} ${event} — webhook notified`);
     return true;
   } catch (e) {
-    log(`#${n.issue?.number ?? '?'} webhook failed: ${e instanceof Error ? e.message : String(e)}`);
+    log(`${n.issue ? label(n.issue) : '#?'} webhook failed: ${e instanceof Error ? e.message : String(e)}`);
     return false;
   }
 }

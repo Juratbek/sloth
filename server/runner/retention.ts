@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
 import { repoRoot, transcriptFile, untagName } from '../repos';
+import { sameSlug } from '../repo-types';
 import { forgetTranscript } from '../transcripts';
 import { run } from './gh';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
@@ -9,7 +10,7 @@ import { previewing, pruneCaches, trimRunLogs } from './caps';
 import { statePath } from './markers';
 import { dirAlive, dirOf, isBlocked, runDirs, stateOf, type Kind } from './session-dirs';
 import { slotInUse, slotRepoConfigured } from './slots';
-import { killWarm } from './warm';
+import { killWarm, warmOf } from './warm';
 
 /**
  * Sloth never forgets on its own: every run leaves a session directory, a transcript and a handful of
@@ -104,8 +105,10 @@ async function pruneWorktrees(): Promise<void> {
       log(`dry-run: would remove the worktree ${name}`);
       continue;
     }
-    // A slot that leaves the pool takes its warm stack with it: servers, database, record (`warm.ts`).
-    if (m[1] === 'slot') await killWarm(base, 'the slot leaves the pool');
+    // A slot that leaves the pool takes its warm stack with it: servers, database, record (`warm.ts`). A slot that
+    // stays, losing the worktree of a repository no longer configured, loses only a stack that was that repository's app.
+    if (m[1] === 'slot' && n > c.maxActive) await killWarm(base, 'the slot leaves the pool');
+    else if (m[1] === 'slot' && sameSlug(warmOf(base)?.repo ?? '', repo)) await killWarm(base, `${repo} is no longer one of Sloth's repositories`);
     const root = repoRoot(repo);
     pruned.add(root);
     const r = await run('git', ['-C', root, 'worktree', 'remove', dir, '--force'], { timeout: 120_000 });

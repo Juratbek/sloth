@@ -33,14 +33,12 @@ const issueUrlRe = (repo: string) => new RegExp(`https://github\\.com/${repo.rep
 
 /** The issue a card is linked to: the first issue URL of one of Sloth's repositories among its attachments, then its description. */
 export function issueOf(card: TrelloCard, repos = repoSlugs()): IssueRef | undefined {
-  for (const repo of repos) {
-    const re = issueUrlRe(repo);
-    for (const a of card.attachments ?? []) {
-      const m = re.exec(a.url);
+  const texts = [...(card.attachments ?? []).map((a) => a.url), card.desc ?? ''];
+  for (const text of texts) {
+    for (const repo of repos) {
+      const m = issueUrlRe(repo).exec(text);
       if (m) return { repo, number: Number(m[1]) };
     }
-    const m = re.exec(card.desc ?? '');
-    if (m) return { repo, number: Number(m[1]) };
   }
   return undefined;
 }

@@ -119,9 +119,6 @@ export async function ensureCheckout(now = Date.now()): Promise<boolean> {
   return all;
 }
 
-/** The repositories whose checkout is there — the ones whose sessions can start. */
-export const readyRepos = (): string[] => repos().filter((r) => isGitCheckout(r.root)).map((r) => r.slug);
-
 /** Tests only: forget the clone in flight and the last failures. */
 export function forgetCheckout(): void {
   inFlight = undefined;

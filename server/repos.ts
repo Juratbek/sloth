@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { cfg, transcriptsDirOf } from './config';
 import { defaultRepoRoot } from './config-repos';
-import { issueLabel, tagged, untag, type IssueRef, type RepoConfig } from './repo-types';
+import { issueLabel, sameSlug, tagged, untag, type IssueRef, type RepoConfig } from './repo-types';
 import fs from 'node:fs';
 
 /**
@@ -12,8 +12,11 @@ import fs from 'node:fs';
 
 export const repos = (): RepoConfig[] => cfg().repos;
 export const repoSlugs = (): string[] => repos().map((r) => r.slug);
-export const repoOf = (slug: string): RepoConfig | undefined => repos().find((r) => r.slug === slug);
+/** GitHub reads `Acme/Widgets` and `acme/widgets` as one repository, so Sloth does too: a lookup by slug ignores case. */
+export const repoOf = (slug: string): RepoConfig | undefined => repos().find((r) => sameSlug(r.slug, slug));
 export const isConfigured = (slug: string): boolean => !!repoOf(slug);
+/** The slug as the config spells it — the spelling every file name and key is under — or nothing for a repository that is not Sloth's. */
+export const canonicalRepo = (slug: string): string | undefined => repoOf(slug)?.slug;
 /** The first repository: where a run with no card of its own — the smoke test, the stack install — works. */
 export const primaryRepo = (): string => repos()[0]?.slug ?? '';
 /** The repository whose names carry no tag — the one an older config named (`config-repos.ts`). */

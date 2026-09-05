@@ -21,7 +21,7 @@ function transcriptFiles(): string[] {
     for (const entry of entries) {
       files.push(path.join(dir, entry));
       const agents = path.join(dir, entry.replace(/\.jsonl$/, ''), 'subagents');
-    try {
+      try {
         for (const f of fs.readdirSync(agents)) {
           if (/^agent-\w+\.jsonl$/.test(f)) files.push(path.join(agents, f));
         }

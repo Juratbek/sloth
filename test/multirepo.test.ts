@@ -4,8 +4,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cardInfo, moveFromSession } from '../server/board-api';
 import { ensureCheckout } from '../server/checkout';
 import { cfg } from '../server/config';
-import { legacyRepo, repoRoot, repoSlugs, tag, transcriptsDirs } from '../server/repos';
+import { isConfigured, legacyRepo, repoRoot, repoSlugs, tag, transcriptsDirs } from '../server/repos';
 import { fetchBoard } from '../server/runner/board';
+import { issueOf } from '../server/runner/board-trello';
 import { setSnapshot } from '../server/runner/board-snapshot';
 import { setDry } from '../server/runner/log';
 import { chooseRepo, parseChoice } from '../server/runner/repo-choice';
@@ -13,6 +14,7 @@ import { prune } from '../server/runner/retention';
 import { dirOf, issueDir, parseRunName, runName } from '../server/runner/session-dirs';
 import { sessionEnv } from '../server/runner/session-env';
 import { leaseSlot, releaseSlot, slotOf, slotWorktree } from '../server/runner/slots';
+import type { TrelloCard } from '../server/trello';
 import { ensureWebhook, forgetWebhook } from '../server/webhook';
 import { called, onCommand, onGh, resetGh } from './gh-mock';
 import { card, configure, readLog, root, statePath, wipe } from './harness';
@@ -81,6 +83,11 @@ describe('a second repository', () => {
     expect(await ensureCheckout()).toBe(true);
     expect(called(/^gh repo clone/).map((c) => c.args.slice(2))).toEqual([[API, roots().api]]);
   });
+
+  it('is the same repository however its slug is cased — GitHub reads the two as one', () => {
+    expect(isConfigured('ACME/API')).toBe(true);
+    expect(tag('issue-3', 'Acme/Widgets')).toBe('issue-3');
+  });
 });
 
 describe('the board with two repositories', () => {
@@ -98,6 +105,18 @@ describe('the board with two repositories', () => {
     ]);
     await fetchBoard();
     expect(readLog().filter((l) => /someone\/else/.test(l))).toHaveLength(1);
+  });
+
+  it('files a card under the config’s spelling of its repository, whatever case GitHub answers in', async () => {
+    onGh(/api graphql/, { data: { node: { items: { pageInfo: { hasNextPage: false }, nodes: [item(5, 'Acme/API')] } } } });
+    expect((await fetchBoard())?.map((i) => [i.repo, i.number])).toEqual([[API, 5]]);
+  });
+
+  it('reads a Trello card’s issue off an attachment of any repository before a description of any', () => {
+    const trello = (over: Partial<TrelloCard>): TrelloCard => ({ id: 'c1', name: 'Card', desc: '', idList: 'l', pos: 1, closed: false, shortUrl: 'https://trello.com/c/c1', labels: [], attachments: [], ...over });
+    const attached = trello({ attachments: [{ url: 'https://github.com/acme/api/issues/5', name: 'issue' }], desc: 'like https://github.com/acme/widgets/issues/1 did' });
+    expect(issueOf(attached)).toEqual(api(5));
+    expect(issueOf(trello({ desc: 'see https://github.com/acme/api/issues/5' }))).toEqual(api(5));
   });
 
   it('answers the board API for the repository the session names, and refuses one that is not Sloth’s', async () => {
@@ -154,6 +173,22 @@ describe('slots with two repositories', () => {
     // The lease is the slot's: a worktree of a gone repository leaving does not take the slot's lease with it.
     expect(fs.existsSync(path.join(cfg().worktreesDir, 'slot-1@acme~api'))).toBe(true);
   });
+
+  it('leaves the slot’s warm stack standing when a gone repository’s worktree goes — unless the stack was that repository’s app', async () => {
+    two({ keepDays: 30, maxActive: 2 });
+    fs.mkdirSync(statePath('slots'), { recursive: true });
+    const warm = (repo: string) => fs.writeFileSync(statePath('slots', 'slot-1.warm'), JSON.stringify({ run: 'issue-3', repo, dev: [], redis: [], at: 0 }));
+    fs.mkdirSync(path.join(cfg().worktreesDir, 'slot-1@acme~gone'), { recursive: true });
+    warm(WIDGETS);
+    await prune();
+    expect(fs.existsSync(statePath('slots', 'slot-1.warm'))).toBe(true);
+    fs.mkdirSync(path.join(cfg().worktreesDir, 'slot-1@acme~gone'), { recursive: true });
+    warm('acme/gone');
+    fs.rmSync(statePath('pruned_at'), { force: true });
+    await prune();
+    expect(fs.existsSync(statePath('slots', 'slot-1.warm'))).toBe(false);
+    expect(readLog().join('\n')).toMatch(/warm stack of slot-1 taken down \(acme\/gone is no longer/);
+  });
 });
 
 describe('placing a card that names no issue', () => {
@@ -191,5 +226,13 @@ describe('the webhook with two repositories', () => {
     expect(failed.state).toBe('failed');
     expect(failed.reason).toMatch(/^acme\/api: .*HTTP 404/);
     expect(failed.hookIds).toEqual({ [WIDGETS]: 42 });
+  });
+
+  it('gives the second repository its hook when the first refuses', async () => {
+    onCommand(/^gh api repos\/acme\/widgets\/hooks$/, { ok: false, out: '', err: 'gh: Not Found (HTTP 404)' });
+    onCommand(/^gh api repos\/acme\/api\/hooks$/, []);
+    onCommand(/-X POST repos\/acme\/api\/hooks/, '43');
+    const status = await ensureWebhook();
+    expect(status).toMatchObject({ state: 'failed', reason: expect.stringMatching(/^acme\/widgets: /), hookIds: { [API]: 43 } });
   });
 });

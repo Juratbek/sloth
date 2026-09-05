@@ -118,7 +118,7 @@ export function sessionEnv(dir: string, target: Target, model: string, chrome: b
     SLOTH_E2E: c.e2e ? '1' : '0',
     SLOTH_E2E_MODEL: c.models.e2e,
     SLOTH_PREVIEW_HOURS: String(c.previewHours),
-    SLOTH_STACK: requiredStack().join(' '),
+    SLOTH_STACK: requiredStack(c.stack, repoRoot(repo)).join(' '),
     SLOTH_START: String(start),
     SLOTH_DEADLINE: String(start + budget * 60),
     SLOTH_BUDGET_MIN: String(budget),

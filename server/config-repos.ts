@@ -57,5 +57,5 @@ export function legacyRepoOf(saved: unknown, repos: RepoConfig[], legacyRepo: un
   const kept = text(saved);
   if (kept) return kept;
   const slug = text(legacyRepo);
-  return slug && repos.some((r) => r.slug === slug) ? slug : repos[0].slug;
+  return slug && repos.some((r) => r.slug.toLowerCase() === slug.toLowerCase()) ? slug : repos[0].slug;
 }

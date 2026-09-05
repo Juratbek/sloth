@@ -24,13 +24,11 @@ const Left = ({ label, count, title }: { label: string; count: number; title: st
  * in the header. It mirrors GitHub and nothing more: no dragging, no buttons, no writes. Clicking a card
  * goes back to the monitor with the newest run on that issue open.
  */
-export default function BoardPage({ board, onSelect, onClose }: { board?: BoardView; onSelect: (id: string) => void; onClose: () => void }) {
+export default function BoardPage({ board, several, onSelect, onClose }: { board?: BoardView; several: boolean; onSelect: (id: string) => void; onClose: () => void }) {
   const [tab, setTab] = useState<ColumnRole | null>(null);
   const columns = board?.columns ?? [];
   // On a phone one column shows at a time: the chosen one, else the first with work on it.
   const active = columns.find((c) => c.role === tab) ?? columns.find((c) => c.cards.length) ?? columns[0];
-  // Once the cards span two repositories every number says which; with one, `#12` is enough.
-  const several = new Set(columns.flatMap((c) => c.cards.map((card) => card.repo))).size > 1;
 
   return (
     <div className="flex h-full flex-col">

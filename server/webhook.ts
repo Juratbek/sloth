@@ -174,9 +174,11 @@ export async function ensureWebhook(): Promise<WebhookStatus> {
       return settle({ state: 'failed', reason });
     }
   }
-  // Every repository gets its hook; the first that refuses is the reason, and the ones already pointed stay pointed.
+  // Every repository is tried: one that refuses does not keep the next from its hook. The hook is up only when all of
+  // them took it — until then comments are polled, and the repositories that did take it stay pointed for the retry.
   const secret = webhookSecret();
   const hookIds: Record<string, number> = {};
+  const refused: string[] = [];
   for (const repo of repoSlugs()) {
     try {
       const mine = (await listHooks(repo)).find((h) => (h.config?.url ?? '').endsWith(HOOK_PATH));
@@ -186,9 +188,10 @@ export async function ensureWebhook(): Promise<WebhookStatus> {
     } catch (e) {
       const reason = explain(firstLine(e instanceof Error ? e.message : String(e)));
       log(`webhook: ${repo} not configured — ${reason}`);
-      return settle({ state: 'failed', reason: repoSlugs().length > 1 ? `${repo}: ${reason}` : reason, hookIds });
+      refused.push(repoSlugs().length > 1 ? `${repo}: ${reason}` : reason);
     }
   }
+  if (refused.length) return settle({ state: 'failed', reason: refused.join('; '), hookIds });
   const first = Object.values(hookIds)[0];
   return settle({ state: 'active', url, hookId: first, hookIds });
 }

@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
-import { isConfigured, repoRoot, tag, untagName } from '../repos';
+import { isConfigured, legacyRepo, repoRoot, tag, untagName } from '../repos';
+import { sameSlug } from '../repo-types';
 import { run } from './gh';
 import { log, readFile, remove, write } from './log';
 import { statePath } from './markers';
@@ -133,4 +134,4 @@ export async function releaseSlot(r: RunRef): Promise<void> {
 }
 
 /** Whether a worktree directory name is a slot's, and of a repository still configured — the sweep removes the rest. */
-export const slotRepoConfigured = (name: string): boolean => isConfigured(untagName(name).repo);
+export const slotRepoConfigured = (name: string): boolean => isConfigured(untagName(name).repo) || sameSlug(untagName(name).repo, legacyRepo());

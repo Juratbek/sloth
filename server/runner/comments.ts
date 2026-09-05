@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
-import { label, primaryRepo, repoSlugs } from '../repos';
-import { refKey, type IssueRef, type PrRef } from '../repo-types';
+import { canonicalRepo, label, primaryRepo, repoSlugs, several } from '../repos';
+import { refKey, sameSlug, type IssueRef, type PrRef } from '../repo-types';
 import { canAnswer, canOrder, roleOf } from '../roles';
 import type { Role } from '../roles';
 import { gh, graphql, react } from './gh';
@@ -44,9 +44,19 @@ interface Source extends IssueRef {
   review: boolean;
 }
 
+/** How many repositories one search names: GitHub caps a query at 256 characters, and `repo:owner/name` is a good share of that. */
+const REPOS_PER_SEARCH = 5;
+
 /** One search over every repository, every page: a page is 30 by default and a busy hour would leave the rest unread and unmarked for ever. */
 async function search(q: string, what: string): Promise<{ repo: string; number: number; isPr: boolean }[]> {
-  const scope = repoSlugs().map((r) => `repo:${r}`).join(' ');
+  const slugs = repoSlugs();
+  const found: { repo: string; number: number; isPr: boolean }[] = [];
+  for (let i = 0; i < slugs.length; i += REPOS_PER_SEARCH) found.push(...(await searchIn(slugs.slice(i, i + REPOS_PER_SEARCH), q, what)));
+  return found;
+}
+
+async function searchIn(slugs: string[], q: string, what: string): Promise<{ repo: string; number: number; isPr: boolean }[]> {
+  const scope = slugs.map((r) => `repo:${r}`).join(' ');
   const r = await gh(['api', '-X', 'GET', 'search/issues', '-f', `q=${scope} ${q}`, '-F', 'per_page=100', '--paginate', '--jq', '.items[] | "\\(.number) \\(.pull_request != null) \\(.repository_url)"']);
   if (!r.ok) {
     log(`${what} search failed: ${r.err.split('\n')[0]}`);
@@ -57,8 +67,9 @@ async function search(q: string, what: string): Promise<{ repo: string; number: 
     .filter(Boolean)
     .map((line) => {
       const [n, pr, url] = line.split(' ');
-      // The item's repository off its API URL; an answer without one (an older gh) is the first repository's.
-      return { repo: url ? url.replace(/^.*\/repos\//, '') : primaryRepo(), number: Number(n), isPr: pr === 'true' };
+      // The item's repository off its API URL, in the config's spelling; an answer without one (an older gh) is the first repository's.
+      const slug = url ? url.replace(/^.*\/repos\//, '') : '';
+      return { repo: (slug && canonicalRepo(slug)) || primaryRepo(), number: Number(n), isPr: pr === 'true' };
     });
 }
 
@@ -85,7 +96,9 @@ async function sources(since: string): Promise<Source[]> {
 
 /**
  * The issue a PR belongs to: the first one it closes (`Closes #n`, in this repository or another of
- * Sloth's), else the number in a `sloth/issue-<n>-…` head branch. A PR wired to neither is its own
+ * Sloth's), else the number in a `sloth/issue-<n>-…` head branch — with several repositories, only when
+ * the board has that issue of this repository: a session that changed a second repository names its card
+ * with `Closes`, and its branch number is another repository's card. A PR wired to neither is its own
  * thread — but only when GitHub answered: a lookup that failed says nothing about the wiring, and reading
  * it as "wired to nothing" would answer a real order with "this PR is not linked to an issue" and mark it
  * seen for good.
@@ -99,7 +112,12 @@ async function threadOfPr(pr: PrRef): Promise<Thread> {
     const p = data.repository?.pullRequest ?? {};
     const closes = p.closingIssuesReferences?.nodes?.[0];
     const branch = Number(/^sloth\/issue-(\d+)-/.exec(String(p.headRefName ?? ''))?.[1]);
-    const issue: IssueRef | undefined = closes?.number ? { repo: closes.repository?.nameWithOwner ?? pr.repo, number: Number(closes.number) } : branch ? { repo: pr.repo, number: branch } : undefined;
+    const onBoard = !several() || !!snapshot()?.items.some((i) => i.number === branch && sameSlug(i.repo, pr.repo));
+    const issue: IssueRef | undefined = closes?.number
+      ? { repo: canonicalRepo(closes.repository?.nameWithOwner ?? '') ?? pr.repo, number: Number(closes.number) }
+      : branch && onBoard
+        ? { repo: pr.repo, number: branch }
+        : undefined;
     if (issue) return { ...pr, issue, pr };
   } catch (e) {
     const why = e instanceof Error ? e.message.split('\n')[0] : String(e);

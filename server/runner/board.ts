@@ -1,6 +1,6 @@
 import { skipped } from '../board-types';
 import { cfg } from '../config';
-import { isConfigured, label } from '../repos';
+import { canonicalRepo, label } from '../repos';
 import type { IssueRef, PrRef } from '../repo-types';
 import { fetchTrelloBoard, moveTrelloCard } from './board-trello';
 import { gh, graphql } from './gh';
@@ -61,7 +61,8 @@ const foreign = new Set<string>();
 /** A card of a repository Sloth does not work in is not a card of Sloth's; a board read from before the field names none. */
 function mine(n: RawNode): string | undefined {
   const repo = n.content?.repository?.nameWithOwner ?? cfg().repos[0]?.slug ?? '';
-  if (isConfigured(repo)) return repo;
+  const mine = canonicalRepo(repo);
+  if (mine) return mine;
   if (!foreign.has(repo)) {
     foreign.add(repo);
     log(`board: cards of ${repo || 'an unknown repository'} are left alone — it is not one of Sloth's repositories`);

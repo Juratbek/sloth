@@ -134,6 +134,15 @@ describe('the API middleware', () => {
     expect(retried).toMatchObject({ state: 'off', reason: expect.stringMatching(/no public URL/) });
   });
 
+  it('refuses a repository that is not Sloth’s on the routes that take one, in any case', async () => {
+    const unblock = (repo: string) => fetch(`${base}/api/issues/12/unblock?repo=${encodeURIComponent(repo)}`, { method: 'POST' });
+    const bad = await unblock('a/../../../../etc');
+    expect(bad.status).toBe(400);
+    expect(await bad.text()).toMatch(/not one of Sloth's repositories/);
+    expect((await fetch(`${base}/api/previews/12/stop?repo=someone/else`, { method: 'POST' })).status).toBe(400);
+    expect((await unblock('ACME/WIDGETS')).status).toBe(200);
+  });
+
   it('passes a request the API does not own to the next middleware', async () => {
     const res = await fetch(`${base}/index.html`);
     expect(res.status).toBe(404);
