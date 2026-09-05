@@ -8,6 +8,7 @@ import BoardSection from './BoardSection';
 import MachineSection from './MachineSection';
 import NotificationsSection from './NotificationsSection';
 import QaSection from './QaSection';
+import ReposSection from './ReposSection';
 import RepositorySection from './RepositorySection';
 import SmokeSection from './SmokeSection';
 import StackSection from './StackSection';
@@ -15,21 +16,23 @@ import { Models } from './ModelsSection';
 import { General, Remote, Sessions, Team } from './sections';
 import type { SectionProps } from './ui';
 
-type Key = 'general' | 'board' | 'qa' | 'smoke' | 'repository' | 'stack' | 'team' | 'notifications' | 'models' | 'sessions' | 'remote' | 'machine' | 'about';
+type Key = 'general' | 'board' | 'repos' | 'qa' | 'smoke' | 'repository' | 'stack' | 'team' | 'notifications' | 'models' | 'sessions' | 'remote' | 'machine' | 'about';
 
 const pick = <K extends keyof typeof CONFIG_DEFAULTS>(...keys: K[]) =>
   Object.fromEntries(keys.map((k) => [k, CONFIG_DEFAULTS[k]])) as Pick<typeof CONFIG_DEFAULTS, K>;
 
 /** The sections, in nav order. `defaults` is what Restore defaults puts back; a section without one has nothing to restore. */
 /** What Restore defaults puts back; `home` is this instance's — a second instance must not be sent to the first one's directories. */
-const SECTIONS: { key: Key; label: string; component: ComponentType<SectionProps>; defaults?: (c: SlothConfig, home: string) => Partial<SlothConfig> }[] = [
+/** `ownSave`: the section shows its own Save, so the shell's bar stays out of its way. */
+const SECTIONS: { key: Key; label: string; component: ComponentType<SectionProps>; ownSave?: true; defaults?: (c: SlothConfig, home: string) => Partial<SlothConfig> }[] = [
   { key: 'general', label: 'General', component: General, defaults: () => pick('mention', 'botPrefix', 'boardSeconds', 'commentSeconds', 'fallbackCommentSeconds', 'chrome', 'e2e', 'previewHours', 'priorityField', 'autoMerge', 'resolveConflicts') },
   { key: 'board', label: 'Board', component: BoardSection },
+  { key: 'repos', label: 'Repositories', component: ReposSection, ownSave: true },
   { key: 'qa', label: 'QA sweep', component: QaSection, defaults: () => pick('qa') },
   { key: 'smoke', label: 'Smoke test', component: SmokeSection, defaults: () => pick('smoke') },
   {
     key: 'repository',
-    label: 'Repository',
+    label: 'Directories',
     component: RepositorySection,
     defaults: (c, home) => {
       const { runnersDir, worktreesDir, sessionsDir, stateDir, watcherLog } = defaultDirs(c.repos[0]?.slug.split('/')[1] ?? '', home);
@@ -96,6 +99,14 @@ export default function Settings({
     setLeaving(null);
     save.reset();
   };
+  // The one Save there is: the shell's bar and a section's own button both write the whole draft.
+  const write = () =>
+    save.mutate(draft, {
+      onSuccess: (r) => {
+        setBaseline(r.config);
+        setDraft(r.config);
+      },
+    });
 
   return (
     <div className="flex h-full flex-col">
@@ -146,10 +157,18 @@ export default function Settings({
           <div className="w-full px-6 py-6">
             <h1 className="text-lg font-semibold text-zinc-100">{section.label}</h1>
             <div className="mt-2 divide-y divide-zinc-900">
-              <Section draft={draft} patch={patch} />
+              <Section
+                draft={draft}
+                patch={patch}
+                baseline={baseline}
+                save={write}
+                discard={discard}
+                saving={save.isPending}
+                saveError={save.error ? String(save.error) : undefined}
+              />
             </div>
           </div>
-          {dirty && (
+          {dirty && (!section.ownSave || leaving) && (
             <div className="sticky bottom-0 mt-auto border-t border-zinc-800 bg-zinc-950/95 backdrop-blur">
               <div className="flex w-full items-center gap-2 px-6 py-3 text-xs">
                 {leaving ? (
@@ -167,18 +186,7 @@ export default function Settings({
                     {save.error && <span className="min-w-0 truncate text-red-400">{String(save.error)}</span>}
                     <span className="flex-1" />
                     <Button onClick={discard}>Discard</Button>
-                    <Button
-                      variant="primary"
-                      disabled={save.isPending}
-                      onClick={() =>
-                        save.mutate(draft, {
-                          onSuccess: (r) => {
-                            setBaseline(r.config);
-                            setDraft(r.config);
-                          },
-                        })
-                      }
-                    >
+                    <Button variant="primary" disabled={save.isPending} onClick={write}>
                       {save.isPending ? 'Saving…' : 'Save changes'}
                     </Button>
                   </>
