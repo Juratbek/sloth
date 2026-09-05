@@ -72,7 +72,7 @@ with the branch's tip (`git ls-remote origin`). A match means the note is curren
 `next:`, trust `done:` and `don't redo:`, and skip the discovery it already paid for. No match — the
 branch moved since — `rm -f` it and start from scratch. A note with an empty `head:` is one a run wrote
 before any branch existed and says nothing the thread does not (Step 1.5 keeps its state there): `rm -f` it.
-Either way, from Step 2 on **rewrite `handoff.md` at every step boundary**, the same moment `state.json` is written, so the run that continues this one
+Either way, from here on **rewrite `handoff.md` at every step boundary** (Step 1.5 excepted — it writes none), the same moment `state.json` is written, so the run that continues this one
 starts where it stopped instead of re-deriving everything.
 
 ## Step 1 — Read and scope
@@ -124,8 +124,9 @@ gh issue view "$ISSUE" --repo "$SLOTH_REPO" --json comments \
 `set_state working 1.5 "refining"`. First, **where the card stands** — the thread and the body are the record,
 this step writes no `handoff.md`:
 
-- The body holds a `<!-- sloth:spec -->` block → refined by an earlier run; the spec is binding, read as part of
-  Step 1. **Step 2.**
+- The body holds a `<!-- sloth:spec -->` block — or a `## Spec` heading Sloth wrote before the markers existed,
+  signed `_Written by Sloth …_` — → refined by an earlier run; the spec is binding, read as part of Step 1.
+  **Step 2.**
 - `ROUNDS` = the number of Sloth comments in the thread carrying a `<!-- sloth:refine N -->` line (below).
   `ROUNDS` is 1 or 2 and someone with a role answered after the last of them → continue at item 4. No answer
   after it yet → the questions stand: park and wait as item 3 says, with no new comment.
@@ -163,8 +164,11 @@ Buildable → Step 2. Otherwise, before any worktree or code:
    holds what it read. No answer within it → end the run as Step Q says (`set_state done Q`); the card stays
    parked at no cost, and a later answer starts a new run of this command, which comes back here — cheaper
    than keeping this one alive for a day.
-4. **An answer arrived** — during refine the resume of Step Q is **silent**: no `thanks — continuing`, no
-   card move; both come with the spec (item 5). Re-read the whole thread. The answers may open new questions
+4. **An answer arrived** — move the card back to `$SLOTH_COL_IN_PROGRESS_NAME` at once and
+   `set_state working 1.5 "refining"` (a card left in `$SLOTH_COL_NEEDS_HELP_NAME` counts as waiting to the
+   server, and the budget clock would stand still through real work); the rest of the Step Q resume is
+   **silent** during refine — no `thanks — continuing`; the one comment comes with the spec (item 5). Re-read
+   the whole thread. The answers may open new questions
    — **one more round at most** (`ROUNDS` was 1), asked as item 3 says with `<!-- sloth:refine 2 -->`, and only
    about what the answers brought up. After the second round nothing is asked again here: what is still open
    goes into the spec under **Open**, the work starts on what is settled, and the point comes up as an
@@ -195,8 +199,11 @@ Buildable → Step 2. Otherwise, before any worktree or code:
    ```bash
    [ -s "$SESSION_DIR/spec.md" ] || { echo "spec.md missing"; exit 1; }     # never push a body without it
    BODY=$(retry gh issue view "$ISSUE" --repo "$SLOTH_REPO" --json body --jq .body) || { echo "body unread — spec not written"; exit 1; }
-   printf '%s\n' "$BODY" | tr -d '\r' \
-     | awk '/^<!-- sloth:spec -->$/{skip=1} !skip{print} /^<!-- \/sloth:spec -->$/{skip=0}' >"$SESSION_DIR/body.md"
+   printf '%s\n' "$BODY" | tr -d '\r' >"$SESSION_DIR/body.md"
+   if grep -qx '<!-- sloth:spec -->' "$SESSION_DIR/body.md" && grep -qx '<!-- /sloth:spec -->' "$SESSION_DIR/body.md"; then
+     awk '/^<!-- sloth:spec -->$/{skip=1} !skip{print} /^<!-- \/sloth:spec -->$/{skip=0}' "$SESSION_DIR/body.md" >"$SESSION_DIR/body.tmp" \
+       && mv "$SESSION_DIR/body.tmp" "$SESSION_DIR/body.md"     # both markers, or the body is kept whole
+   fi
    printf '\n' >>"$SESSION_DIR/body.md"; cat "$SESSION_DIR/spec.md" >>"$SESSION_DIR/body.md"
    retry gh issue edit "$ISSUE" --repo "$SLOTH_REPO" --body-file "$SESSION_DIR/body.md"
    ```
@@ -206,8 +213,8 @@ Buildable → Step 2. Otherwise, before any worktree or code:
    a comment too, `$SLOTH_BOT_PREFIX Spec:` followed by the same section — the one comment the `session`
    skill allows past five lines; the mirror copies it onto the card.
 
-Then the rest of the Step Q resume, once: card back to `$SLOTH_COL_IN_PROGRESS_NAME`, one comment
-`$SLOTH_BOT_PREFIX spec written into the issue — building`, the budget recomputed — and on to Step 2.
+Then one comment `$SLOTH_BOT_PREFIX spec written into the issue — building`, the budget recomputed as the
+`session` skill says (the card is already in `$SLOTH_COL_IN_PROGRESS_NAME`, item 4) — and on to Step 2.
 **From here the spec is the requirement list**: Step 3 builds it and nothing beyond it, the tester (Step 4.5)
 confirms every acceptance criterion, the reviewer loop (Step 5.5) and the server's review hold the diff to
 them, and the PR's `## Why` refers to them. The `Scope so far` comment of Step 1 is written in addition only

@@ -177,7 +177,7 @@ Sloth's, the reviewer loop will not pass, or time is running out.
    session started (its own pids / database name only), leave the slot and the branch,
    `set_state waiting Q "<note>"` with `SERVERS=stopped` and `SINCE=$ASKED`.
 5. **An answer arrives** — re-read the whole thread, never re-ask what it answers. (A refine question —
-   implement Step 1.5 — resumes silently: the move and the comment below come once with the spec.) With what
+   implement Step 1.5 — resumes silently: the move happens at once, the comment comes once with the spec.) With what
    you need: move the card back to In Progress, `rm -f "$SLOTH_SESSION_DIR/blocked"`, comment
    `$SLOTH_BOT_PREFIX thanks — continuing`, recompute the budget (above), `SINCE=$(date +%s)`,
    `set_state working …`, bring the environment back up if you stopped it, and continue from where you
