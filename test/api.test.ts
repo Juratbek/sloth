@@ -3,6 +3,8 @@ import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiMiddleware } from '../server/api';
 import { stopLoop } from '../server/runner/loop';
+import { refreshColumns, resetColumns } from '../server/runner/columns';
+import { fail, onGh, resetGh } from './gh-mock';
 import { baseConfig, configure, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
@@ -34,6 +36,7 @@ afterAll(async () => {
 beforeEach(() => {
   configure();
   wipe();
+  resetGh();
   rejections.length = 0;
 });
 
@@ -58,6 +61,28 @@ function postInTwoWrites(target: string, first: Buffer, second: Buffer): Promise
 }
 
 describe('the API middleware', () => {
+  it('gives a failed board move the code its outcome asks for, and keeps `status` out of the answer', async () => {
+    // The session's `board_move` reads the HTTP code and nothing else: a 4xx it reports and gives up on, a
+    // 5xx it retries four times with a backoff. This is the only place an outcome becomes that code, and
+    // every failure used to be a 400 — so one unreachable board parked the card the session was handing over.
+    const move = (column: string) =>
+      fetch(`${base}/api/board/move`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ issue: 4, column }) });
+    resetColumns();
+    // Nothing has read this board's columns yet, so the name cannot be judged — but the next tick can.
+    expect((await move('In Progress')).status).toBe(503);
+    onGh(/ProjectV2SingleSelectField/, { node: { options: [{ id: 'opt-wip', name: 'In Progress' }] } });
+    await refreshColumns();
+    const unknown = await move('Planning');
+    expect(unknown.status).toBe(400);
+    const body = await unknown.json();
+    expect(body).toMatchObject({ ok: false, error: expect.stringMatching(/no such column: Planning/) });
+    expect(Object.keys(body)).not.toContain('status');
+    // A column this board has, and a `gh` that could not reach GitHub to move the card into it.
+    onGh(/project item-add/, fail('could not resolve host'));
+    expect((await move('In Progress')).status).toBe(503);
+    resetColumns();
+  });
+
   it('answers 500 for a body over the 1 MiB cap instead of letting the rejection end the process', async () => {
     const res = await fetch(`${base}/api/stack/install`, {
       method: 'POST',

@@ -5,6 +5,7 @@ import { ownerConflict } from './runner/owner';
 import { me as trelloMe, trelloReady } from './trello';
 import { chromeBinary, type Browser } from './runner/browser';
 import { run } from './runner/gh';
+import { refreshBotLogin } from './runner/bot';
 import { log } from './runner/log';
 import { installer, type Installer } from './stack';
 import type { Health, HealthCheck } from './machine-types';
@@ -163,7 +164,11 @@ function announce(health: Health): void {
  */
 export function refreshHealth(): Promise<Health> {
   if (inFlight) return inFlight;
-  const running = checkHealth().then((health) => {
+  // The login Sloth's comments are written under rides along: it is the same question about the same `gh`,
+  // and `refreshBotLogin` returns at once once it has an answer. A Sloth that mounted before anybody logged
+  // `gh` in — a fresh install, where the wizard's *Log in* button comes minutes later — would otherwise
+  // spend the rest of the process telling its own comments apart by their prefix alone.
+  const running = Promise.all([refreshBotLogin(), checkHealth()]).then(([, health]) => {
     cache = health;
     announce(health);
     return health;

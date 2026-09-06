@@ -98,6 +98,32 @@ describe('comments (trigger 3)', () => {
     expect(exists(statePath('seen', '105'))).toBe(true);
   });
 
+  it('leaves an answer in a review thread alone on a card a human has taken over', async () => {
+    // The review-thread answer is the other caller of `launch` here, and `launch` has no skip check of its
+    // own. Trigger 6 filters skipped cards with `freeIn`, so only this door was open: a tester's `@sloth`
+    // on a line of the diff started a session on a card a person was working by hand.
+    makeSession('issue', 4, { blocked: '1' });
+    setSnapshot([card(4, COLUMNS.needsHelp.name, { labels: ['Sloth: skip'] })]);
+    reviewThread(7, [{ id: 106, login: 'carol', body: '@sloth this is still broken' }]);
+    wired(7, 4);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(called(/api repos\/acme\/widgets\/pulls\/7\/comments\/106\/replies -f body=.*Sloth: skip/)).toHaveLength(1);
+    expect(exists(statePath('seen', 'review-106'))).toBe(true);
+  });
+
+  it('leaves a held order unseen when the reply GitHub was given did not land', async () => {
+    // The marker means "this comment has been answered". Written whatever GitHub said, a reply lost to a
+    // blip left the developer with 👀 and silence, and the search window closes an hour later.
+    setSnapshot([card(4, COLUMNS.inProgress.name, { labels: ['Sloth: skip'] })]);
+    // Registered ahead of the thread, whose pattern would otherwise answer the reply's POST as well.
+    onGh(/issues\/4\/comments -f body=/, fail('the API is having a moment'));
+    thread(4, false, [{ id: 107, login: 'bob', body: '@sloth start over' }]);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(exists(statePath('seen', '107'))).toBe(false);
+  });
+
   it("answers a question, or a tester's comment, with a status reply", async () => {
     thread(4, false, [{ id: 102, login: 'alice', body: '@sloth where is this?' }, { id: 103, login: 'carol', body: '@sloth do it now' }]);
     await comments();

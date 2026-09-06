@@ -17,15 +17,24 @@ import { log } from './log';
  */
 
 let login: string | undefined;
+let said = false;
 
 /** The login Sloth's comments are written under, once it is known. */
 export const botLogin = (): string | undefined => login;
 
-/** Reads the login `gh` acts as; called when the server mounts. A failed read is said once and left unknown. */
+/**
+ * Reads the login `gh` acts as. Called when the server mounts and again on every tick until it answers:
+ * a Sloth that mounts before anybody has logged `gh` in — a fresh install, where the wizard's *Log in*
+ * button comes minutes later — would otherwise spend the rest of the process on the prefix alone, with
+ * every reader below still open to a comment somebody else wrote. Once read it is never read again, and
+ * the failure is logged once so a tick every few minutes does not fill `watcher.log`.
+ */
 export async function refreshBotLogin(): Promise<void> {
+  if (login) return;
   const r = await gh(['api', 'user', '--jq', '.login']);
   if (!r.ok) {
-    log(`the GitHub login Sloth comments as could not be read (${r.err.split('\n')[0]}) — its own comments are told apart by their prefix alone`);
+    if (!said) log(`the GitHub login Sloth comments as could not be read (${r.err.split('\n')[0]}) — its own comments are told apart by their prefix alone until it can be`);
+    said = true;
     return;
   }
   login = r.out.trim() || undefined;
@@ -35,6 +44,7 @@ export async function refreshBotLogin(): Promise<void> {
 /** Tests start each case from a known login, or from none. */
 export const setBotLogin = (value: string | undefined): void => {
   login = value;
+  said = false;
 };
 
 /** Whether Sloth wrote this comment: its prefix, and — once the login is known — its author too. */

@@ -222,10 +222,9 @@ export async function comments(): Promise<void> {
         const hold = orderHold(t.issue);
         if (hold) {
           log(`${where(t)}: ${named} not acted on — ${hold.why}`);
-          if (!isDry()) {
-            await replyTo(t, comment, hold.reply);
-            write(seen, '');
-          }
+          // Marked seen only once the reply is on GitHub, as `handover` marks a head only once the
+          // announcement is: a reply GitHub refused would otherwise leave the developer with 👀 and silence.
+          if (!isDry() && (await replyTo(t, comment, hold.reply))) write(seen, '');
           continue;
         }
         const origin = t.pr ? `PR #${t.pr.number} ${named}` : `issue ${named}`;
@@ -240,6 +239,14 @@ export async function comments(): Promise<void> {
         } else {
           if (isPaused()) {
             log(`paused: skipped answer on ${where(t)}`);
+            continue;
+          }
+          // The same holds as an order: this is the other caller of `launch` here, and `launch` has no
+          // check of its own. Trigger 6 filters with `freeIn`, which is why the conversation half needs none.
+          const held = orderHold(t.issue);
+          if (held) {
+            log(`${where(t)}: ${named} not acted on — ${held.why}`);
+            if (!isDry() && (await replyTo(t, comment, held.reply))) write(seen, '');
             continue;
           }
           const hint = `Answer from ${comment.login} (${role}) in a review thread on PR #${t.pr?.number} (review comment ${comment.id}): re-read the whole thread, the issue and the PR, and continue where the last session stopped.`;

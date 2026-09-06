@@ -16,6 +16,7 @@ import {
 import type { Installer } from '../server/stack';
 import type { Health, HealthId } from '../server/types';
 import { configure, readLog, runnerRoot, wipe } from './harness';
+import { botLogin, setBotLogin } from '../server/runner/bot';
 import { cloneRepo, forgetCheckout } from '../server/checkout';
 import { cfg } from '../server/config';
 import fs from 'node:fs';
@@ -199,6 +200,31 @@ describe('the cache and the ten-minute gate', () => {
     expect(asks()).toBe(1);
     await healthTick(healthStatus()!.at + HEALTH_INTERVAL_MS);
     expect(asks()).toBe(2);
+  });
+
+  it('reads the login Sloth comments as until gh answers, then stops asking', async () => {
+    // Read only when the server mounts, a Sloth that started before anybody logged `gh` in — a fresh
+    // install, where the wizard's Log in button comes minutes later — spent the rest of the process
+    // telling its own comments apart by their prefix alone, which anybody can type.
+    setBotLogin(undefined);
+    const whoami = () => executed.filter((e) => e.line.includes('api user')).length;
+    onExecFile(/api user/, { code: 1, stderr: 'not logged in' });
+    await refreshHealth();
+    const first = whoami();
+    expect(first).toBeGreaterThan(0);
+    await refreshHealth();
+    expect(botLogin()).toBeUndefined();
+    expect(whoami()).toBeGreaterThan(first);
+    // …and the failure is said once, not on every reading for the life of the process.
+    expect(readLog().filter((l) => l.includes('login Sloth comments as could not be read'))).toHaveLength(1);
+    onExecFile(/api user/, { stdout: 'sloth-bot\n' });
+    await refreshHealth();
+    expect(botLogin()).toBe('sloth-bot');
+    // Once it has an answer it is never asked again.
+    const asked = whoami();
+    await refreshHealth();
+    expect(whoami()).toBe(asked);
+    setBotLogin(undefined);
   });
 
   it('writes a line when something is failing, and does not repeat itself while it stays that way', async () => {
