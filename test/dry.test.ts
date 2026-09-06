@@ -8,7 +8,7 @@ import { setSnapshot } from '../server/runner/board-snapshot';
 import { called, onGh, resetGh } from './gh-mock';
 import { resetSpawn } from './child-process-mock';
 import fs from 'node:fs';
-import { alivePid, configure, exists, makeSession, readLog, ref, runRef, sessionDir, statePath, wipe } from './harness';
+import { COLUMNS, alivePid, card, configure, exists, makeSession, read, readLog, ref, runRef, sessionDir, statePath, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
@@ -76,6 +76,10 @@ describe('a dry reap', () => {
     fs.mkdirSync(statePath('qa'), { recursive: true });
     fs.writeFileSync(statePath('qa', '6-bbb'), '');
     const issue = makeSession('issue', 7, { pid: '2000000000', 'state.json': { state: 'working' }, 'run.log': 'died\n' });
+    // …and one that finished on its own terms, whose slot would inherit its stack on a real tick.
+    makeSession('issue', 9, { pid: '2000000000', 'state.json': { state: 'done' }, 'run.log': 'done\n' });
+    fs.mkdirSync(statePath('slots'), { recursive: true });
+    fs.writeFileSync(statePath('slots', 'slot-1'), 'issue-9');
 
     await withDry(() => reap());
 
@@ -86,21 +90,26 @@ describe('a dry reap', () => {
     expect(exists(issue, 'exits.json')).toBe(false);
     expect(exists(issue, 'pid')).toBe(true);
     expect(readLog().join('\n')).toMatch(/dry-run: would sweep up what qa-6 left running/);
+    expect(readLog().join('\n')).toMatch(/dry-run: would hand the stack of issue-9 to slot-1/);
+    expect(read(statePath('slots', 'slot-1'))).toBe('issue-9');
   });
 
   it('tears nothing down when a cleanup is reached directly, and keeps no waiting books', async () => {
     // `sweepDead` guards the path above; `cleanupRun` guards itself, for the callers that reach it another
     // way. And `trackWaiting` writes the very files a run's billable seconds are worked out from.
     const dir = makeSession('issue', 8, { pid: alivePid(), 'state.json': { state: 'working' }, 'dev.pid': '4242\n', 'demo.db': 'sloth_8\n' });
-    setSnapshot([]);
     await withDry(() => cleanup(ref(8)));
     expect(exists(dir, 'demo.db')).toBe(true);
     expect(exists(dir, 'dev.pid')).toBe(true);
     expect(called(/dropdb/)).toHaveLength(0);
     expect(readLog().join('\n')).toMatch(/dry-run: would stop the servers of issue-8/);
+    // The card stands in needs-help, so a real tick would open a wait here — which is what the run's
+    // billable seconds and its budget deadline are both worked out from.
+    setSnapshot([card(8, COLUMNS.needsHelp.name)]);
     withDry(() => trackWaiting(dir, ref(8)));
     expect(exists(dir, 'waiting')).toBe(false);
-    expect(exists(dir, 'answered')).toBe(false);
+    trackWaiting(dir, ref(8));
+    expect(exists(dir, 'waiting')).toBe(true);
   });
 });
 

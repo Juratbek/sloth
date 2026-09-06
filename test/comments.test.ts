@@ -112,19 +112,33 @@ describe('comments (trigger 3)', () => {
     expect(exists(statePath('seen', 'review-106'))).toBe(true);
   });
 
-  it('says nothing in the conversation of a parked card, so the answer it waits for still counts', async () => {
+  it('says nothing in the conversation of a parked card whose own run will come back to it', async () => {
     // `answerOn` reads Sloth's *last* comment on the issue as the question being asked. A `**Sloth:**`
     // refusal written under the developer's answer would make that answer stop counting, and the card
     // would sit parked until somebody wrote a third comment — the same trap `awaitingAnswer` documents
-    // for a status reply. The log and the 👀 are what the human gets instead.
+    // for a status reply. Nothing is lost by saying nothing: the card is Sloth's, and trigger 6 relaunches
+    // it from the same thread as soon as the review is over.
     makeSession('issue', 4, { blocked: '1' });
-    setSnapshot([card(4, COLUMNS.needsHelp.name, { labels: ['Sloth: skip'] })]);
+    makeSession('approved', 9, { pid: alivePid(), issue: '4' });
+    setSnapshot([card(4, COLUMNS.needsHelp.name)]);
     thread(4, false, [{ id: 108, login: 'bob', body: '@sloth start over' }]);
     await comments();
     expect(spawned).toHaveLength(0);
     expect(called(/issues\/4\/comments -f body=/)).toHaveLength(0);
     expect(exists(statePath('seen', '108'))).toBe(true);
-    expect(readLog().join('\n')).toMatch(/comment 108 not acted on — the card is labelled Sloth: skip/);
+    expect(readLog().join('\n')).toMatch(/comment 108 not acted on — the review of the card is still running/);
+  });
+
+  it('still answers on a parked card a human has taken over, which nothing else will come back to', async () => {
+    // `freeIn` keeps trigger 6 off a skipped card entirely, so there is no pending answer to cancel and no
+    // second chance to say it later: swallowed here, the developer is told nothing at all, ever.
+    makeSession('issue', 4, { blocked: '1' });
+    setSnapshot([card(4, COLUMNS.needsHelp.name, { labels: ['Sloth: skip'] })]);
+    thread(4, false, [{ id: 109, login: 'bob', body: '@sloth start over' }]);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(called(/issues\/4\/comments -f body=.*Sloth: skip.*a person owns it/)).toHaveLength(1);
+    expect(exists(statePath('seen', '109'))).toBe(true);
   });
 
   it('leaves a held order unseen when the reply GitHub was given did not land', async () => {

@@ -82,6 +82,14 @@ export interface OrderHold {
   why: string;
   /** What to write back in the thread the order was given in, so nobody is left waiting on a silence. */
   reply: string;
+  /**
+   * Whether the reply may be swallowed on a card that is waiting for an answer. Only the hold below can
+   * afford it: the card is Sloth's, trigger 6 relaunches it from the same thread once the other run ends,
+   * and a `**Sloth:**` comment in the conversation meanwhile would be read by `answerOn` as the question
+   * being asked and cancel the answer under it. A `Sloth: skip` card has no such second chance — `freeIn`
+   * keeps trigger 6 off it entirely — so its refusal is always written, or nobody is ever told anything.
+   */
+  quiet?: boolean;
 }
 
 /**
@@ -97,6 +105,7 @@ export function orderHold(issue: IssueRef): OrderHold | undefined {
     return {
       why: `the ${what} of the card is still running`,
       reply: `The ${what} of this card is still running, and one actor owns a card at a time — I have not started on this. Say the word again once it has finished.`,
+      quiet: true,
     };
   }
   if (heldByHuman(issue)) {

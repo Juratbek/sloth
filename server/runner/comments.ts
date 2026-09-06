@@ -180,14 +180,15 @@ export function deliver(t: Thread, c: Comment, role: Role): void {
  * parked card is waiting for. `answerOn` reads Sloth's *last* comment on the issue as the question being
  * asked, so a `**Sloth:**` refusal written into the conversation of a card in needs-help would make the
  * developer's answer under it stop counting, and the card would sit parked until somebody wrote a third
- * comment. A reply in a review thread is not in the conversation and is always safe; in the conversation
- * of a parked card the log and the 👀 are what the human gets. Marked seen only once the reply landed: one
- * GitHub refused would otherwise leave nothing said, and nothing left to say it on a later tick.
+ * comment. A reply in a review thread is not in the conversation and is always safe, and only a hold that
+ * says so (`quiet`) may be swallowed at all — one whose card nothing will come back to has to be written,
+ * whatever it costs the answer scan. Marked seen only once the reply landed: one GitHub refused would
+ * otherwise leave nothing said, and nothing left to say it on a later tick.
  */
 async function holdBack(t: Thread, c: Comment, hold: OrderHold, seen: string): Promise<void> {
   log(`${where(t)}: ${kindOf(c)} ${c.id} not acted on — ${hold.why}`);
   if (isDry()) return;
-  const quiet = !c.review && awaitingAnswer(t.issue);
+  const quiet = hold.quiet && !c.review && awaitingAnswer(t.issue);
   if (quiet || (await replyTo(t, c, hold.reply))) write(seen, '');
 }
 
