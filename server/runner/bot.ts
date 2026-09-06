@@ -1,5 +1,5 @@
 import { cfg } from '../config';
-import { gh } from './gh';
+import { run } from './gh';
 import { log } from './log';
 
 /**
@@ -16,6 +16,9 @@ import { log } from './log';
  * answer itself in a loop.
  */
 
+/** As long as the other health checks are given: a login nobody answers for is not worth a tick. */
+const LOGIN_TIMEOUT = 15_000;
+
 let login: string | undefined;
 let said = false;
 
@@ -31,7 +34,10 @@ export const botLogin = (): string | undefined => login;
  */
 export async function refreshBotLogin(): Promise<void> {
   if (login) return;
-  const r = await gh(['api', 'user', '--jq', '.login']);
+  // `run`, not `gh`: the health reading this rides on is awaited inside the board tick, and `gh` waits a
+  // minute and then retries — two minutes of a dead network would hold the whole tick before the board is
+  // even read. The next reading asks again, which is a better retry than one nothing can interrupt.
+  const r = await run('gh', ['api', 'user', '--jq', '.login'], { timeout: LOGIN_TIMEOUT });
   if (!r.ok) {
     if (!said) log(`the GitHub login Sloth comments as could not be read (${r.err.split('\n')[0]}) — its own comments are told apart by their prefix alone until it can be`);
     said = true;

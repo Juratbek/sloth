@@ -83,7 +83,7 @@ describe('comments (trigger 3)', () => {
     expect(spawned).toHaveLength(0);
     expect(called(/api repos\/acme\/widgets\/issues\/4\/comments -f body=.*review of this card is still running/)).toHaveLength(1);
     expect(exists(statePath('seen', '104'))).toBe(true);
-    expect(readLog().join('\n')).toMatch(/comment 104 not acted on — the review of its PR is still running/);
+    expect(readLog().join('\n')).toMatch(/comment 104 not acted on — the review of the card is still running/);
   });
 
   it('refuses an order on a card a human has taken over, and says so in the thread', async () => {
@@ -110,6 +110,21 @@ describe('comments (trigger 3)', () => {
     expect(spawned).toHaveLength(0);
     expect(called(/api repos\/acme\/widgets\/pulls\/7\/comments\/106\/replies -f body=.*Sloth: skip/)).toHaveLength(1);
     expect(exists(statePath('seen', 'review-106'))).toBe(true);
+  });
+
+  it('says nothing in the conversation of a parked card, so the answer it waits for still counts', async () => {
+    // `answerOn` reads Sloth's *last* comment on the issue as the question being asked. A `**Sloth:**`
+    // refusal written under the developer's answer would make that answer stop counting, and the card
+    // would sit parked until somebody wrote a third comment — the same trap `awaitingAnswer` documents
+    // for a status reply. The log and the 👀 are what the human gets instead.
+    makeSession('issue', 4, { blocked: '1' });
+    setSnapshot([card(4, COLUMNS.needsHelp.name, { labels: ['Sloth: skip'] })]);
+    thread(4, false, [{ id: 108, login: 'bob', body: '@sloth start over' }]);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(called(/issues\/4\/comments -f body=/)).toHaveLength(0);
+    expect(exists(statePath('seen', '108'))).toBe(true);
+    expect(readLog().join('\n')).toMatch(/comment 108 not acted on — the card is labelled Sloth: skip/);
   });
 
   it('leaves a held order unseen when the reply GitHub was given did not land', async () => {

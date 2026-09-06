@@ -12,7 +12,7 @@ import { isPaused } from './pause';
 import { snapshot } from './board-snapshot';
 import { issueAlive, issueDir } from './session-dirs';
 import { launch, statusReply } from './spawn';
-import { awaitingAnswer, isOrder, kindOf, orderHold, replyTo, seenKey, unwiredReply, where } from './orders';
+import { awaitingAnswer, isOrder, kindOf, orderHold, replyTo, seenKey, unwiredReply, where, type OrderHold } from './orders';
 import { mirrorAuthor, takePending } from './trello-mirror';
 
 const LOOKBACK = 60 * 60; // search window; the seen/ markers do the real de-duplication
@@ -176,6 +176,22 @@ export function deliver(t: Thread, c: Comment, role: Role): void {
 }
 
 /**
+ * Says why a comment was not acted on and marks it seen — but never in a way that cancels the answer a
+ * parked card is waiting for. `answerOn` reads Sloth's *last* comment on the issue as the question being
+ * asked, so a `**Sloth:**` refusal written into the conversation of a card in needs-help would make the
+ * developer's answer under it stop counting, and the card would sit parked until somebody wrote a third
+ * comment. A reply in a review thread is not in the conversation and is always safe; in the conversation
+ * of a parked card the log and the 👀 are what the human gets. Marked seen only once the reply landed: one
+ * GitHub refused would otherwise leave nothing said, and nothing left to say it on a later tick.
+ */
+async function holdBack(t: Thread, c: Comment, hold: OrderHold, seen: string): Promise<void> {
+  log(`${where(t)}: ${kindOf(c)} ${c.id} not acted on — ${hold.why}`);
+  if (isDry()) return;
+  const quiet = !c.review && awaitingAnswer(t.issue);
+  if (quiet || (await replyTo(t, c, hold.reply))) write(seen, '');
+}
+
+/**
  * Trigger 3 — `@sloth` comments from the team, on an issue or on a PR (which counts as its issue's
  * thread; replies go where the comment was written — a comment on a line of the diff is answered in
  * that review thread). A live session gets the comment in its inbox; otherwise an order (admin or
@@ -221,10 +237,7 @@ export async function comments(): Promise<void> {
         }
         const hold = orderHold(t.issue);
         if (hold) {
-          log(`${where(t)}: ${named} not acted on — ${hold.why}`);
-          // Marked seen only once the reply is on GitHub, as `handover` marks a head only once the
-          // announcement is: a reply GitHub refused would otherwise leave the developer with 👀 and silence.
-          if (!isDry() && (await replyTo(t, comment, hold.reply))) write(seen, '');
+          await holdBack(t, comment, hold, seen);
           continue;
         }
         const origin = t.pr ? `PR #${t.pr.number} ${named}` : `issue ${named}`;
@@ -242,11 +255,11 @@ export async function comments(): Promise<void> {
             continue;
           }
           // The same holds as an order: this is the other caller of `launch` here, and `launch` has no
-          // check of its own. Trigger 6 filters with `freeIn`, which is why the conversation half needs none.
+          // check of its own. The conversation half needs none because it launches nothing — trigger 6
+          // does, and `answered` asks the same question there.
           const held = orderHold(t.issue);
           if (held) {
-            log(`${where(t)}: ${named} not acted on — ${held.why}`);
-            if (!isDry() && (await replyTo(t, comment, held.reply))) write(seen, '');
+            await holdBack(t, comment, held, seen);
             continue;
           }
           const hint = `Answer from ${comment.login} (${role}) in a review thread on PR #${t.pr?.number} (review comment ${comment.id}): re-read the whole thread, the issue and the PR, and continue where the last session stopped.`;

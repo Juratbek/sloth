@@ -96,16 +96,21 @@ export const dirAlive = (dir: string) => pidAlive(pidOf(dir)) && !predatesBoot(p
 export const issueAlive = (i: IssueRef) => dirAlive(issueDir(i));
 
 /**
- * Whether a review is running for this issue right now. A review is named after its PR, so `issueAlive`
- * cannot see one: the issue it works for is written beside it (`launchApproved`), and that is what is
- * asked here. It answers "is anyone already on this card" for a caller that has no PR number in hand.
+ * The kind of a live run on this card that is not its implement session — the review of its PR, or the QA
+ * test of it — or undefined when nobody else is on it. A review is named after its PR and a QA test runs
+ * apart from the implement run, so `issueAlive` sees neither: the issue each works for is written beside
+ * it (`launchApproved`) or is its own number, and that is what is asked here. It answers "is anyone
+ * already on this card" for a caller that has no PR number in hand, which is what keeps one actor to a
+ * card: a second session would push to the branch the other is reading and about to move the card for.
  */
-export const reviewAlive = (i: IssueRef): boolean =>
-  runDirs().some((r) => {
-    if (r.kind !== 'approved' || !dirAlive(r.dir)) return false;
+export function otherRunOn(i: IssueRef): Kind | undefined {
+  for (const r of runDirs()) {
+    if (r.kind === 'issue' || !dirAlive(r.dir)) continue;
     const wired = issueOfRun(r, r.dir);
-    return !!wired && refKey(wired) === refKey(i);
-  });
+    if (wired && refKey(wired) === refKey(i)) return r.kind;
+  }
+  return undefined;
+}
 
 /**
  * A run's name back into the kind, target and repository it was made from — `runName` read backwards. One

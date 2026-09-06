@@ -10,7 +10,7 @@ import type { BoardItem } from './board';
 import { parkedColumns } from './columns';
 import { gh } from './gh';
 import { isDry, log, remove } from './log';
-import { isBlocked, issueAlive, issueDir } from './session-dirs';
+import { isBlocked, issueAlive, issueDir, otherRunOn } from './session-dirs';
 import { launch } from './spawn';
 import { mirrorAuthor } from './trello-mirror';
 
@@ -81,6 +81,16 @@ export async function answered(board: BoardItem[]): Promise<void> {
   ];
   for (const issue of parked) {
     if (issueAlive(issue)) continue;
+    // One actor owns a card at a time. Only In Progress used to be scanned, and trigger 4 never looks
+    // there; now that a blocked card in Code Review or Approved is scanned too, its PR may have a review
+    // reading the very branch a session started here would push to — and the verdict would land on a head
+    // that had moved under it, and move the card by it. The next tick, with the review over, relaunches:
+    // trigger 6 re-reads the whole thread every time, so nothing is lost by waiting.
+    const other = otherRunOn(issue);
+    if (other) {
+      log(`${label(issue)} has an answer, but its ${other === 'qa' ? 'QA test' : 'review'} is still running — it waits for the next tick`);
+      continue;
+    }
     const answer = await answerOn(issue);
     if (!answer) continue;
     const hint = `Answer from ${answer.login} (${answer.role}) in the issue thread (comment ${answer.id}): re-read the whole thread and continue where the last session stopped.`;

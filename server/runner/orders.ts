@@ -6,7 +6,7 @@ import { canOrder, type Role } from '../roles';
 import { snapshot } from './board-snapshot';
 import { gh } from './gh';
 import { isDry, log } from './log';
-import { isBlocked, issueDir, reviewAlive, stateOf } from './session-dirs';
+import { isBlocked, issueDir, otherRunOn, stateOf } from './session-dirs';
 import type { Comment, Thread } from './comments';
 
 /**
@@ -91,10 +91,12 @@ export interface OrderHold {
  * window and never be acted on at all, after Sloth had already put 👀 on it.
  */
 export function orderHold(issue: IssueRef): OrderHold | undefined {
-  if (reviewAlive(issue)) {
+  const other = otherRunOn(issue);
+  if (other) {
+    const what = other === 'qa' ? 'QA test' : 'review';
     return {
-      why: 'the review of its PR is still running',
-      reply: 'The review of this card is still running, and one actor owns a card at a time — I have not started on this. Say the word again once the verdict is on the PR.',
+      why: `the ${what} of the card is still running`,
+      reply: `The ${what} of this card is still running, and one actor owns a card at a time — I have not started on this. Say the word again once it has finished.`,
     };
   }
   if (heldByHuman(issue)) {

@@ -4,7 +4,7 @@ import { setBotLogin } from '../server/runner/bot';
 import { setDry } from '../server/runner/log';
 import { resetSpawn, spawned } from './child-process-mock';
 import { onGh, resetGh } from './gh-mock';
-import { COLUMNS, alivePid, card, configure, makeSession, wipe } from './harness';
+import { COLUMNS, alivePid, card, configure, makeSession, readLog, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
@@ -56,6 +56,19 @@ describe('answered', () => {
     onGh(/issues\/(8|9|10)\/comments/, tsv([[1, 'jurat', true], [2, 'bob', false]]));
     await answered([card(8, COLUMNS.codeReview.name), card(9, COLUMNS.approved.name), card(10, COLUMNS.pickup.name)]);
     expect(spawned.map((s) => s.options.env.SLOTH_ISSUE).sort()).toEqual(['8', '9']);
+  });
+
+  it('waits for a review that is still reading the card’s PR before relaunching on an answer', async () => {
+    // Scanning Code Review and Approved for a blocked card put trigger 6 where trigger 4 also works, and
+    // `launch` has no live-review check of its own: both could fire on one card in one tick, and the
+    // session would push a new head while the reviewer posted its verdict on the old one — and moved the
+    // card by it. Nothing is lost by waiting: trigger 6 re-reads the whole thread every tick.
+    makeSession('issue', 13, { blocked: '1' });
+    makeSession('approved', 20, { pid: alivePid(), issue: '13' });
+    onGh(/issues\/13\/comments/, tsv([[1, 'jurat', true], [2, 'bob', false]]));
+    await answered([card(13, COLUMNS.codeReview.name)]);
+    expect(spawned).toHaveLength(0);
+    expect(readLog().join('\n')).toMatch(/#13 has an answer, but its review is still running/);
   });
 
   it('a comment is only Sloth’s question when Sloth wrote it', async () => {

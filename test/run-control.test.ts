@@ -144,6 +144,33 @@ describe('reap, on the runs it leaves alone', () => {
     }
   });
 
+  it('kills a run stopped for the machine past its own budget, so its slot comes back', async () => {
+    const kill = stubKill();
+    try {
+      // The pause term cancelled `now` on both sides of the kill condition exactly as the wait did, and
+      // unlike the wait it had no ceiling at all: sustained load that is not Sloth's kept a run stopped for
+      // ever, holding its worktree slot with no `stopped` event and no ledger line. A run may be stopped
+      // for as long as it was given to work in, and no longer.
+      const now = nowSec();
+      const over = (cfg().budgetMinutes * 2 + 20) * 60;
+      makeSession('issue', 14, {
+        pid: '12345',
+        started: String(now - over),
+        paused: JSON.stringify({ since: now - over + 600, reason: 'machine busy' }),
+        'state.json': { state: 'working', step: '3' },
+        'run.log': 'stopped\n',
+      });
+      onGh(/project item-add/, 'ITEM');
+      await reap();
+      expect(readLog().join('\n')).toMatch(/#14 stopped: hung past the budget/);
+      expect(exists(sessionDir('issue', 14), 'pid')).toBe(false);
+      // What the client is billed still leaves the whole pause out — only the deadline is capped.
+      expect(readLog().join('\n')).toMatch(/booked issue-14: .* not billable \(budget\)/);
+    } finally {
+      kill.mockRestore();
+    }
+  });
+
   it('leaves a run that has just been answered alone, while the board it is judged by still says parked', async () => {
     const kill = stubKill();
     try {

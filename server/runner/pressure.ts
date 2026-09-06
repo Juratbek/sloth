@@ -49,6 +49,21 @@ export function pausedSeconds(dir: string, until = nowSec()): number {
   return readNumber(totalFile(dir)) + (p ? Math.max(0, Math.min(until, nowSec()) - p.since) : 0);
 }
 
+/**
+ * The same for the budget deadline, with the pause still open capped at `cap` — the run's own budget.
+ * Uncapped it grew by exactly as much as the clock advanced, so `now > launchedAt + paused + budget`
+ * cancelled `now` on both sides and left a constant: a run stopped for the machine could never be killed.
+ * Sustained load that is not Sloth's — a build, a virtual machine — keeps it stopped for ever, and it
+ * holds its worktree slot the whole time with no `stopped` event, no ledger line and nothing to prune it.
+ * A run may be stopped for as long as it was given to work in and no longer; past that it is holding a
+ * slot it can no longer use, and `reap` books it like any other run that hung. What the client is billed
+ * is untouched — `bookRun` subtracts the whole pause, capped only at the moment the run ended.
+ */
+export function pausedForDeadline(dir: string, cap: number): number {
+  const p = pausedRun(dir);
+  return readNumber(totalFile(dir)) + (p ? Math.min(Math.max(0, nowSec() - p.since), cap) : 0);
+}
+
 /** The pids a run consists of: its own `claude`, and every server it recorded — each with its process group. */
 function pidsOf(dir: string): number[] {
   const pids = [pidOf(dir) ?? 0];
