@@ -152,7 +152,12 @@ function pruneMarkers(cutoff: number): void {
     }
     for (const name of old) {
       // A status reply is a run of its own, booked in its marker directory: its transcript goes with it.
-      if (kind === 'status') removeTranscript(statePath(kind, name));
+      // A status reply is a run of its own, booked in its marker directory: its transcript and the launch
+      // mark `start` wrote for it under `started/` go with it.
+      if (kind === 'status') {
+        removeTranscript(statePath(kind, name));
+        remove(statePath('started', name));
+      }
       remove(statePath(kind, name));
     }
     log(`pruned ${old.length} ${kind} marker(s)`);

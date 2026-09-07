@@ -68,20 +68,20 @@ export function awaitingAnswer(issue: IssueRef): boolean {
 }
 
 /**
- * Whether a human has taken this card over. The board the loop last read answers it without a call, but
- * only once there is one: `snapshot()` is empty for the seconds after a restart — the comment timer fires
- * at 20s, the board's at 5s, and a slow or failed board read leaves it empty for longer — and a card that
- * is missing from an empty board reads exactly like a card with no label. Unlike `awaitingAnswer` there is
- * no marker on disk to fall back on, so the one card in hand is asked about directly. A refusal there
- * holds the order too: not knowing is not the same as knowing there is no label.
+ * Whether a human has taken this card over — `undefined` when that could not be established at all, which
+ * is not the same answer as "no". The board the loop last read settles it without a call, but only for a
+ * card that is on it: `snapshot()` is empty for the seconds after a restart — the comment timer fires at
+ * 20s, the board's at 5s, and a slow or failed board read leaves it empty for longer — and a card missing
+ * from a board, empty or not, reads exactly like a card with no label. Unlike `awaitingAnswer` there is no
+ * marker on disk to fall back on, so the one card in hand is asked about directly instead.
  */
-async function heldByHuman(issue: IssueRef): Promise<boolean> {
-  const board = snapshot();
-  if (board) return board.items.some((i) => refKey(i) === refKey(issue) && skipped(i));
+async function heldByHuman(issue: IssueRef): Promise<boolean | undefined> {
+  const item = snapshot()?.items.find((i) => refKey(i) === refKey(issue));
+  if (item) return skipped(item);
   const r = await gh(['issue', 'view', String(issue.number), '--repo', issue.repo, '--json', 'labels', '--jq', '.labels[].name']);
   if (!r.ok) {
-    log(`${refKey(issue)}: the labels could not be read (${r.err.split('\n')[0]}) — an order waits for a tick that can read them`);
-    return true;
+    log(`${label(issue)}: the labels could not be read (${r.err.split('\n')[0]})`);
+    return undefined;
   }
   return skipped({ labels: r.out.split('\n').map((l) => l.trim()).filter(Boolean) });
 }
@@ -111,6 +111,14 @@ export interface OrderHold {
    * keeps trigger 6 off it entirely — so its refusal is always written, or nobody is ever told anything.
    */
   quiet?: boolean;
+  /**
+   * Whether the comment is left unseen and nothing is written back — the hold is not a fact about the card
+   * but an admission that the card could not be read. Answering it would tell the developer to take off a
+   * label that may not be there, and marking it seen would make that the last word: the order is simply
+   * left for a tick that can read the labels, the way a PR whose wiring is unknown is left. `LOOKBACK` is
+   * an hour, so it has many ticks to land in.
+   */
+  unknown?: boolean;
 }
 
 /**
@@ -129,7 +137,11 @@ export async function orderHold(issue: IssueRef): Promise<OrderHold | undefined>
       quiet: true,
     };
   }
-  if (await heldByHuman(issue)) {
+  const held = await heldByHuman(issue);
+  if (held === undefined) {
+    return { why: 'the labels of the card could not be read — the order waits for a tick that can read them', reply: '', unknown: true };
+  }
+  if (held) {
     return {
       why: `the card is labelled ${SKIP_LABEL}, so a human owns it`,
       reply: `This card is labelled **${SKIP_LABEL}**, so a person owns it and Sloth leaves it alone. Take the label off and say the word again for Sloth to pick it up.`,

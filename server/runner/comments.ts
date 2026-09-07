@@ -187,7 +187,7 @@ export function deliver(t: Thread, c: Comment, role: Role): void {
  */
 async function holdBack(t: Thread, c: Comment, hold: OrderHold, seen: string): Promise<void> {
   log(`${where(t)}: ${kindOf(c)} ${c.id} not acted on — ${hold.why}`);
-  if (isDry()) return;
+  if (isDry() || hold.unknown) return;
   const quiet = hold.quiet && !c.review && awaitingAnswer(t.issue);
   if (quiet || (await replyTo(t, c, hold.reply))) write(seen, '');
 }

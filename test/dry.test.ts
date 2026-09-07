@@ -97,7 +97,9 @@ describe('a dry reap', () => {
   it('tears nothing down when a cleanup is reached directly, and keeps no waiting books', async () => {
     // `sweepDead` guards the path above; `cleanupRun` guards itself, for the callers that reach it another
     // way. And `trackWaiting` writes the very files a run's billable seconds are worked out from.
-    const dir = makeSession('issue', 8, { pid: alivePid(), 'state.json': { state: 'working' }, 'dev.pid': '4242\n', 'demo.db': 'sloth_8\n' });
+    // Launched ten minutes ago, so the board read below is plainly this run's and not the one before it.
+    const started = String(Math.floor(Date.now() / 1000) - 600);
+    const dir = makeSession('issue', 8, { pid: alivePid(), started, 'state.json': { state: 'working' }, 'dev.pid': '4242\n', 'demo.db': 'sloth_8\n' });
     await withDry(() => cleanup(ref(8)));
     expect(exists(dir, 'demo.db')).toBe(true);
     expect(exists(dir, 'dev.pid')).toBe(true);

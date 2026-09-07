@@ -98,12 +98,27 @@ describe('comments (trigger 3)', () => {
     expect(called(/issues\/4\/comments -f body=.*Sloth: skip.*a person owns it/)).toHaveLength(1);
   });
 
-  it('holds an order when the label cannot be read at all — not knowing is not knowing there is none', async () => {
+  it('says nothing and marks nothing seen when the labels cannot be read — that is not an answer', async () => {
+    // Not knowing is not knowing there is no label, and it is not the skip label either: answering with
+    // the skip refusal tells the developer to take off a label that may not be there, and marking it seen
+    // makes that the last word. The order is left for a tick that can read the card, the way a PR whose
+    // wiring is unknown is left — `LOOKBACK` is an hour, so it has many ticks to land in.
     onGh(/issue view 4 --repo acme\/widgets --json labels/, fail('HTTP 503'));
     thread(4, false, [{ id: 131, login: 'bob', body: '@sloth start over with the other approach' }]);
     await comments();
     expect(spawned).toHaveLength(0);
+    expect(called(/issues\/4\/comments -f body=/)).toHaveLength(0);
+    expect(exists(statePath('seen', '131'))).toBe(false);
     expect(readLog().join('\n')).toMatch(/the labels could not be read/);
+  });
+
+  it('asks GitHub for a card the board it read does not carry, so an off-board card is not read as unlabelled', async () => {
+    setSnapshot([card(3, COLUMNS.inProgress.name)]);
+    onGh(/issue view 4 --repo acme\/widgets --json labels/, 'Sloth: skip');
+    thread(4, false, [{ id: 132, login: 'bob', body: '@sloth start over with the other approach' }]);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(called(/issues\/4\/comments -f body=.*Sloth: skip.*a person owns it/)).toHaveLength(1);
   });
 
   it('leaves an unwired PR comment unseen when the reply GitHub refused never landed', async () => {
