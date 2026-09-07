@@ -97,3 +97,37 @@ describe('a preview whose comment lands', () => {
     expect(fs.existsSync(path.join(sessionDir('issue', 3), 'preview-state.json'))).toBe(true);
   });
 });
+
+describe('a dry tick', () => {
+  it('retires no preview: no comment, the state kept, the run left standing', async () => {
+    makeSession('issue', 4, { 'preview.json': { url: 'http://localhost:3000' }, 'state.json': { state: 'done' } });
+    onGh(/issues\/4\/comments/, '55');
+    await previews();
+    await speak();
+    expect(previewState(ref(4))).toMatchObject({ url: TUNNEL, commentId: 55 });
+
+    // Expired, and the tick that notices is a dry one. A preview half taken down is a state no real tick
+    // produces: the next real one would find `preview.json` with no state beside it, open a second tunnel
+    // under a new key and leave the link a person already has pointing at nothing.
+    const state = path.join(sessionDir('issue', 4), 'preview-state.json');
+    const s = JSON.parse(fs.readFileSync(state, 'utf8'));
+    fs.writeFileSync(state, JSON.stringify({ ...s, expiresAt: Math.floor(Date.now() / 1000) - 60 }));
+    resetGh();
+    setDry(true);
+    await previews();
+    setDry(false);
+    expect(called(/issues\/4\/comments/)).toHaveLength(0);
+    expect(called(/dropdb/)).toHaveLength(0);
+    expect(fs.existsSync(state)).toBe(true);
+    expect(readLog().join('\n')).toMatch(/dry-run: would take the preview of #4 down \(expired\)/);
+  });
+
+  it('drops no unreadable preview.json', async () => {
+    makeSession('issue', 5, { 'preview.json': 'not json at all', 'state.json': { state: 'done' } });
+    setDry(true);
+    await previews();
+    setDry(false);
+    expect(fs.existsSync(path.join(sessionDir('issue', 5), 'preview.json'))).toBe(true);
+    expect(readLog().join('\n')).toMatch(/dry-run: would drop the unreadable preview.json of #5/);
+  });
+});

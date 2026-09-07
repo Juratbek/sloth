@@ -79,9 +79,22 @@ function url(path: string, params: Params): string {
   return u.toString();
 }
 
+/**
+ * The key and the token out of anything on its way to a log, the state directory or the Settings page.
+ * Every call carries them in the query string, which never reaches a message — but `/tokens/<token>/webhooks`
+ * carries the token in the path, and the path is what a failed call is named by. The token opens every
+ * board its member is on, for reading and for writing, so it is worth this on every error text.
+ */
+function redact(text: string): string {
+  const { key, token } = trelloCredentials();
+  let out = text;
+  for (const secret of [token, key]) if (secret && secret.length > 3) out = out.split(secret).join('\u2026');
+  return out;
+}
+
 async function once<T>(method: string, path: string, params: Params): Promise<T> {
   const res = await fetch(url(path, params), { method, headers: { accept: 'application/json' } });
-  if (!res.ok) throw new TrelloError(`Trello ${method} ${path}: ${res.status} ${(await res.text()).slice(0, 200)}`, res.status);
+  if (!res.ok) throw new TrelloError(redact(`Trello ${method} ${path}: ${res.status} ${(await res.text()).slice(0, 200)}`), res.status);
   return (await res.json()) as T;
 }
 

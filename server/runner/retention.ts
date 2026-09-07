@@ -63,6 +63,10 @@ function pruneSessions(cutoff: number): void {
     }
     removeTranscript(dir, repo);
     remove(dir);
+    // The launch mark the bill is measured from is kept out of the session directory on purpose, so that
+    // nothing the session writes can move it (#147) — which also puts it out of reach of this deletion.
+    // It is named after the directory, so it goes when the directory does and never on its own.
+    remove(statePath('started', name));
     log(`pruned session ${name}`);
   }
 }
@@ -147,8 +151,12 @@ function pruneMarkers(cutoff: number): void {
       continue;
     }
     for (const name of old) {
-      // A status reply is a run of its own, booked in its marker directory: its transcript goes with it.
-      if (kind === 'status') removeTranscript(statePath(kind, name));
+      // A status reply is a run of its own, booked in its marker directory: its transcript and the launch
+      // mark `start` wrote for it under `started/` go with it.
+      if (kind === 'status') {
+        removeTranscript(statePath(kind, name));
+        remove(statePath('started', name));
+      }
       remove(statePath(kind, name));
     }
     log(`pruned ${old.length} ${kind} marker(s)`);

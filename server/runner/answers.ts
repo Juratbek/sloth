@@ -4,11 +4,13 @@ import { label } from '../repos';
 import type { IssueRef } from '../repo-types';
 import { canAnswer, roleOf } from '../roles';
 import type { Role } from '../roles';
+import { wroteIt } from './bot';
 import { freeIn } from './board';
 import type { BoardItem } from './board';
+import { parkedColumns } from './columns';
 import { gh } from './gh';
 import { isDry, log, remove } from './log';
-import { isBlocked, issueAlive, issueDir } from './session-dirs';
+import { isBlocked, issueAlive, issueDir, otherRunOn } from './session-dirs';
 import { launch } from './spawn';
 import { mirrorAuthor } from './trello-mirror';
 
@@ -38,7 +40,8 @@ async function answerOn(issue: IssueRef): Promise<Answer | undefined> {
   for (const line of r.out.split('\n').filter(Boolean)) {
     const [id, author, encoded] = line.split('\t');
     const body = Buffer.from(encoded ?? '', 'base64').toString('utf8');
-    if (body.startsWith(c.botPrefix)) {
+    // Sloth's own comment is the question this card waits on an answer to — but only when Sloth wrote it.
+    if (wroteIt(author ?? '', body)) {
       asked = true;
       answer = undefined;
       continue;
@@ -52,20 +55,42 @@ async function answerOn(issue: IssueRef): Promise<Answer | undefined> {
 }
 
 /**
- * Trigger 6 — parked cards whose thread got an answer. A needs-help card (or a card blocked in place
- * when no such column is configured) with no live session is relaunched once a team member's comment
- * is newer than Sloth's last comment on the issue. Only the thread is consulted, so a card parked before
- * a reboot, or by a session that has since died, counts the same as one parked a minute ago. A session
- * that parks again writes a newer Sloth comment, so the card waits for the next answer.
+ * Trigger 6 — parked cards whose thread got an answer. A needs-help card, or one parked in place, with no
+ * live session is relaunched once a team member's comment is newer than Sloth's last comment on the issue.
+ * Only the thread is consulted, so a card parked before a reboot, or by a session that has since died,
+ * counts the same as one parked a minute ago. A session that parks again writes a newer Sloth comment, so
+ * the card waits for the next answer.
+ *
+ * A card is parked in place — a `blocked` marker, the card left where it stood — whenever the move to
+ * needs-help was refused or there is no needs-help column, and `park` is called with the card in Code
+ * Review (a review given up or stopped) and in Approved (a PR closed unmerged) as well as In Progress.
+ * Only In Progress used to be scanned for the marker, so a review given up on a board with no needs-help
+ * column left its card in Code Review for good: nothing looked there again, and the park comment's promise
+ * that answering in the thread continues the work was not kept. Every column a card can be parked in is
+ * scanned instead — not the pickup column, which the same comment offers as the way to start over.
  */
 export async function answered(board: BoardItem[]): Promise<void> {
   const col = cfg().statusField.columns;
+  const needsHelp = col.needsHelp.name;
   const parked = [
-    ...(col.needsHelp.name ? freeIn(board, col.needsHelp.name) : []),
-    ...freeIn(board, col.inProgress.name).filter((issue) => isBlocked(issueDir(issue))),
+    ...(needsHelp ? freeIn(board, needsHelp) : []),
+    ...parkedColumns()
+      .filter((name) => name !== needsHelp)
+      .flatMap((name) => freeIn(board, name))
+      .filter((issue) => isBlocked(issueDir(issue))),
   ];
   for (const issue of parked) {
     if (issueAlive(issue)) continue;
+    // One actor owns a card at a time. Only In Progress used to be scanned, and trigger 4 never looks
+    // there; now that a blocked card in Code Review or Approved is scanned too, its PR may have a review
+    // reading the very branch a session started here would push to — and the verdict would land on a head
+    // that had moved under it, and move the card by it. The next tick, with the review over, relaunches:
+    // trigger 6 re-reads the whole thread every time, so nothing is lost by waiting.
+    const other = otherRunOn(issue);
+    if (other) {
+      log(`${label(issue)} has an answer, but its ${other === 'qa' ? 'QA test' : 'review'} is still running — it waits for the next tick`);
+      continue;
+    }
     const answer = await answerOn(issue);
     if (!answer) continue;
     const hint = `Answer from ${answer.login} (${answer.role}) in the issue thread (comment ${answer.id}): re-read the whole thread and continue where the last session stopped.`;

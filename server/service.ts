@@ -17,6 +17,9 @@ import { repoName } from './repo-types';
  * agent: `launchd` starts it at login, restarts it when it dies, and `caffeinate -i` keeps the machine
  * from sleeping under it — the same command the README used to tell people to type themselves.
  *
+ * Turning it on writes the plist and stops there. The toggle is only ever pressed in a Sloth that is
+ * already running, and a second one on the same port is no use to anybody.
+ *
  * Only macOS is supported. Elsewhere the toggle saves and says so: writing a systemd unit is a different
  * feature, not a translation of this one.
  */
@@ -41,6 +44,14 @@ export interface PlistOptions {
   logFile: string;
   env: Record<string, string>;
 }
+
+/**
+ * The least launchd waits before starting the agent again. `KeepAlive` is what restarts Sloth when it
+ * crashes, and launchd's own floor under that is ten seconds: an agent that cannot start at all — the
+ * port already bound, a checkout with no build — used to be respawned six times a minute for the rest of
+ * the session, filling `service.log`. A minute between tries keeps the restart and costs nothing.
+ */
+const THROTTLE_SECONDS = 60;
 
 const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c] as string);
 const entry = (key: string, value: string) => `    <key>${esc(key)}</key>\n    <string>${esc(value)}</string>`;
@@ -67,6 +78,8 @@ ${Object.entries(o.env)
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>ThrottleInterval</key>
+    <integer>${THROTTLE_SECONDS}</integer>
 ${entry('StandardOutPath', o.logFile)}
 ${entry('StandardErrorPath', o.logFile)}
 </dict>
@@ -110,11 +123,12 @@ async function install(): Promise<string | undefined> {
   fs.mkdirSync(path.dirname(logFile()), { recursive: true });
   // launchd reads this at every login; half a plist is an agent that never starts and says nothing.
   writeAtomic(file, plistNow(pnpm));
-  const r = await run('launchctl', ['bootstrap', `gui/${process.getuid?.() ?? 0}`, file], { timeout: 30_000 });
-  // A label already bootstrapped is the state we wanted; anything else leaves the plist for a look.
-  if (!r.ok && !/already/i.test(r.err)) return `launchctl bootstrap failed: ${r.err.split('\n')[0]}`;
-  // Never kickstart from here: this process *is* the running Sloth, and the agent would take its port.
-  log(`autostart: ${label()} registered — it starts at next login (or \`launchctl kickstart -k ${target()}\` now)`);
+  // The plist is the whole registration: launchd loads everything in ~/Library/LaunchAgents at login, and
+  // `RunAtLoad` starts it there. Bootstrapping it from here loaded it *now* — and `RunAtLoad` meant launchd
+  // started a second Sloth on the spot, which claimed the state directory, died on the bound port, and was
+  // brought back by `KeepAlive` every ten seconds until the user logged out. Not kickstarting it changed
+  // nothing: the load is what started it. So nothing is loaded from the process that is already Sloth.
+  log(`autostart: ${label()} registered — it starts at next login (or \`launchctl bootstrap gui/${process.getuid?.() ?? 0} ${file}\` now)`);
   return undefined;
 }
 

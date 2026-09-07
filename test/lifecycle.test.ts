@@ -70,6 +70,16 @@ describe('finished (trigger 6)', () => {
     expect(exists(statePath('finished', '1'))).toBe(true);
   });
 
+  it('files a closed card away from the pickup column too, so nothing picks it up', async () => {
+    // The pickup column was not a worked column, so a closed card left there was never filed — and
+    // `pickup` had no `closed` filter of its own: it spent a slot and an hour implementing a duplicate.
+    onGh(/project item-add/, 'ITEM');
+    wired({ 5: [] });
+    await finished([card(5, COLUMNS.pickup.name, { closed: true })]);
+    expect(called(/item-edit .*opt-done/)).toHaveLength(1);
+    expect(exists(statePath('finished', '5'))).toBe(true);
+  });
+
   it('leaves a human branch alone, files the card once, and forgets a re-opened issue', async () => {
     configure({ statusField: { id: 'PVTSSF_1', columns: { ...COLUMNS, done: { id: '', name: '' } } } });
     wired({ 2: [{ pr: 11, sha: 'bbb', head: 'feature/x', state: 'MERGED' }] });
@@ -157,6 +167,18 @@ describe('failedChecks (trigger 7)', () => {
       card(4, COLUMNS.approved.name),
     ]);
     expect(launches()).toEqual([]);
+  });
+
+  it('waits while the review of the same PR is still reading it', async () => {
+    // Every other wired-PR trigger guards against a live review; this one did not. A slow check turning red
+    // on a head the reviewer had already started on launched a session that pushed a new head, while the
+    // review posted its verdict on the old one and moved the card by it — the two-actor race the other
+    // triggers document as closed.
+    makeSession('approved', 10, { pid: alivePid(), issue: '1' });
+    wired({ 1: [{ pr: 10, sha: 'aaa', head: 'sloth/issue-1-x', checks: 'FAILURE' }] });
+    await failedChecks([card(1, COLUMNS.codeReview.name)]);
+    expect(launches()).toEqual([]);
+    expect(exists(statePath('checks', '10-aaa'))).toBe(false);
   });
 
   it('only logs in a dry run', async () => {

@@ -7,6 +7,7 @@ import * as trello from '../trello';
 import type { TrelloComment } from '../trello';
 import { roleOf } from '../roles';
 import { cardIdOf, issueOfCard, linkCardToIssue } from './board-trello';
+import { wroteIt } from './bot';
 import { deliver } from './comments';
 import { gh } from './gh';
 import { isDry, log, write } from './log';
@@ -29,7 +30,8 @@ import { issueDir, stateOf } from './session-dirs';
 
 const LOOKBACK = 60 * 60;
 const HEADER = /^\*\*@([\w.-]+) on Trello:\*\*\n\n?/;
-const ownWords = (body: string) => body.startsWith(cfg().botPrefix);
+/** Sloth's own words go onto the card as they are; anyone else's are copied under their name, prefix or not. */
+const ownWords = wroteIt;
 
 const mirrorDir = () => path.join(cfg().stateDir, 'mirrored');
 const seen = (key: string) => fs.existsSync(path.join(mirrorDir(), key));
@@ -168,7 +170,7 @@ async function issuesToCards(): Promise<void> {
     if (seen(key) || HEADER.test(c.body)) continue;
     const card = cardIdOf(c.issue);
     if (!card) continue;
-    const text = ownWords(c.body) ? c.body : `**@${c.login} on GitHub:**\n\n${c.body}`;
+    const text = ownWords(c.login, c.body) ? c.body : `**@${c.login} on GitHub:**\n\n${c.body}`;
     if (isDry()) {
       log(`dry-run: would copy comment ${c.id} on ${label(c.issue)} onto its Trello card`);
       continue;

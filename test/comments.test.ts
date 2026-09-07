@@ -71,6 +71,149 @@ describe('comments (trigger 3)', () => {
     await comments();
     expect(spawned[0].args[1]).toBe('/sloth:implement 4 Order from bob (developer, issue comment 101): @sloth address the review comments');
   });
+  it('does not start a second session while the review of the card’s PR is still running, and says so', async () => {
+    // Trigger 4 waits for an implement session so one actor owns a card at a time; nothing waited the other
+    // way round. `@sloth address the review comments`, written while the review read the diff, cleaned the
+    // run environment, moved the card to In Progress and pushed to the branch the reviewer was about to
+    // post a verdict on — and move the card by. The order is answered rather than held for a later tick:
+    // the comment search reads the last hour only, and a review may run to its whole budget.
+    makeSession('approved', 9, { pid: alivePid(), issue: '4' });
+    thread(4, false, [{ id: 104, login: 'bob', body: '@sloth address the review comments' }]);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(called(/api repos\/acme\/widgets\/issues\/4\/comments -f body=.*review of this card is still running/)).toHaveLength(1);
+    expect(exists(statePath('seen', '104'))).toBe(true);
+    expect(readLog().join('\n')).toMatch(/comment 104 not acted on — the review of the card is still running/);
+  });
+
+  it('asks GitHub for the label when there is no board yet, rather than reading every card as unlabelled', async () => {
+    // `snapshot()` is empty for the seconds after a restart — the comment timer fires at 20s, the board's
+    // at 5s — and a slow or a failed board read leaves it empty for longer. A card missing from an empty
+    // board reads exactly like a card with no label, and unlike `awaitingAnswer` there is no marker on
+    // disk to fall back on: the one card in hand is asked about directly instead.
+    onGh(/issue view 4 --repo acme\/widgets --json labels/, 'Sloth: skip\nbug');
+    thread(4, false, [{ id: 130, login: 'bob', body: '@sloth start over with the other approach' }]);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(called(/issues\/4\/comments -f body=.*Sloth: skip.*a person owns it/)).toHaveLength(1);
+  });
+
+  it('says nothing and marks nothing seen when the labels cannot be read — that is not an answer', async () => {
+    // Not knowing is not knowing there is no label, and it is not the skip label either: answering with
+    // the skip refusal tells the developer to take off a label that may not be there, and marking it seen
+    // makes that the last word. The order is left for a tick that can read the card, the way a PR whose
+    // wiring is unknown is left — `LOOKBACK` is an hour, so it has many ticks to land in.
+    onGh(/issue view 4 --repo acme\/widgets --json labels/, fail('HTTP 503'));
+    thread(4, false, [{ id: 131, login: 'bob', body: '@sloth start over with the other approach' }]);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(called(/issues\/4\/comments -f body=/)).toHaveLength(0);
+    expect(exists(statePath('seen', '131'))).toBe(false);
+    expect(readLog().join('\n')).toMatch(/the labels could not be read/);
+  });
+
+  it('asks GitHub for a card the board it read does not carry, so an off-board card is not read as unlabelled', async () => {
+    setSnapshot([card(3, COLUMNS.inProgress.name)]);
+    onGh(/issue view 4 --repo acme\/widgets --json labels/, 'Sloth: skip');
+    thread(4, false, [{ id: 132, login: 'bob', body: '@sloth start over with the other approach' }]);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(called(/issues\/4\/comments -f body=.*Sloth: skip.*a person owns it/)).toHaveLength(1);
+  });
+
+  it('leaves an unwired PR comment unseen when the reply GitHub refused never landed', async () => {
+    // Marked seen on a refusal, the commenter keeps the 👀 and is never told anything at all — there is
+    // nothing left on a later tick to say it on.
+    onGh(/api graphql .*pullRequest\(number: 9\)/, { data: { repository: { pullRequest: { headRefName: 'topic/x', closingIssuesReferences: { nodes: [] } } } } });
+    onGh(/api -X GET search\/issues/, ({ line }) => (line.includes('"@sloth"') ? '9 true' : undefined));
+    onGh(/api repos\/acme\/widgets\/issues\/9\/comments\?since/, [{ id: 140, login: 'bob', body: '@sloth do it' }].map(b64).join('\n'));
+    onGh(/api repos\/acme\/widgets\/issues\/9\/comments -f body=/, fail('HTTP 502'));
+    await comments();
+    expect(exists(statePath('seen', '140'))).toBe(false);
+  });
+
+  it('refuses an order on a card a human has taken over, and says so in the thread', async () => {
+    // `launch` has no skip check of its own, and the order path was the only caller that did not filter for
+    // the label: a comment could put Sloth back on a card a person was working by hand.
+    setSnapshot([card(4, COLUMNS.inProgress.name, { labels: ['Sloth: skip'] })]);
+    thread(4, false, [{ id: 105, login: 'bob', body: '@sloth start over with the other approach' }]);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(called(/api repos\/acme\/widgets\/issues\/4\/comments -f body=.*Sloth: skip.*a person owns it and Sloth leaves it alone/)).toHaveLength(1);
+    // Answered once and marked seen: the next tick does not ask again.
+    expect(exists(statePath('seen', '105'))).toBe(true);
+  });
+
+  it('leaves an answer in a review thread alone on a card a human has taken over', async () => {
+    // The review-thread answer is the other caller of `launch` here, and `launch` has no skip check of its
+    // own. Trigger 6 filters skipped cards with `freeIn`, so only this door was open: a tester's `@sloth`
+    // on a line of the diff started a session on a card a person was working by hand.
+    makeSession('issue', 4, { blocked: '1' });
+    setSnapshot([card(4, COLUMNS.needsHelp.name, { labels: ['Sloth: skip'] })]);
+    reviewThread(7, [{ id: 106, login: 'carol', body: '@sloth this is still broken' }]);
+    wired(7, 4);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(called(/api repos\/acme\/widgets\/pulls\/7\/comments\/106\/replies -f body=.*Sloth: skip/)).toHaveLength(1);
+    expect(exists(statePath('seen', 'review-106'))).toBe(true);
+  });
+
+  it('says nothing in the conversation of a parked card whose own run will come back to it', async () => {
+    // `answerOn` reads Sloth's *last* comment on the issue as the question being asked. A `**Sloth:**`
+    // refusal written under the developer's answer would make that answer stop counting, and the card
+    // would sit parked until somebody wrote a third comment — the same trap `awaitingAnswer` documents
+    // for a status reply. Nothing is lost by saying nothing: the card is Sloth's, and trigger 6 relaunches
+    // it from the same thread as soon as the review is over.
+    makeSession('issue', 4, { blocked: '1' });
+    makeSession('approved', 9, { pid: alivePid(), issue: '4' });
+    setSnapshot([card(4, COLUMNS.needsHelp.name)]);
+    thread(4, false, [{ id: 108, login: 'bob', body: '@sloth start over' }]);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(called(/issues\/4\/comments -f body=/)).toHaveLength(0);
+    expect(exists(statePath('seen', '108'))).toBe(true);
+    expect(readLog().join('\n')).toMatch(/comment 108 not acted on — the review of the card is still running/);
+  });
+
+  it('still answers in a review thread on such a card — that reply is not in the conversation', async () => {
+    // The swallow is bought by `answerOn` reading Sloth's last *conversation* comment as the question. A
+    // reply on a line of the diff is not in the conversation and cancels nothing, so there is no reason to
+    // pay for it with a silence: the developer is told why nothing started.
+    makeSession('issue', 4, { blocked: '1' });
+    makeSession('approved', 9, { pid: alivePid(), issue: '4' });
+    setSnapshot([card(4, COLUMNS.needsHelp.name)]);
+    reviewThread(7, [{ id: 110, login: 'bob', body: '@sloth start over' }]);
+    wired(7, 4);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(called(/pulls\/7\/comments\/110\/replies -f body=.*review of this card is still running/)).toHaveLength(1);
+    expect(exists(statePath('seen', 'review-110'))).toBe(true);
+  });
+
+  it('still answers on a parked card a human has taken over, which nothing else will come back to', async () => {
+    // `freeIn` keeps trigger 6 off a skipped card entirely, so there is no pending answer to cancel and no
+    // second chance to say it later: swallowed here, the developer is told nothing at all, ever.
+    makeSession('issue', 4, { blocked: '1' });
+    setSnapshot([card(4, COLUMNS.needsHelp.name, { labels: ['Sloth: skip'] })]);
+    thread(4, false, [{ id: 109, login: 'bob', body: '@sloth start over' }]);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(called(/issues\/4\/comments -f body=.*Sloth: skip.*a person owns it/)).toHaveLength(1);
+    expect(exists(statePath('seen', '109'))).toBe(true);
+  });
+
+  it('leaves a held order unseen when the reply GitHub was given did not land', async () => {
+    // The marker means "this comment has been answered". Written whatever GitHub said, a reply lost to a
+    // blip left the developer with 👀 and silence, and the search window closes an hour later.
+    setSnapshot([card(4, COLUMNS.inProgress.name, { labels: ['Sloth: skip'] })]);
+    // Registered ahead of the thread, whose pattern would otherwise answer the reply's POST as well.
+    onGh(/issues\/4\/comments -f body=/, fail('the API is having a moment'));
+    thread(4, false, [{ id: 107, login: 'bob', body: '@sloth start over' }]);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(exists(statePath('seen', '107'))).toBe(false);
+  });
+
   it("answers a question, or a tester's comment, with a status reply", async () => {
     thread(4, false, [{ id: 102, login: 'alice', body: '@sloth where is this?' }, { id: 103, login: 'carol', body: '@sloth do it now' }]);
     await comments();

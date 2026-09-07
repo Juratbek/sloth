@@ -5,7 +5,7 @@ import { repoRoot } from '../repos';
 import type { IssueRef } from '../repo-types';
 import { run } from './gh';
 import { killTree } from './kill';
-import { log, readFile, remove } from './log';
+import { isDry, log, readFile, remove } from './log';
 import { dirOf, issueRef, pidAlive, predatesBoot, runName, worktreeName, type RunRef } from './session-dirs';
 import { releaseSlot, slotOf } from './slots';
 import { handOver } from './warm';
@@ -59,6 +59,13 @@ async function killRecorded(file: string, who: string): Promise<void> {
  * but without its head, so a retry reseeds the database instead of trusting what the kill interrupted.
  */
 export async function cleanupRun(r: RunRef, tainted = false): Promise<void> {
+  // A dry tick kills nothing and drops nothing. The callers that a human reaches — `stop`, `launch` —
+  // check for themselves and never get here; `reap`'s sweep of a dead run did not, so `POST /api/tick?dry=1`
+  // against a Sloth with a QA run in it killed the servers it had recorded, ran `dropdb` and freed its slot.
+  if (isDry()) {
+    log(`dry-run: would stop the servers of ${runName(r)}, drop its database and give its worktree slot back`);
+    return;
+  }
   const dir = dirOf(r);
   // A test run is never warm: the smoke test's e2e suite (`smoke.md` Step 2.5) drives the app rather
   // than serving it, so its group goes down whether the stack is handed over or torn down.
@@ -96,7 +103,12 @@ export async function keepWarm(r: RunRef): Promise<void> {
   const dir = dirOf(r);
   if (previewed(dir)) return;
   const slot = slotOf(r);
-  if (slot && (await handOver(r, slot))) await releaseSlot(r);
+  if (!slot) return;
+  if (isDry()) {
+    log(`dry-run: would hand the stack of ${runName(r)} to ${slot} and give the slot back`);
+    return;
+  }
+  if (await handOver(r, slot)) await releaseSlot(r);
 }
 
 /**

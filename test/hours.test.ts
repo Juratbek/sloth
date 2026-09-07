@@ -576,16 +576,77 @@ describe('the second review’s holes', () => {
     expect(read(path.join(quiet, 'waiting'))).toBe(String(now - 400));
   });
 
+  it('opens no wait at all on a board read before the run that would be waiting existed', () => {
+    // The snapshot is the *previous* tick's board. A card answered out of needs-help launches a fresh run,
+    // and the next tick's `reap` runs `trackWaiting` before the new read: that board still shows the card
+    // parked, and it is describing the run before the answer. Flooring the date it opened the wait at was
+    // not enough — the wait still opened, and closed a tick later having credited the whole span of a run
+    // that had been working throughout, so every answered card lost about two board intervals from its
+    // bill and had its deadline pushed out by the same. A run that really is waiting says so in its state.
+    const now = nowSec();
+    const parked = { repo: REPO, number: 44, title: 't', status: cfg().statusField.columns.needsHelp.name, labels: [], assignees: [], closed: false };
+    const dir = makeSession('issue', 44, { started: String(now - 60), 'state.json': { state: 'working', step: '3' } });
+    vi.useFakeTimers();
+    // The board was read ten minutes ago; the run for that card was launched one minute ago.
+    vi.setSystemTime(new Date((now - 600) * 1000));
+    setSnapshot([parked]);
+    vi.setSystemTime(new Date(now * 1000));
+    trackWaiting(dir, ref(44));
+    expect(exists(dir, 'waiting')).toBe(false);
+  });
+
+  it('opens none from a board read in the very second the run launched — that read is still the one before', () => {
+    // The boundary of the guard above. A board read cannot describe a run that started in the same second
+    // it was taken, so this is the stale case too, and `<` would let the whole of it back through.
+    const now = nowSec();
+    const parked = { repo: REPO, number: 46, title: 't', status: cfg().statusField.columns.needsHelp.name, labels: [], assignees: [], closed: false };
+    const dir = makeSession('issue', 46, { started: String(now - 300), 'state.json': { state: 'working', step: '3' } });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date((now - 300) * 1000));
+    setSnapshot([parked]);
+    vi.setSystemTime(new Date(now * 1000));
+    trackWaiting(dir, ref(46));
+    expect(exists(dir, 'waiting')).toBe(false);
+  });
+
+  it('opens one from a board read after the run launched — that card is parked on this run', () => {
+    const now = nowSec();
+    const parked = { repo: REPO, number: 45, title: 't', status: cfg().statusField.columns.needsHelp.name, labels: [], assignees: [], closed: false };
+    const dir = makeSession('issue', 45, { started: String(now - 600), 'state.json': { state: 'working', step: '3' } });
+    vi.useFakeTimers();
+    // The run was launched ten minutes ago and the board read one minute ago: this parking is its own.
+    vi.setSystemTime(new Date((now - 60) * 1000));
+    setSnapshot([parked]);
+    vi.setSystemTime(new Date(now * 1000));
+    trackWaiting(dir, ref(45));
+    expect(Number(read(path.join(dir, 'waiting')))).toBe(now - 60);
+  });
+
+  it('a run paused when Sloth went down is not billed as if the outage were its own pause', () => {
+    // `waitedSeconds` takes the moment the run ended precisely so an outage between the end and the tick
+    // that notices it adds nothing; `pausedSeconds` measured to now instead, so a reboot with a paused run
+    // in it subtracted hours the run never saw and the ledger booked forty minutes of real work as zero.
+    const now = nowSec();
+    const dir = makeSession('issue', 45, {
+      started: String(now - 4 * HOUR),
+      exited: String(now - 3 * HOUR),
+      paused: JSON.stringify({ since: now - 3 * HOUR - 600, reason: 'machine busy' }),
+      'state.json': { state: 'working' },
+    });
+    expect(bookRun(runRef('issue', 45), dir, 'rebooted')).toMatchObject({ pausedSeconds: 600, seconds: HOUR - 600 });
+  });
+
   it('the server’s own start mark wins over one rewritten in the session’s directory', () => {
     const now = nowSec();
     const dir = makeSession('issue', 44, { pid: '777', started: String(now - 10 * HOUR), exited: String(now - 60) });
     fs.mkdirSync(statePath('started'), { recursive: true });
     fs.writeFileSync(statePath('started', 'issue-44'), `777 ${now - HOUR}`);
     expect(bookRun(runRef('issue', 44), dir, 'died')).toMatchObject({ startedAt: now - HOUR, seconds: HOUR - 60 });
-    // A mark left by another run of the directory — another pid — says nothing about this one.
-    const other = makeSession('issue', 45, { pid: '778', started: String(now - 2 * HOUR), exited: String(now - 60) });
-    fs.writeFileSync(statePath('started', 'issue-45'), `999 ${now - HOUR}`);
-    expect(bookRun(runRef('issue', 45), other, 'died')).toMatchObject({ startedAt: now - 2 * HOUR });
+    // The mark used to count only while its pid matched `<dir>/pid` — a file the session writes in. A run
+    // that gave itself a pid nobody has made the two disagree, and the ten hours it wrote itself were booked.
+    const forged = makeSession('issue', 45, { pid: '999999', started: String(now - 10 * HOUR), exited: String(now - 60) });
+    fs.writeFileSync(statePath('started', 'issue-45'), `778 ${now - HOUR}`);
+    expect(bookRun(runRef('issue', 45), forged, 'died')).toMatchObject({ startedAt: now - HOUR, seconds: HOUR - 60 });
   });
 
   it('a branch that held the copy and is gone, or shrank, is a rewritten witness — raised, never recreated', async () => {

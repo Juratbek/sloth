@@ -56,7 +56,9 @@ describe('pickup (trigger 1)', () => {
   it('launches the watched column in board order, assigned or not, and moves the cards to In Progress', async () => {
     onGh(/project item-add/, 'ITEM');
     makeSession('issue', 5, { retries: '1', 'exits.json': [{ at: 1, how: 'x', tail: '' }] });
-    await pickup([card(5, 'Todo'), card(6, 'Todo', { labels: ['Sloth: skip'] }), card(7, 'Backlog'), card(8, 'Todo', { assignees: ['bob'] })]);
+    // A closed issue whose card was left in the column is not work: it used to be picked up like any
+    // other, spending a slot and an hour of billable session time on a duplicate somebody had closed.
+    await pickup([card(5, 'Todo'), card(6, 'Todo', { labels: ['Sloth: skip'] }), card(7, 'Backlog'), card(8, 'Todo', { assignees: ['bob'] }), card(9, 'Todo', { closed: true })]);
     expect(launches()).toEqual(['/sloth:implement 5', '/sloth:implement 8']);
     // A fresh pickup starts the count over: no retries, no record of old runs; the log opens with a run header.
     expect(exists(sessionDir('issue', 5), 'retries')).toBe(false);
@@ -285,12 +287,20 @@ describe('reviews (trigger 4)', () => {
     expect(exists(statePath('approved', '10-aaa'))).toBe(false);
     expect(readLog().at(-1)).toMatch(/dry-run: would review PR #10 \(issue #1\) on sonnet/);
   });
-  it('waits out a pending check and leaves a red one to trigger 7', async () => {
-    wired({ 1: [{ pr: 10, sha: 'aaa', head: 'x', checks: 'PENDING' }], 2: [{ pr: 11, sha: 'bbb', head: 'y', checks: 'FAILURE' }] });
-    await reviews([card(1, 'Code Review'), card(2, 'Code Review')]);
-    expect(launches()).toEqual([]);
+  it('waits out a pending check, leaves a red one of its own to trigger 7, and reviews a human’s red PR as it stands', async () => {
+    wired({
+      1: [{ pr: 10, sha: 'aaa', head: 'x', checks: 'PENDING' }],
+      2: [{ pr: 11, sha: 'bbb', head: 'sloth/issue-2-fix', checks: 'FAILURE' }],
+      3: [{ pr: 12, sha: 'ccc', head: 'y', checks: 'FAILURE' }],
+    });
+    await reviews([card(1, 'Code Review'), card(2, 'Code Review'), card(3, 'Code Review')]);
+    // Nobody but Sloth fixes a human's PR, so leaving it here left the card unreviewed, unmoved and unlogged.
+    expect(launches()).toEqual(['/sloth:review 12 final']);
     expect(exists(statePath('approved', '10-aaa'))).toBe(false);
+    expect(exists(statePath('approved', '11-bbb'))).toBe(false);
+    expect(exists(statePath('approved', '12-ccc'))).toBe(true);
     expect(readLog().join('\n')).toMatch(/review PR #10 waits for its checks/);
+    expect(readLog().join('\n')).toMatch(/review PR #12: its checks fail, and it is not Sloth's branch to fix/);
   });
   it('sends an Approved card whose head moved after the pass back to Code Review, label gone, and reviews it', async () => {
     fs.mkdirSync(statePath('approved'), { recursive: true });

@@ -178,7 +178,8 @@ put it on none. Use these instead, wherever a step above says `item-edit` or rea
 COLUMN=$(curl -s "$SLOTH_BOARD_API/card/$SLOTH_ISSUE?repo=${SLOTH_ISSUE_REPO:-$SLOTH_REPO}" | jq -r '.column // empty')
 
 # move the card — by column name (case-insensitive) or list id; the server moves it on Trello.
-# Retries a connection failure or a 5xx on its own; a 400 is permanent (its `error` says why) and is printed, not retried.
+# Retries a connection failure, a 503 (the board out of reach) or any other 5xx on its own;
+# a 400 is the board's own answer (its `error` says why) and is printed, not retried.
 board_move() {
   local out code n
   for n in 1 2 3 4; do
@@ -203,5 +204,6 @@ board_move "$SLOTH_ISSUE" "Planning"                        # a column a human a
 
 Do not wrap `board_move` in `retry`: it retries what is worth retrying. A `400` names the problem in its
 JSON (`error`) — an unknown column lists the ones that exist; report it the way you would an `item-edit`
-that failed. `ITEM_ID` does not exist on Trello: skip every step that
+that failed. A `503` is the board itself being out of reach for a moment, which is why it is retried and
+not reported. `ITEM_ID` does not exist on Trello: skip every step that
 derives or keeps it. The wired-PR query and every `gh issue` / `gh pr` call are unchanged.

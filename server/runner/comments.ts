@@ -3,14 +3,16 @@ import path from 'node:path';
 import { cfg } from '../config';
 import { canonicalRepo, label, primaryRepo, repoSlugs, several } from '../repos';
 import { refKey, sameSlug, type IssueRef, type PrRef } from '../repo-types';
-import { canAnswer, canOrder, roleOf } from '../roles';
+import { canAnswer, roleOf } from '../roles';
 import type { Role } from '../roles';
+import { wroteIt } from './bot';
 import { gh, graphql, react } from './gh';
 import { isDry, log, remove, write } from './log';
 import { isPaused } from './pause';
 import { snapshot } from './board-snapshot';
-import { isBlocked, issueAlive, issueDir, stateOf } from './session-dirs';
+import { issueAlive, issueDir } from './session-dirs';
 import { launch, statusReply } from './spawn';
+import { awaitingAnswer, isOrder, kindOf, orderHold, replyTo, seenKey, unwiredReply, where, type OrderHold } from './orders';
 import { mirrorAuthor, takePending } from './trello-mirror';
 
 const LOOKBACK = 60 * 60; // search window; the seen/ markers do the real de-duplication
@@ -156,12 +158,6 @@ async function reviewCommentsOf(pr: PrRef, since: string): Promise<Comment[]> {
   ]));
 }
 
-const where = (t: Thread) => (t.pr ? `PR #${t.pr.number}` : label(t.issue));
-/** How a comment is named in the log and in an order: a review comment says so, since its id lives in another namespace. */
-const kindOf = (c: Comment) => (c.review ? 'review comment' : 'comment');
-/** The seen marker. Review comments and conversation comments are numbered apart, so the marker says which it is. */
-const seenKey = (c: Comment) => (c.review ? `review-${c.id}` : String(c.id));
-
 /** Hands a comment to the session that is already working on the issue, with the author's role and where it was written. */
 export function deliver(t: Thread, c: Comment, role: Role): void {
   const dir = path.join(issueDir(t.issue), 'inbox');
@@ -179,39 +175,21 @@ export function deliver(t: Thread, c: Comment, role: Role): void {
   log(`${label(t.issue)} inbox <- ${kindOf(c)} ${c.id} by ${c.login} (${role}) on ${where(t)}`);
 }
 
-/** A PR that closes no issue has no Sloth work behind it: say so where the comment was written — in its review thread when that is where. */
-async function unwiredReply(t: Thread, c: Comment): Promise<void> {
-  if (isDry()) {
-    log(`dry-run: would tell ${c.login} on PR #${t.number} that it is wired to no issue (${kindOf(c)} ${c.id})`);
-    return;
-  }
-  const body = `${cfg().botPrefix} This PR is not linked to an issue (no \`Closes #n\`), so there is no Sloth session behind it. Mention me on the issue, or link one to the PR.`;
-  const endpoint = c.review ? `repos/${t.repo}/pulls/${t.number}/comments/${c.id}/replies` : `repos/${t.repo}/issues/${t.number}/comments`;
-  const r = await gh(['api', endpoint, '-f', `body=${body}`]);
-  if (!r.ok) log(`PR #${t.number} reply failed: ${r.err.split('\n')[0]}`);
-  else log(`PR #${t.number}: told ${c.login} the PR is wired to no issue (${kindOf(c)} ${c.id})`);
-}
-
-/** A question ends with `?`; everything else from someone who may order is an order. */
-const isOrder = (c: Comment, role: Role) => canOrder(role) && !c.body.trimEnd().endsWith('?');
-
 /**
- * Whether this card is waiting for a human's answer: parked in the needs-help column, blocked in place
- * where there is none, or left by a run that stopped to ask. Any of the three makes a team member's
- * comment the answer trigger 6 relaunches on, which is what the docs promise — "on a card in *Sloth
- * needs help*, a comment from anyone on the team is the answer the session waits for".
- *
- * It matters here because of what a status reply would do instead. The reply is a `**Sloth:**` comment,
- * and `answerOn` reads Sloth's last comment as the question being asked: a reply written *after* the
- * tester's answer cancels it, the next board tick finds nothing newer than Sloth, and the card stays
- * parked for ever. The board is the previous tick's read, which is enough — the two markers cover a
- * card parked since it was taken.
+ * Says why a comment was not acted on and marks it seen — but never in a way that cancels the answer a
+ * parked card is waiting for. `answerOn` reads Sloth's *last* comment on the issue as the question being
+ * asked, so a `**Sloth:**` refusal written into the conversation of a card in needs-help would make the
+ * developer's answer under it stop counting, and the card would sit parked until somebody wrote a third
+ * comment. A reply in a review thread is not in the conversation and is always safe, and only a hold that
+ * says so (`quiet`) may be swallowed at all — one whose card nothing will come back to has to be written,
+ * whatever it costs the answer scan. Marked seen only once the reply landed: one GitHub refused would
+ * otherwise leave nothing said, and nothing left to say it on a later tick.
  */
-function awaitingAnswer(issue: IssueRef): boolean {
-  const dir = issueDir(issue);
-  if (isBlocked(dir) || stateOf(dir).state === 'waiting') return true;
-  const column = cfg().statusField.columns.needsHelp.name;
-  return !!column && (snapshot()?.items ?? []).some((i) => refKey(i) === refKey(issue) && i.status === column);
+async function holdBack(t: Thread, c: Comment, hold: OrderHold, seen: string): Promise<void> {
+  log(`${where(t)}: ${kindOf(c)} ${c.id} not acted on — ${hold.why}`);
+  if (isDry() || hold.unknown) return;
+  const quiet = hold.quiet && !c.review && awaitingAnswer(t.issue);
+  if (quiet || (await replyTo(t, c, hold.reply))) write(seen, '');
 }
 
 /**
@@ -241,7 +219,7 @@ export async function comments(): Promise<void> {
       ...(source.review ? await reviewCommentsOf(source, since) : []),
     ].map(mirrorAuthor);
     for (const comment of found) {
-      if (!mention.test(comment.body) || comment.body.startsWith(c.botPrefix)) continue;
+      if (!mention.test(comment.body) || wroteIt(comment.login, comment.body)) continue;
       const seen = path.join(seenDir, seenKey(comment));
       if (fs.existsSync(seen)) continue;
       const role = roleOf(c.roles, comment.login);
@@ -250,12 +228,19 @@ export async function comments(): Promise<void> {
       // gets none — Sloth does not talk to strangers, not even with a reaction.
       if (role && !isDry()) await react(t.repo, comment.id, 'eyes', !!comment.review);
       if (!role) log(`${where(t)} ignored ${named} by ${comment.login} (no role)`);
-      else if (unwired) await unwiredReply(t, comment);
+      else if (unwired) {
+        if (!(await unwiredReply(t, comment))) continue;
+      }
       else if (issueAlive(t.issue)) deliver(t, comment, role);
       else if (isOrder(comment, role)) {
         // Left unseen on purpose: an order held back by the pause is picked up when Sloth resumes.
         if (isPaused()) {
           log(`paused: skipped order on ${where(t)}`);
+          continue;
+        }
+        const hold = await orderHold(t.issue);
+        if (hold) {
+          await holdBack(t, comment, hold, seen);
           continue;
         }
         const origin = t.pr ? `PR #${t.pr.number} ${named}` : `issue ${named}`;
@@ -270,6 +255,14 @@ export async function comments(): Promise<void> {
         } else {
           if (isPaused()) {
             log(`paused: skipped answer on ${where(t)}`);
+            continue;
+          }
+          // The same holds as an order: this is the other caller of `launch` here, and `launch` has no
+          // check of its own. The conversation half needs none because it launches nothing — trigger 6
+          // does, and `answered` asks the same question there.
+          const held = await orderHold(t.issue);
+          if (held) {
+            await holdBack(t, comment, held, seen);
             continue;
           }
           const hint = `Answer from ${comment.login} (${role}) in a review thread on PR #${t.pr?.number} (review comment ${comment.id}): re-read the whole thread, the issue and the PR, and continue where the last session stopped.`;
