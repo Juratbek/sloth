@@ -104,26 +104,42 @@ cap enforced by Playwright itself:
 
 ```bash
 SESSION_DIR=${SLOTH_SESSION_DIR:?}; MINUTES=20    # or less — what the roles can spare
+set -m
 nohup npx playwright test --config playwright.sloth.config.ts --reporter=list --workers=1 \
   --retries=1 --global-timeout $((MINUTES * 60000)) > "$SESSION_DIR/e2e.log" 2>&1 &
 echo $! > "$SESSION_DIR/e2e.pid"
+set +m
 ```
 
-`--workers=1`: one app, one database, and a machine that is holding other sessions up. Then one polling
-call per ten minutes (`timeout: 600000`), repeated until the run is gone or its minutes are spent:
+`--workers=1`: one app, one database, and a machine that is holding other sessions up. `set -m` makes the
+run a **process group of its own**, so its workers and their browsers go down with it; `e2e.pid` is a pid
+file of the same kind as `dev.pid`, and Sloth's own cleanup kills what it names, so a smoke run killed at
+its deadline leaves no browser tree behind. Every one of these is a separate Bash call and shell state does
+not survive between them (`session` skill) — set `SESSION_DIR` again in each. Then one polling call per ten
+minutes (`timeout: 600000`), repeated until the run is gone or its minutes are spent:
 
 ```bash
-PW=$(cat "$SESSION_DIR/e2e.pid")
+SESSION_DIR=${SLOTH_SESSION_DIR:?}; PW=$(cat "$SESSION_DIR/e2e.pid")
 for _ in $(seq 19); do kill -0 "$PW" 2>/dev/null || break; sleep 30; done
-kill -0 "$PW" 2>/dev/null && echo "still running" || tail -40 "$SESSION_DIR/e2e.log"
+kill -0 "$PW" 2>/dev/null && echo "still running" || { tail -60 "$SESSION_DIR/e2e.log"; grep -nE '^ +[0-9]+\) ' "$SESSION_DIR/e2e.log"; }
 ```
 
-Past its minutes it is **cut off**: `pkill -P "$PW"; kill "$PW"`, and the counts are the ones the log
-reached. One `npx playwright install chromium` when the browsers are missing (`Executable doesn't exist`);
-a Linux `install-deps` prompt needs sudo you have not got → could not run. A `globalSetup` that boots the
-app itself → could not run. **Delete the run config afterwards** — `rm -f playwright.sloth.config.ts
-"$SESSION_DIR/e2e.pid"` — pass, fail or cut off, in its own call so a killed poll never skips it; `git
-status` in the worktree then shows nothing, this being the one file the read-only checkout ever gets (Rules).
+Past its minutes it is **cut off** — `kill -- -"$PW"`, the group and not the one process (Windows:
+`taskkill /T /F /PID "$PW"`) — and the counts are the ones the log reached. One `npx playwright install
+chromium` when the browsers are missing (`Executable doesn't exist`); a Linux `install-deps` prompt needs
+sudo you have not got → could not run. A `globalSetup` that boots the app itself → could not run.
+**Delete the run config afterwards**, pass, fail or cut off, in a call of its own so a killed poll never
+skips it — and drop the pid record only once the process really is gone, so that a session killed between
+the two leaves the number where the cleanup can still find it:
+
+```bash
+SESSION_DIR=${SLOTH_SESSION_DIR:?}
+rm -f playwright.sloth.config.ts
+kill -0 "$(cat "$SESSION_DIR/e2e.pid")" 2>/dev/null || rm -f "$SESSION_DIR/e2e.pid"
+```
+
+`git status` in the worktree then shows nothing, this being the one file the read-only checkout ever
+gets (Rules).
 
 Read the reporter's per-test lines, not only its summary: a test red on both attempts is **a red test**; one
 that passed on the retry is **flaky** — noted, never a finding. The report's counts are the summary's, its
@@ -144,8 +160,10 @@ smoke test.
 
 **The suite leaves the demo data changed** — it signs in, and it creates and consumes what Step 2 seeded.
 Put the data back the way Step 2 had it before Step 3: the project's own seed or reset step, run again
-against the same database. A project whose seed cannot be re-run says so in the plan and in the report, and
-a role's flow that cannot start on what the suite left is **untested**, never a finding against the app.
+against the same database. A project whose seed cannot be re-run says so in the plan and in the report, as
+does a warm app inherited under `SLOTH_WARM_SAME` that this run never seeded and so has no state of its own
+to put back; either way a role's flow that cannot start on what the suite left is **untested**, never a
+finding against the app.
 
 ## Step 3 — Walk every role through the browser
 

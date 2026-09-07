@@ -39,24 +39,31 @@ function pidsOf(file: string): { pids: number[]; stale: boolean } {
 }
 
 /**
+ * Everything one pid file names, and the file with it. A server started as its own process group (a
+ * `set -m` job, `setsid`) takes its children with it — the dev-server wrappers a project starts fork the
+ * real listeners, and a `playwright test` forks its workers and their browsers. `killTree` is that group
+ * on macOS and Linux and a `taskkill /T` tree on Windows, woken first either way.
+ */
+async function killRecorded(file: string, who: string): Promise<void> {
+  const { pids, stale } = pidsOf(file);
+  if (stale) log(`${who}: ${path.basename(file)} was written before the last boot — its pids are other processes now and are left alone`);
+  for (const pid of pids) await killTree(pid);
+  remove(file);
+}
+
+/**
  * The same for any run that boots the app — an implement run, or the QA sweep's test of a card.
  * `tainted` marks a run that was killed rather than ended (`warm.ts`): its stack still warms the slot,
  * but without its head, so a retry reseeds the database instead of trusting what the kill interrupted.
  */
 export async function cleanupRun(kind: Kind, target: number, tainted = false): Promise<void> {
   const dir = dirOf(kind, target);
+  // A test run is never warm: the smoke test's e2e suite (`smoke.md` Step 2.5) drives the app rather
+  // than serving it, so its group goes down whether the stack is handed over or torn down.
+  await killRecorded(path.join(dir, 'e2e.pid'), `${kind}-${target}`);
   const slot = cfg().warmSlots && !previewed(dir) ? slotOf(kind, target) : undefined;
   if (!(slot && (await handOver(kind, target, slot, tainted)))) {
-    for (const name of ['dev.pid', 'redis.pid']) {
-      const file = path.join(dir, name);
-      const { pids, stale } = pidsOf(file);
-      if (stale) log(`${kind}-${target}: ${name} was written before the last boot — its pids are other processes now and are left alone`);
-      // A server started as its own process group (a `set -m` job, `setsid`) takes its children with
-      // it — the dev-server wrappers a project starts fork the real listeners. `killTree` is that group
-      // on macOS and Linux and a `taskkill /T` tree on Windows, woken first either way.
-      for (const pid of pids) await killTree(pid);
-      remove(file);
-    }
+    for (const name of ['dev.pid', 'redis.pid']) await killRecorded(path.join(dir, name), `${kind}-${target}`);
     // One name per line, like the pid files beside it: a project skill that seeds two databases writes
     // two. The whole file used to be handed to `dropdb` as a single name, so a run with two dropped
     // neither and leaked both.
