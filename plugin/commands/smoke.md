@@ -40,9 +40,11 @@ the project: the run skill's seeded users, the routes and navigation per role, t
 has screens of its own is a line; an internal or admin-only role ranks last.
 
 Then the budget: `REMAIN=$(( SLOTH_DEADLINE - $(date +%s) ))`. Reserve fifteen minutes for the report and
-teardown and, with a cold boot, twenty for the app; with `SLOTH_E2E=1` and a Playwright setup in the project, up
-to twenty for the e2e suite (Step 2.5). What is left is split over the roles, first line first, about fifteen
-minutes each; roles that do not fit are **untested** — say so in the plan now, not at the end.
+teardown and, with a cold boot, twenty for the app; with `SLOTH_E2E=1`, up to twenty for the e2e suite
+(Step 2.5) — whether the project has a Playwright setup at all is only known once the worktree is checked
+out, so reserve it on the switch alone and let Step 2.5 hand back what it does not use. What is left is
+split over the roles, first line first, about fifteen minutes each and never under ten; roles that do not
+fit are **untested** — say so in the plan now, not at the end.
 
 ## Step 1 — Check out the head under test, build
 
@@ -64,8 +66,8 @@ the way the repo does (`CLAUDE.md` wins; otherwise the lockfile). A reused slot 
 run the project's generate steps yourself.
 
 **The build gate.** Run the project's build and type-check as `CLAUDE.md` or its package scripts name them
-— what a deploy would run. A build that fails is a **BLOCKER** on its own: record the error, skip Steps 2
-and 3, and go to Step 4 with a **NO-GO** — nothing can boot.
+— what a deploy would run. A build that fails is a **BLOCKER** on its own: record the error, skip Steps 2,
+2.5 and 3, and go to Step 4 with a **NO-GO** — nothing can boot.
 
 ## Step 2 — Bring the app up
 
@@ -83,32 +85,50 @@ the cheapest smoke there is, and every red test tells a role's tester where to l
 replaces the testers — a suite only checks what somebody once wrote down.
 
 Find the setup: Glob `playwright.config.*` in the worktree, ignoring `node_modules`, `dist`, `build`,
-`.venv`. None → the report says `E2E suite: skipped — no Playwright setup`, and the run goes on to Step 3.
-Several → the one whose `package.json` has a `test:e2e`-style script. Then check the clock: the suite gets
+`.venv`. None → the report's *E2E suite* line is `skipped — no Playwright setup`, and the run goes on to
+Step 3. Several → the one whose `package.json` has a `test:e2e`-style script, and none of them or several
+alike → the one nearest the repository root. Then check the clock: the suite gets
 **at most twenty minutes**, less when the roles' share would fall under ten minutes each — its time comes
 off the roles', and the roles are the smoke test. `set_state working 2.5 "running the e2e suite"`.
 
 Run it exactly the way the `e2e-writer` agent does (`agents/e2e-writer.md`, procedure 4, its snippet
-included): a `playwright.sloth.config.ts` beside the project's config that imports it with its real
-extension, points every `baseURL` — top-level, and per project when it declares any — at this app, drops
-`webServer` (the app is never booted twice) and sets `outputDir` under `$SESSION_DIR`. Then, from that
-package directory, with no file argument — the whole suite — and the time cap enforced by Playwright:
+included): a `playwright.sloth.config.ts` beside the project's config — written with a Bash heredoc, this
+command has no `Write` — that imports it with its real extension, points every `baseURL` — top-level, and
+per project when it declares any — at the app of Step 2, drops `webServer` (the app is never booted twice)
+and sets `outputDir` under `$SESSION_DIR`. The app answers first (`curl -sf <its URL> >/dev/null`, the URL
+Step 2 brought it up on) or the suite is `could not run — the app at <URL> does not answer`.
+
+A suite runs longer than one Bash call may (`session` skill: ten minutes a call), so start it in the
+background and poll for it. From that package directory, with no file argument — the whole suite — and the
+cap enforced by Playwright itself:
 
 ```bash
-MINUTES=20                                        # or less — what the roles can spare
-npx playwright test --config playwright.sloth.config.ts --reporter=list --retries=1 \
-  --global-timeout $((MINUTES * 60000)) 2>&1 | tee "$SESSION_DIR/e2e.log"
-rm -f playwright.sloth.config.ts
+SESSION_DIR=${SLOTH_SESSION_DIR:?}; MINUTES=20    # or less — what the roles can spare
+nohup npx playwright test --config playwright.sloth.config.ts --reporter=list --workers=1 \
+  --retries=1 --global-timeout $((MINUTES * 60000)) > "$SESSION_DIR/e2e.log" 2>&1 &
+echo $! > "$SESSION_DIR/e2e.pid"
 ```
 
-One `npx playwright install chromium` when the browsers are missing (`Executable doesn't exist`); a Linux
-`install-deps` prompt needs sudo you have not got → could not run. A `globalSetup` that boots the app itself
-→ could not run. **Delete the run config afterwards**, pass or fail; `git status` in the worktree then shows
-nothing — this is the one file the read-only checkout ever gets (Rules).
+`--workers=1`: one app, one database, and a machine that is holding other sessions up. Then one polling
+call per ten minutes (`timeout: 600000`), repeated until the run is gone or its minutes are spent:
 
-Read the reporter's list, not its summary line: a test red on both attempts is **a red test**; one that
-passed on the retry is **flaky** — noted, never a finding. A run that stopped at the cap is `cut off at
-<minutes> minutes` with the counts it reached; a run that could not happen is `could not run — <why>`,
+```bash
+PW=$(cat "$SESSION_DIR/e2e.pid")
+for _ in $(seq 19); do kill -0 "$PW" 2>/dev/null || break; sleep 30; done
+kill -0 "$PW" 2>/dev/null && echo "still running" || tail -40 "$SESSION_DIR/e2e.log"
+```
+
+Past its minutes it is **cut off**: `pkill -P "$PW"; kill "$PW"`, and the counts are the ones the log
+reached. One `npx playwright install chromium` when the browsers are missing (`Executable doesn't exist`);
+a Linux `install-deps` prompt needs sudo you have not got → could not run. A `globalSetup` that boots the
+app itself → could not run. **Delete the run config afterwards** — `rm -f playwright.sloth.config.ts
+"$SESSION_DIR/e2e.pid"` — pass, fail or cut off, in its own call so a killed poll never skips it; `git
+status` in the worktree then shows nothing, this being the one file the read-only checkout ever gets (Rules).
+
+Read the reporter's per-test lines, not only its summary: a test red on both attempts is **a red test**; one
+that passed on the retry is **flaky** — noted, never a finding. The report's counts are the summary's, its
+red list is the per-test lines'. A run that stopped at the cap is `cut off at <minutes> minutes` with the
+counts it reached; a run that could not happen is `could not run — <why>`,
 never counted against the app. Write `$SESSION_DIR/e2e.md`: the command, `N passed, M failed, F flaky`,
 and one line per red test — its file and title, the assertion's first line — so Step 3 can hand it on.
 
@@ -117,7 +137,15 @@ screens it drives; a test no role owns goes to the first role that can reach its
 (Step 3) reproduces it **through the UI** first, and the finding — severity, screenshot, evidence — is the
 tester's. A red test no tester reproduced is in the report all the same, under *E2E suite*, as a **MAJOR
 with no screenshot**: a criterion the app once met and no longer does, with the assertion as its evidence.
-It files no issue (Step 4: no image, no issue) but it holds the verdict at **go-with-risks** at best.
+It files no issue (Step 4: no image, no issue) but it holds the verdict at **go-with-risks** at best —
+except with no browser at all (`SLOTH_CHROME=0`, or the tools unavailable), where nothing was reproduced
+because nothing could be: the verdict is **inconclusive** as Step 3 says, a suite on its own being no
+smoke test.
+
+**The suite leaves the demo data changed** — it signs in, and it creates and consumes what Step 2 seeded.
+Put the data back the way Step 2 had it before Step 3: the project's own seed or reset step, run again
+against the same database. A project whose seed cannot be re-run says so in the plan and in the report, and
+a role's flow that cannot start on what the suite left is **untested**, never a finding against the app.
 
 ## Step 3 — Walk every role through the browser
 
@@ -172,7 +200,7 @@ tools unavailable: nothing here is a smoke test — the verdict is **inconclusiv
 
 Decide from the testers' raw data, never their summaries: **`no-go`** with one BLOCKER or more, or the
 build gate failed; **`go-with-risks`** with MAJORs only — a red e2e test nobody reproduced counts as one
-(Step 2.5); **`go`** with at most MINORs; **`inconclusive`**
+(Step 2.5), unless there was no browser to reproduce it with; **`go`** with at most MINORs; **`inconclusive`**
 when nothing could be tested — the app never came up, no browser, every role untested. Untested roles are
 listed and change no verdict. `set_state working 4 "<verdict>: filing findings"`.
 
@@ -200,7 +228,8 @@ the before-picture above it when one was taken — then the console / network / 
 `_Found by Sloth's smoke test $RUN on \`$BRANCH\` @ ${SHA:0:7}._`. **An issue with no image is not filed**:
 a person reading it has to see what is wrong, not imagine it. A finding whose tester saved no picture goes
 back to that role's one re-run (Step 3) for the screenshot; still without one, it stays in the report,
-marked *no screenshot*, and no issue is opened. The build gate's blocker is the one issue without a
+marked *no screenshot*, and no issue is opened. A red e2e test a tester already failed to reproduce is not
+sent back a second time — it is in the report under *E2E suite* and files no issue either way. The build gate's blocker is the one issue without a
 screen — its image is the build output in a code block. The card lands on the board **with no status** —
 a human decides whether Sloth fixes it. **Never move it to `$SLOTH_COL_PICKUP_NAME` yourself**, never
 assign, never label. MINORs are report-only.
@@ -235,8 +264,9 @@ _Smoke test on `$SLOTH_MODEL`, testers on `$SLOTH_TESTER_MODEL`._
 
 Every finding is one bullet: role and screen, the flow, seen against expected, the filed issue's link,
 and the screenshot the tester saved — never one that was not taken. A section with nothing is left out —
-except *E2E suite*, always present: its one line says what ran, or why nothing did (`skipped — e2e off` with
-`SLOTH_E2E=0`), so a reader never wonders whether the suite was forgotten.
+except *E2E suite*, always present: its one line says what ran, or why nothing did — `skipped — e2e off`
+with `SLOTH_E2E=0`, `no Playwright setup`, and `could not run — <why>` for all the rest, the build that
+failed and the app that never came up included — so a reader never wonders whether the suite was forgotten.
 The report comment is the one Sloth comment that runs longer than five lines: it **is** the record.
 
 The report issue is the one open issue in the repository titled exactly `Smoke test reports`; find it, or
@@ -273,7 +303,7 @@ issue's number.
 - **No board move, no label, no assignee, no close.** A filed finding goes on the board with no status; the report issue stays open and off the board.
 - **The verdict is written after the report comment**, once — one of `go`, `go-with-risks`, `no-go`, `inconclusive` in `$SESSION_DIR/verdict`, or nothing if the run dies. **Never ask for help**: what stops a test is said in the report.
 - **One tester at a time** in the one browser; a fresh subagent per role, on `$SLOTH_TESTER_MODEL`.
-- **Every finding has evidence and one reproduction.** No evidence, no finding; a setup failure is never an app bug.
+- **Every finding has evidence and one reproduction.** No evidence, no finding; a setup failure is never an app bug. The one exception is the red e2e test no tester could reproduce (Step 2.5): the assertion is its evidence, it files no issue, and it stays in the report.
 - **Every filed issue shows the bug**: at least one screenshot of the failing screen, taken by the tester and pushed by `publish_shots`, embedded in the body. No image, no issue — it stays in the report. Never a picture that was not taken.
 - **Respect `$SLOTH_DEADLINE`** (`session` skill): out of time is untested roles in the report, never a report skipped — reserve the last fifteen minutes for Steps 4–6.
 - Every comment starts with `$SLOTH_BOT_PREFIX`; never write `$SLOTH_MENTION`. No screenshot that was not taken.
