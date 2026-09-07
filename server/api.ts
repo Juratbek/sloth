@@ -12,16 +12,19 @@ import { openSweep } from './runner/qa';
 import { requestSmoke, smokeAlive } from './runner/smoke';
 import { stop as stopRun } from './runner/run-control';
 import { handleSettings, isSettings } from './api-settings';
+import { stopGhLogin } from './gh-login';
 import { previewIndex, withTitle } from './preview-index';
 import { healthStatus, refreshHealth, startHealth } from './health';
 import { guard, isLocal, sameOrigin, startTunnel, stopTunnel } from './remote';
 import { agentDetail, overview, sessionDetail, watcherOf } from './sessions';
 import { ensureSkipLabel } from './runner/markers';
-import { ensureStack } from './stack';
+import { checkoutThenStack } from './setup';
 import { usageSeries } from './usage';
 import { hoursReport } from './hours';
 import { ensureWebhook, startWebhook, webhookInfo } from './webhook';
 import { webhookMiddleware } from './webhook-route';
+import { canonicalRepo, primaryRepo } from './repos';
+import type { IssueRef } from './repo-types';
 
 /**
  * Answers a handler that threw. Nothing can be said once the response has begun — an SSE stream, a body
@@ -74,6 +77,15 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     const preview = /^\/api\/previews\/(\d+)\/stop$/.exec(p);
     const stopSession = /^\/api\/sessions\/([\w-]+)\/stop$/.exec(p);
     const unblockIssue = /^\/api\/issues\/(\d+)\/unblock$/.exec(p);
+    // Which repository a number is in: `?repo=owner/name`, the first repository when the page did not say — as a page from before there were several does not.
+    // It has to be one of Sloth's: the value reaches file names, and an unchecked one could name a path outside Sloth's directories.
+    const asked = url.searchParams.get('repo');
+    const repoOf = (): string | undefined => (asked ? canonicalRepo(asked) : primaryRepo());
+    if (asked && !repoOf() && (preview || unblockIssue) && req.method === 'POST') {
+      res.statusCode = 400;
+      res.end(`${asked} is not one of Sloth's repositories`);
+      return true;
+    }
     if (p === '/api/tick' && req.method === 'POST') {
       const dryRun = url.searchParams.get('dry') === '1';
       await tick({ board: true, comments: true, dryRun });
@@ -96,17 +108,17 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     } else if (unblockIssue && req.method === 'POST') {
       // Lifts a give-up. The card is only handed back to the sweep — the next one tests it, and "sweep
       // now" beside it makes that next one immediate.
-      const issue = Number(unblockIssue[1]);
+      const issue: IssueRef = { repo: repoOf()!, number: Number(unblockIssue[1]) };
       const unblocked = await serial('unblock', () => unblock(issue, 'from the monitor'));
       broadcast();
-      body = { ok: unblocked, issue };
+      body = { ok: unblocked, issue: issue.number, repo: issue.repo };
     } else if ((p === '/api/pause' || p === '/api/resume') && req.method === 'POST') {
       // Pause / resume the launching triggers; running sessions and replies are untouched.
       setPaused(p === '/api/pause');
       broadcast();
       body = { ok: true, paused: isPaused() };
     } else if (preview && req.method === 'POST') {
-      await serial('stop preview', () => stopPreview(Number(preview[1]), 'stopped from the monitor'));
+      await serial('stop preview', () => stopPreview({ repo: repoOf()!, number: Number(preview[1]) }, 'stopped from the monitor'));
       body = { ok: true };
     } else if (stopSession && req.method === 'POST') {
       // Ends the run behind a transcript; an issue's card is parked so it is not relaunched. Behind the
@@ -115,7 +127,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
       const w = watcherOf(stopSession[1]);
       if (w) {
         const stopped = await serial('stop session', () =>
-          stopRun(w.kind, w.target, 'stopped from the monitor', 'the run for this issue was stopped from the monitor.'),
+          stopRun({ kind: w.kind, target: w.target, repo: w.repo }, 'stopped from the monitor', 'the run for this issue was stopped from the monitor.'),
         );
         broadcast();
         body = { ok: true, stopped };
@@ -193,8 +205,8 @@ export function monitorApi(): Plugin {
     watchAll();
     // The watcher is this process: it starts with the server and stops when the server stops.
     startLoop();
-    // Whatever the project's stack still lacks on this machine gets installed, so sessions can boot the app.
-    void ensureStack();
+    // The runner checkout, cloned if it is not there, and then whatever the project's stack still lacks.
+    checkoutThenStack();
     // The skip label people hold cards back with has to exist in the repo before anyone can apply it.
     void ensureSkipLabel();
     // Can this machine do the work at all? Asked once here and every ten minutes from the board tick.
@@ -213,6 +225,7 @@ export function monitorApi(): Plugin {
       stopLoop();
       stopTunnel();
       closeTunnels();
+      stopGhLogin();
     };
     http?.on('close', stop);
     process.once('exit', stop);
@@ -226,10 +239,13 @@ export function monitorApi(): Plugin {
     name: 'sloth-api',
     transformIndexHtml: (html) => withTitle(html, cfg().title),
     configureServer: mount,
-    // The preview server transforms no HTML: the built page is served here with today's title instead.
+    // The preview server transforms no HTML: the built page is served here with today's title instead —
+    // behind the guard `mount` registers, like every other page. Registered the other way round it
+    // answered `/` and `/board` before the guard saw them: the app shell went to anyone holding the tunnel
+    // address, and the QR link's `?code=` was never consumed, so the phone never got its cookie.
     configurePreviewServer: (server) => {
-      server.middlewares.use(previewIndex(path.resolve(server.config.root, server.config.build.outDir)));
       mount(server);
+      server.middlewares.use(previewIndex(path.resolve(server.config.root, server.config.build.outDir)));
     },
   };
 }

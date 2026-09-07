@@ -111,7 +111,15 @@ function step(name: UpdateStatus['step'], cmd: string, args: string[]): Promise<
   return new Promise((resolve) => {
     const bin = which(cmd);
     if (!bin) return resolve(`${cmd} is not installed (or not on PATH)`);
-    const proc = spawn(bin, args, { cwd: SLOTH_ROOT, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0', CI: '1' } });
+    // `pnpm` on Windows is `pnpm.cmd`, a batch file, which Node runs only through a shell; the arguments
+    // here are Sloth's own fixed words (`install`, `build`), never anything read from outside.
+    const script = process.platform === 'win32' && /\.(cmd|bat)$/i.test(bin);
+    const proc = spawn(script ? `"${bin}"` : bin, args, {
+      cwd: SLOTH_ROOT,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0', CI: '1' },
+      ...(script ? { shell: true, windowsHide: true } : {}),
+    });
     const tail = (chunk: Buffer) => {
       lines = [...lines, ...chunk.toString().split('\n').filter((l) => l.trim())].slice(-TAIL);
       broadcast();
@@ -128,29 +136,49 @@ function step(name: UpdateStatus['step'], cmd: string, args: string[]): Promise<
  * a second after this one exits so the port is free. Whatever wrapped this process (`pnpm start`,
  * `caffeinate`) returns; the sessions, detached themselves, keep running.
  *
+ * The replacement is started by Node itself (`node -e`, then the real command line a second later) on
+ * every platform: it used to go through `/bin/sh`, which Windows does not have — the spawn failed with
+ * nobody listening, the exit ran anyway, and the first auto-update on a Windows machine was the last
+ * thing that Sloth did. This process exits only once the replacement has in fact been started; a spawn
+ * that fails leaves it up, with the new code on disk for a restart by hand, and says so on the page.
+ *
  * Unless launchd owns this process. The launch agent is `KeepAlive`, so it starts Sloth again by itself
  * the moment this one goes: spawning a replacement as well would leave two Sloths watching one board,
  * each ticking it independently — duplicate sessions on a card, duplicate comments, duplicate moves.
  * Exiting *is* the restart there. (`strictPort` in `vite.config.ts` is the second line of defence: a
  * second instance fails to bind rather than quietly taking the next port.)
  */
+const RELAUNCH = 'setTimeout(() => require("node:child_process").spawn(process.argv[1], process.argv.slice(2), { detached: true, stdio: "inherit", windowsHide: true }).unref(), 1000)';
+
 export function restart(): void {
   status.restarting = true;
   status.step = 'restart';
   const relaunches = serviceStatus().installed;
   log(relaunches ? 'update: exiting — the launch agent starts Sloth again' : 'update: restarting Sloth');
   broadcast();
-  if (!relaunches) {
-    const child = spawn('/bin/sh', ['-c', 'sleep 1; exec "$0" "$@"', process.execPath, ...process.argv.slice(1)], {
-      cwd: process.cwd(),
-      detached: true,
-      stdio: ['ignore', 'inherit', 'inherit'],
-      env: process.env,
-    });
-    child.unref();
-  }
   // A moment for the answer and the SSE event to leave; the 'exit' handlers stop the loop and the tunnels.
-  setTimeout(() => process.exit(0), 500);
+  const exit = () => setTimeout(() => process.exit(0), 500);
+  if (relaunches) {
+    exit();
+    return;
+  }
+  const child = spawn(process.execPath, ['-e', RELAUNCH, process.execPath, ...process.argv.slice(1)], {
+    cwd: process.cwd(),
+    detached: true,
+    stdio: ['ignore', 'inherit', 'inherit'],
+    env: process.env,
+    windowsHide: true,
+  });
+  child.unref();
+  child.on('spawn', exit);
+  child.on('error', (e) => {
+    status.running = false;
+    status.restarting = false;
+    status.step = undefined;
+    status.error = `the replacement process could not be started — ${e.message}; Sloth stays up on the old code until it is restarted by hand`;
+    log(`update: ${status.error}`);
+    broadcast();
+  });
 }
 
 async function runUpdate(): Promise<void> {

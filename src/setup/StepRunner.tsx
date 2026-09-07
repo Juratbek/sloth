@@ -1,8 +1,18 @@
 import { useState } from 'react';
-import { Button, Choice, Field, NumberInput, TextInput } from './ui';
+import type { RepoConfig } from '../../server/config-types';
+import RepoPicker from './RepoPicker';
+import { CheckoutField, NoteField } from './RepoFields';
+import { Button, Field, NumberInput } from './ui';
 import type { Draft } from './use-setup';
-import { useClone, useProjectFields } from './use-setup';
+import { REPO_RE, useProjectFields, useSetupEnv } from './use-setup';
 
+/**
+ * Which repositories the sessions work in — one or several. Every repository the logged-in GitHub account
+ * can reach is listed and ticked off; one it cannot see can still be named by hand. A ticked repository
+ * opens on its checkout path (cloned by Sloth once the setup is saved) and, once there are several, a
+ * one-line note saying what it is, which is what a card that names no repository is placed by. The first
+ * picked is where a run with no card of its own — the smoke test — works.
+ */
 export default function StepRunner({
   draft,
   onBack,
@@ -13,49 +23,32 @@ export default function StepRunner({
   onContinue: (patch: Partial<Draft>) => void;
 }) {
   const { data } = useProjectFields(draft.project?.id);
+  const home = useSetupEnv().data?.home ?? '~/.sloth';
   const linked = data?.repositories ?? [];
-  const clone = useClone();
-  const [repo, setRepo] = useState(draft.repo);
-  const [typed, setTyped] = useState(!!draft.repo && !linked.includes(draft.repo));
-  const [root, setRoot] = useState<string | undefined>(draft.runnerRoot || undefined);
+  const [repos, setRepos] = useState<RepoConfig[]>(draft.repos);
   const [caps, setCaps] = useState({ maxActive: draft.maxActive, maxAlive: draft.maxAlive, previewHours: draft.previewHours });
 
-  const runnerRoot = root ?? (repo ? `~/.sloth/runners/${repo.split('/')[1]}` : '');
-  const ready = /^[\w.-]+\/[\w.-]+$/.test(repo) && !!runnerRoot;
+  const update = (at: number, patch: Partial<RepoConfig>) => setRepos(repos.map((r, i) => (i === at ? { ...r, ...patch } : r)));
+  const ready = repos.length > 0 && repos.every((r) => REPO_RE.test(r.slug) && r.root.trim());
 
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <p className="text-sm text-zinc-400">Which repository do the sessions work in?</p>
-        {linked.map((r) => (
-          <Choice
-            key={r}
-            selected={!typed && repo === r}
-            onSelect={() => {
-              setTyped(false);
-              setRepo(r);
-            }}
-            title={r}
-          />
-        ))}
-        {linked.length > 0 && <Choice selected={typed} onSelect={() => setTyped(true)} title="Another repository…" subtitle="owner/repo" />}
-        {(typed || linked.length === 0) && <TextInput value={repo} onChange={setRepo} placeholder="owner/repo" />}
-      </div>
-
-      <Field label="Runner root" hint="The checkout the sessions run from. The worktree slots the sessions work in are made next to it, under ~/.sloth/worktrees.">
-        <TextInput value={runnerRoot} onChange={setRoot} placeholder="~/.sloth/runners/repo" />
-      </Field>
-      <div className="flex items-center gap-2">
-        <Button disabled={!ready || clone.isPending} onClick={() => clone.mutate({ repo, path: runnerRoot })}>
-          {clone.isPending ? 'Cloning…' : 'Clone it'}
-        </Button>
-        <span className="text-xs text-zinc-400">
-          {clone.data?.ok
-            ? `Ready at ${clone.data.path}`
-            : clone.error
-              ? String(clone.error)
-              : 'Only needed if that folder does not exist yet.'}
-        </span>
+        <p className="text-sm text-fg-muted">Which repositories do the sessions work in? Tick one or several.</p>
+        <RepoPicker
+          repos={repos}
+          onChange={setRepos}
+          linked={linked}
+          home={home}
+          bounded
+          details={(repo, at) => (
+            <div className="space-y-2">
+              {at === 0 && repos.length > 1 && <p className="text-[11px] text-fg-faint">first — the smoke test and the stack install run here</p>}
+              <CheckoutField repo={repo} onChange={(root) => update(at, { root })} />
+              {repos.length > 1 && <NoteField repo={repo} onChange={(note) => update(at, { note })} />}
+            </div>
+          )}
+        />
       </div>
 
       <div className="grid grid-cols-3 gap-3">
@@ -72,11 +65,7 @@ export default function StepRunner({
 
       <div className="flex gap-2">
         <Button onClick={onBack}>Back</Button>
-        <Button
-          variant="primary"
-          disabled={!ready}
-          onClick={() => onContinue({ repo, runnerRoot, ...caps })}
-        >
+        <Button variant="primary" disabled={!ready} onClick={() => onContinue({ repos, ...caps })}>
           Continue
         </Button>
       </div>

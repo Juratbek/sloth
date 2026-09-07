@@ -31,7 +31,7 @@ vi.mock('../server/install', async (importOriginal) => ({
 import { previews, previewState } from '../server/runner/preview';
 import { setDry } from '../server/runner/log';
 import { called, fail, onGh, resetGh } from './gh-mock';
-import { configure, makeSession, readLog, sessionDir, wipe } from './harness';
+import { configure, makeSession, readLog, ref, sessionDir, wipe } from './harness';
 
 const TUNNEL = 'https://calm-sloth-42.trycloudflare.com';
 
@@ -58,7 +58,7 @@ describe('a preview whose comment GitHub refuses', () => {
     await previews();
     await speak();
     expect(called(/issues\/1\/comments/)).toHaveLength(1);
-    expect(previewState(1)?.url).toBeUndefined();
+    expect(previewState(ref(1))?.url).toBeUndefined();
     expect(readLog().join('\n')).not.toMatch(/preview #1 up at/);
     expect(readLog().join('\n')).toMatch(/preview #1: comment failed: HTTP 502/);
 
@@ -67,7 +67,7 @@ describe('a preview whose comment GitHub refuses', () => {
     onGh(/issues\/1\/comments/, '9001');
     await previews();
     expect(called(/issues\/1\/comments/)).toHaveLength(1);
-    expect(previewState(1)).toMatchObject({ url: TUNNEL, commentId: 9001 });
+    expect(previewState(ref(1))).toMatchObject({ url: TUNNEL, commentId: 9001 });
     expect(readLog().join('\n')).toMatch(new RegExp(`preview #1 up at ${TUNNEL}`));
 
     // And then it is left alone: an announced preview is not commented on again every tick.
@@ -92,7 +92,7 @@ describe('a preview whose comment lands', () => {
     onGh(/issues\/3\/comments/, '77');
     await previews();
     await speak();
-    expect(previewState(3)).toMatchObject({ url: TUNNEL, commentId: 77 });
+    expect(previewState(ref(3))).toMatchObject({ url: TUNNEL, commentId: 77 });
     expect(called(/issues\/3\/comments/)[0].line).toContain('admin / hunter2');
     expect(fs.existsSync(path.join(sessionDir('issue', 3), 'preview-state.json'))).toBe(true);
   });

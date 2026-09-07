@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setDry } from '../server/runner/log';
 import { boardEvents } from '../server/runner/notify-events';
 import { notify } from '../server/runner/notify';
-import { COLUMNS, card, configure, exists, readLog, statePath, wipe } from './harness';
+import { COLUMNS, card, configure, exists, readLog, ref, statePath, wipe } from './harness';
 
 const posted: { url: string; body: any }[] = [];
 const events = () => posted.map((p) => `${p.body.event} #${p.body.issue}`);
@@ -130,11 +130,11 @@ describe('notify', () => {
     configure({ helpWebhook: 'https://hooks.example.com/x', webhookEvents: ALL });
     expect(await notify('usageLimit', { text: 'review-9 stopped on a Claude usage limit' })).toBe(true);
     expect(posted[0].body).toMatchObject({ event: 'usageLimit', issue: null, url: 'https://github.com/acme/widgets' });
-    expect(await notify('stopped', { issue: 7, text: 'Sloth stopped work on #7' })).toBe(true);
+    expect(await notify('stopped', { issue: ref(7), text: 'Sloth stopped work on #7' })).toBe(true);
     expect(posted[1].body.text).toBe('Sloth stopped work on #7 — https://github.com/acme/widgets/issues/7');
   });
   it('says nothing for an event nobody asked for', async () => {
-    expect(await notify('stopped', { issue: 7, text: 'x' })).toBe(false);
+    expect(await notify('stopped', { issue: ref(7), text: 'x' })).toBe(false);
     expect(posted).toHaveLength(0);
   });
 });

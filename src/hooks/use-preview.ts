@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import type { IssueRef } from '../../server/repo-types';
 import { postJson } from '../lib/api';
 import { queryKeys } from '../lib/query-keys';
 
@@ -11,7 +12,7 @@ import { queryKeys } from '../lib/query-keys';
 export default function useStopPreview() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (issue: number) => postJson<{ ok: boolean }>(`/api/previews/${issue}/stop`, {}),
+    mutationFn: (issue: IssueRef) => postJson<{ ok: boolean }>(`/api/previews/${issue.number}/stop?repo=${encodeURIComponent(issue.repo)}`, {}),
     onSuccess: () => {
       for (const queryKey of [queryKeys.overview, queryKeys.sessions]) void queryClient.invalidateQueries({ queryKey });
     },

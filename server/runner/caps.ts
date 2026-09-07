@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
+import { repos } from '../repos';
+import type { IssueRef } from '../repo-types';
 import { isDry, log, remove } from './log';
 import { dirAlive, issueDir, runDirs } from './session-dirs';
 
@@ -23,7 +25,7 @@ const MAX_RUN_LOG = 2 << 20;
 const CACHES = ['.turbo/cache'];
 
 /** A run whose app is still up behind a preview link is not finished. */
-export const previewing = (issue: number) => fs.existsSync(path.join(issueDir(issue), 'preview-state.json'));
+export const previewing = (issue: IssueRef) => fs.existsSync(path.join(issueDir(issue), 'preview-state.json'));
 
 /** One file of a directory: what it costs and how recently it was written. */
 interface Entry {
@@ -71,13 +73,13 @@ function cacheEntries(dir: string): CacheEntry[] {
 }
 
 /**
- * Every build cache back under `MAX_CACHE`, oldest entry first — the runner root's and each worktree's.
+ * Every build cache back under `MAX_CACHE`, oldest entry first — each repository's checkout and each worktree's.
  * Nothing pruned these before: `turbo` writes one tarball per task result and never evicts, so the
  * runner root of a board worked every day grew by a few hundred megabytes a day, indefinitely.
  */
 export function pruneCaches(): void {
   const c = cfg();
-  let roots: string[] = [c.runnerRoot];
+  let roots: string[] = repos().map((r) => r.root);
   try {
     roots = [...roots, ...fs.readdirSync(c.worktreesDir).map((n) => path.join(c.worktreesDir, n))];
   } catch {
@@ -116,8 +118,8 @@ export function pruneCaches(): void {
  * `exits.ts` reads its run headers back from the start.
  */
 export function trimRunLogs(): void {
-  for (const { name, kind, target, dir } of runDirs()) {
-    if (dirAlive(dir) || (kind === 'issue' && previewing(target))) continue;
+  for (const { name, kind, target, repo, dir } of runDirs()) {
+    if (dirAlive(dir) || (kind === 'issue' && previewing({ repo, number: target }))) continue;
     for (const file of entriesOf(dir)) {
       const base = path.basename(file.file);
       if (base === 'run.log' || !base.endsWith('.log') || file.size <= MAX_RUN_LOG) continue;

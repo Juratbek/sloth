@@ -1,16 +1,19 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
-import { freeIn, moveCard, pickupOrder, wiredPrs } from './board';
-import type { BoardItem, Verdict } from './board';
+import { label } from '../repos';
+import { refKey, type IssueRef } from '../repo-types';
+import { moveCard, pickupOrder, wiredPrs } from './board';
+import type { BoardItem, Verdict, WiredPr } from './board';
 import { comment, gh } from './gh';
 import { isDry, log, remove, write } from './log';
-import { APPROVED_LABEL, MARKERS, OWN_BRANCH, skipped, statePath, unapprove } from './markers';
+import { APPROVED_LABEL, OWN_BRANCH, headMarker, marker, skipped, unapprove } from './markers';
 import { exitReport, exitsOf, forgetExits } from './exits';
 import { previewLink } from './preview';
 import { park } from './run-control';
 import { approvedDir, counter, dirAlive, isBlocked, issueAlive, issueDir, triesOn } from './session-dirs';
 import { launch, launchApproved } from './spawn';
+import { freeIn } from './board';
 
 /**
  * The triggers the board itself pulls: the review a Code Review card gets (4), the hand-over of a passed
@@ -19,6 +22,9 @@ import { launch, launchApproved } from './spawn';
  * and every test already knows keep working.
  */
 export { park, pausedUntil, reap, stop } from './run-control';
+
+/** Whether every open PR wired to a card has been reviewed on its current head — a card whose work spans two repositories has two. */
+const allMarked = (prs: WiredPr[], issue: IssueRef): boolean => prs.filter((p) => refKey(p.issue) === refKey(issue)).every((p) => fs.existsSync(headMarker('approved', p.pr, p.sha)));
 
 /**
  * Trigger 4 — the review, and Sloth's first priority: it runs ahead of every other trigger that starts a
@@ -30,10 +36,11 @@ export { park, pausedUntil, reap, stop } from './run-control';
  * Approved, where a human tests it, and a fail sends it back to In Progress, where trigger 2 relaunches the
  * session on the findings (a rejected skipped card keeps its label, so the human keeps it). The marker of
  * the head keeps it from being reviewed twice. An Approved card whose *current* head has no marker was
- * pushed to after its pass, or put there by hand: the label no longer describes what is on the branch, so it
- * goes and the card comes back to Code Review to be reviewed like any other — unless a session is already on
- * the issue (trigger 7 sent it back to fix the checks), which moves the card itself. Checks decide the rest:
- * a pending rollup is worth waiting one tick for, a red one belongs to trigger 7.
+ * pushed to after its pass, or put there by hand — or is one of two PRs of a card whose other PR passed
+ * first: the label no longer describes what is on the branches, so it goes and the card comes back to Code
+ * Review to be reviewed like any other — unless a session is already on the issue (trigger 7 sent it back
+ * to fix the checks), which moves the card itself. Checks decide the rest: a pending rollup is worth
+ * waiting one tick for, a red one belongs to trigger 7.
  * At most `maxActive` reviews start in one tick: the machine is read once, before the tick, so the reading
  * `launchApproved` is held by goes stale the moment the first one starts — a Code Review backlog would
  * otherwise become a burst of detached runs no hold could see. The ones that wait are left unmarked, so
@@ -68,47 +75,48 @@ export async function reviews(board: BoardItem[]): Promise<void> {
   const cards = board.filter((i) => i.status === col.codeReview.name || inApproved(i));
   const perTick = Math.max(1, cfg().maxActive);
   let started = 0;
-  for (const { issue, pr, sha, head, checks, mergeable, verdict } of await wiredPrs(cards.map((i) => i.number))) {
-    const marker = statePath(MARKERS.approved, `${pr}-${sha}`);
-    const card = cards.find((i) => i.number === issue);
+  const prs = await wiredPrs(cards);
+  for (const { issue, pr, sha, head, checks, mergeable, verdict } of prs) {
+    const reviewed = headMarker('approved', pr, sha);
+    const card = cards.find((i) => refKey(i) === refKey(issue));
     if (dirAlive(approvedDir(pr))) continue;
-    if (fs.existsSync(marker)) {
-      if (card && !inApproved(card) && verdict && !issueAlive(issue)) await heal(card, pr, sha, verdict);
+    if (fs.existsSync(reviewed)) {
+      if (card && !inApproved(card) && verdict && !issueAlive(issue)) await heal(card, prs, pr.number, sha, verdict);
       continue;
     }
-    if (cfg().resolveConflicts && mergeable === 'CONFLICTING' && OWN_BRANCH.test(head) && card && !inApproved(card) && !skipped(card) && !fs.existsSync(statePath('conflicts', `${pr}-${sha}`))) {
-      log(`review PR #${pr} waits: head ${sha.slice(0, 7)} conflicts with its base, and the conflicts are resolved first`);
+    if (cfg().resolveConflicts && mergeable === 'CONFLICTING' && OWN_BRANCH.test(head) && card && !inApproved(card) && !skipped(card) && !fs.existsSync(marker('conflicts', `${pr.number}-${sha}`, pr))) {
+      log(`review PR #${pr.number} waits: head ${sha.slice(0, 7)} conflicts with its base, and the conflicts are resolved first`);
       continue;
     }
     if (issueAlive(issue)) {
-      if (card && !inApproved(card)) log(`review PR #${pr} waits: the session on #${issue} is still running`);
+      if (card && !inApproved(card)) log(`review PR #${pr.number} waits: the session on ${label(issue)} is still running`);
       continue;
     }
     if (card && inApproved(card)) {
-      if (card.labels.includes(APPROVED_LABEL)) await unapprove(issue, `PR #${pr} was pushed to after its review passed`);
-      log(`#${issue} back to ${col.codeReview.name}: PR #${pr} head ${sha.slice(0, 7)} has not been reviewed`);
+      if (card.labels.includes(APPROVED_LABEL)) await unapprove(issue, `PR #${pr.number} head ${sha.slice(0, 7)} has not been reviewed`);
+      log(`${label(issue)} back to ${col.codeReview.name}: PR #${pr.number} head ${sha.slice(0, 7)} has not been reviewed`);
       if (!(await moveCard(issue, col.codeReview.id))) continue;
     }
     if (checks === 'PENDING') {
-      log(`review PR #${pr} waits for its checks`);
+      log(`review PR #${pr.number} waits for its checks`);
       continue;
     }
     if (checks === 'FAILURE') continue;
     const tries = triesOn(approvedDir(pr), sha);
     if (tries > cfg().maxRetries) {
-      if (!isDry()) write(marker, '');
-      log(`review PR #${pr} given up: it ended without a verdict ${tries} times on ${sha.slice(0, 7)}`);
-      await park(issue, `the review of PR #${pr} ended without a verdict ${tries} times on ${sha.slice(0, 7)}.`);
+      if (!isDry()) write(reviewed, '');
+      log(`review PR #${pr.number} given up: it ended without a verdict ${tries} times on ${sha.slice(0, 7)}`);
+      await park(issue, `the review of PR #${pr.number} ended without a verdict ${tries} times on ${sha.slice(0, 7)}.`);
       continue;
     }
     // The give-up above is about this head for good; this one only about this tick.
     if (started >= perTick) {
-      log(`review PR #${pr} waits for the next tick (${perTick} reviews started in this one)`);
+      log(`review PR #${pr.number} waits for the next tick (${perTick} reviews started in this one)`);
       continue;
     }
     if (!launchApproved(pr, issue, sha)) continue;
     started += 1;
-    if (!isDry()) write(marker, '');
+    if (!isDry()) write(reviewed, '');
   }
 }
 
@@ -117,25 +125,26 @@ export async function reviews(board: BoardItem[]): Promise<void> {
  * verdict did not put it. A fail goes back to In Progress, where trigger 2 relaunches the session on the
  * findings; a pass goes on to Approved with the label, as the review would have — the only way a card
  * gets there is a passing review, and this is that review, delivered late. Without an Approved column a
- * passed card stays where it is, as it does after the review itself.
+ * passed card stays where it is, as it does after the review itself. A pass on one of a card's two PRs
+ * moves nothing while the other has no verdict yet.
  */
-async function heal(card: BoardItem, pr: number, sha: string, verdict: Verdict): Promise<void> {
+async function heal(card: BoardItem, prs: WiredPr[], pr: number, sha: string, verdict: Verdict): Promise<void> {
   const c = cfg();
   const col = c.statusField.columns;
-  const issue = card.number;
   const to = verdict === 'failed' ? col.inProgress : col.approved;
   if (!to.id) return;
-  log(`#${issue} to ${to.name}: the review of PR #${pr} head ${sha.slice(0, 7)} ${verdict}, and the card was left in ${card.status}`);
-  if (!(await moveCard(issue, to.id))) return;
+  if (verdict === 'passed' && prs.some((p) => refKey(p.issue) === refKey(card) && p.verdict !== 'passed')) return;
+  log(`${label(card)} to ${to.name}: the review of PR #${pr} head ${sha.slice(0, 7)} ${verdict}, and the card was left in ${card.status}`);
+  if (!(await moveCard(card, to.id))) return;
   if (isDry() || verdict !== 'passed' || card.labels.includes(APPROVED_LABEL)) return;
-  const r = await gh(['issue', 'edit', String(issue), '--repo', c.repo, '--add-label', APPROVED_LABEL]);
-  if (!r.ok) log(`#${issue} label "${APPROVED_LABEL}" not added: ${r.err.split('\n')[0]}`);
+  const r = await gh(['issue', 'edit', String(card.number), '--repo', card.repo, '--add-label', APPROVED_LABEL]);
+  if (!r.ok) log(`${label(card)} label "${APPROVED_LABEL}" not added: ${r.err.split('\n')[0]}`);
 }
 
 /**
- * Trigger 5 — the hand-over to a human. An Approved card whose PR passed the review on its current head gets
- * one comment on the issue: the card is ready for testing, with the preview link when the app the session
- * left running is up behind one (how to sign in is on the PR, under the same link), or the PR to check out
+ * Trigger 5 — the hand-over to a human. An Approved card whose PRs passed the review on their current heads
+ * get one comment on the issue: the card is ready for testing, with the preview link when the app the session
+ * left running is up behind one (how to sign in is on the PR, under the same link), or the PRs to check out
  * when there is none — a human's PR, previews off, an app that could not be left up. Once per PR head
  * (`state/handed/<pr>-<sha>`), so a head that comes back after a push and passes again is announced again.
  * A `Sloth: skip` card is left alone — a human owns it and does not need telling. No Approved column
@@ -145,26 +154,27 @@ export async function handover(board: BoardItem[]): Promise<void> {
   const c = cfg();
   const column = c.statusField.columns.approved;
   if (!column.id) return;
-  const issues = board.filter((i) => i.status === column.name && i.labels.includes(APPROVED_LABEL) && !skipped(i)).map((i) => i.number);
-  for (const { issue, pr, sha } of await wiredPrs(issues)) {
-    const marker = statePath('handed', `${pr}-${sha}`);
-    if (fs.existsSync(marker) || !fs.existsSync(statePath(MARKERS.approved, `${pr}-${sha}`)) || dirAlive(approvedDir(pr))) continue;
+  const issues = board.filter((i) => i.status === column.name && i.labels.includes(APPROVED_LABEL) && !skipped(i));
+  const prs = await wiredPrs(issues);
+  for (const { issue, pr, sha } of prs) {
+    const handed = marker('handed', `${pr.number}-${sha}`, pr);
+    if (fs.existsSync(handed) || !allMarked(prs, issue) || dirAlive(approvedDir(pr))) continue;
     const link = previewLink(issue);
     const where = link
       ? `Test it here: ${link} — how to sign in is on the PR, under the same link.`
-      : `No preview for this one — check the PR out to test it: https://github.com/${c.repo}/pull/${pr}`;
-    const body = `${c.botPrefix} PR #${pr} passed the review — the card is in **${column.name}**, ready for a human to test.\n${where}`;
+      : `No preview for this one — check the PR out to test it: https://github.com/${pr.repo}/pull/${pr.number}`;
+    const body = `${c.botPrefix} PR #${pr.number} passed the review — the card is in **${column.name}**, ready for a human to test.\n${where}`;
     if (isDry()) {
-      log(`dry-run: would tell #${issue} it is ready to test${link ? ` at ${link}` : ''}`);
+      log(`dry-run: would tell ${label(issue)} it is ready to test${link ? ` at ${link}` : ''}`);
       continue;
     }
     // The marker means "this head has been announced", so it is written only once the announcement is on
     // the issue. A `gh` GitHub refused used to mark the head all the same: nobody was ever told the card
     // was ready, and nothing would tell them, because the head had had its turn. `comment` logs the reason;
     // the next tick tries again.
-    if (!(await comment(c.repo, issue, body))) continue;
-    log(`#${issue} ready to test${link ? ` at ${link}` : ' (no preview)'} — PR #${pr}`);
-    write(marker, '');
+    if (!(await comment(issue.repo, issue.number, body))) continue;
+    log(`${label(issue)} ready to test${link ? ` at ${link}` : ' (no preview)'} — PR #${pr.number}`);
+    write(handed, '');
   }
 }
 

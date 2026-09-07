@@ -44,6 +44,15 @@ export default function StackPanel({ root, value, onChange }: { root?: string; v
       {data?.sudoPassword && missing.length > 0 && (
         <Button onClick={() => setAsking(true)}>Install with a password…</Button>
       )}
+      {data?.sudoWide && (
+        <div className="space-y-1.5">
+          <p className="text-xs text-amber-400">
+            sudo lets this user run apt-get with any arguments — wider than the exact lines Sloth grants. That is the rule an older
+            Sloth wrote, or one of this machine's own; the password replaces Sloth's file with the narrow one.
+          </p>
+          <Button onClick={() => setAsking(true)}>Replace the sudoers rule with a password…</Button>
+        </div>
+      )}
       {asking && <SudoDialog root={root} ids={missing.map((t) => t.id)} onClose={() => setAsking(false)} />}
       {problem && <Error>{problem}</Error>}
       {data?.install.sessionId && <Session id={data.install.sessionId} what={data.install.what} running={running} />}

@@ -1,5 +1,5 @@
 import { NumberInput, TextInput, inputStyle } from '../setup/ui';
-import { Row } from './ui';
+import { Choose, Row } from './ui';
 import type { SectionProps } from './ui';
 
 /** The schedule as a person says it. */
@@ -26,6 +26,17 @@ export default function SmokeSection({ draft, patch }: SectionProps) {
       <Row label="Time of day" hint="When a due run starts, on this machine's clock — 06:00 unless changed, so the report is there when the day starts.">
         <input type="time" aria-label="Time of day" value={draft.smoke.at} onChange={(e) => smoke({ at: e.target.value })} className={inputStyle} />
       </Row>
+      {draft.repos.length > 1 && (
+        <Row label="Repository" hint="Which of the repositories the smoke test qualifies — one app, one run. The first one unless chosen.">
+          <Choose
+            label="Repository"
+            value={draft.smoke.repo}
+            onChange={(repo) => smoke({ repo })}
+            options={draft.repos.map((r, i) => ({ id: i === 0 ? '' : r.slug, name: r.slug }))}
+            placeholder={draft.repos[0].slug}
+          />
+        </Row>
+      )}
       <Row label="Branch" hint="The branch under test — the one you are about to release. Empty means the repository's default branch.">
         <TextInput value={draft.smoke.branch} onChange={(branch) => smoke({ branch })} placeholder="default branch" />
       </Row>

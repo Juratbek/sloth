@@ -24,7 +24,7 @@ const Left = ({ label, count, title }: { label: string; count: number; title: st
  * in the header. It mirrors GitHub and nothing more: no dragging, no buttons, no writes. Clicking a card
  * goes back to the monitor with the newest run on that issue open.
  */
-export default function BoardPage({ board, onSelect, onClose }: { board?: BoardView; onSelect: (id: string) => void; onClose: () => void }) {
+export default function BoardPage({ board, several, onSelect, onClose }: { board?: BoardView; several: boolean; onSelect: (id: string) => void; onClose: () => void }) {
   const [tab, setTab] = useState<ColumnRole | null>(null);
   const columns = board?.columns ?? [];
   // On a phone one column shows at a time: the chosen one, else the first with work on it.
@@ -66,13 +66,13 @@ export default function BoardPage({ board, onSelect, onClose }: { board?: BoardV
 
           {active && (
             <div className="flex min-h-0 flex-1 flex-col p-3 md:hidden">
-              <Column column={active} onSelect={onSelect} />
+              <Column column={active} several={several} onSelect={onSelect} />
             </div>
           )}
 
           <div className="hidden min-h-0 flex-1 gap-3 overflow-x-auto p-4 md:flex">
             {columns.map((c) => (
-              <Column key={c.role} column={c} onSelect={onSelect} />
+              <Column key={c.role} column={c} several={several} onSelect={onSelect} />
             ))}
           </div>
         </>

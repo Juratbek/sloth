@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { APPROVED_LABEL, MARKERS, OWN_BRANCH, SKIP_LABEL, ensureSkipLabel, markerFiles, skipped, statePath, unapprove } from '../server/runner/markers';
 import { setDry } from '../server/runner/log';
 import { called, fail, onGh, resetGh } from './gh-mock';
-import { configure, readLog, root, wipe } from './harness';
+import { configure, readLog, ref, root, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 
@@ -36,21 +36,21 @@ describe('statePath', () => {
 describe('markerFiles', () => {
   it('finds one PR’s markers whatever head they were written for, and only that PR’s', () => {
     markers('approved', '30-abc', '30-def', '3-abc', '31-abc');
-    expect(markerFiles('approved', 30).sort()).toEqual(['30-abc', '30-def']);
-    expect(markerFiles('approved', 3)).toEqual(['3-abc']);
+    expect(markerFiles('approved', ref(30)).sort()).toEqual(['30-abc', '30-def']);
+    expect(markerFiles('approved', ref(3))).toEqual(['3-abc']);
   });
 
   it('keeps each kind’s markers apart — a review’s live beside an approved review’s, not among them', () => {
     markers('review', '30-abc');
     markers('approved', '30-def');
     markers('qa', '30-ghi');
-    expect(markerFiles('review', 30)).toEqual(['30-abc']);
-    expect(markerFiles('approved', 30)).toEqual(['30-def']);
-    expect(markerFiles('qa', 30)).toEqual(['30-ghi']);
+    expect(markerFiles('review', ref(30))).toEqual(['30-abc']);
+    expect(markerFiles('approved', ref(30))).toEqual(['30-def']);
+    expect(markerFiles('qa', ref(30))).toEqual(['30-ghi']);
   });
 
   it('is empty before anything has ever been marked', () => {
-    expect(markerFiles('review', 30)).toEqual([]);
+    expect(markerFiles('review', ref(30))).toEqual([]);
   });
 });
 
@@ -81,7 +81,7 @@ describe('ensureSkipLabel', () => {
   it('says so and carries on when GitHub refuses — the label is a convenience, not the boot', async () => {
     onGh(/label create/, fail('HTTP 403: Resource not accessible\nsecond line'));
     await expect(ensureSkipLabel()).resolves.toBeUndefined();
-    expect(readLog().join('\n')).toMatch(/label "Sloth: skip" not created: HTTP 403: Resource not accessible/);
+    expect(readLog().join('\n')).toMatch(/label "Sloth: skip" not created in acme\/widgets: HTTP 403: Resource not accessible/);
     expect(readLog().join('\n')).not.toMatch(/second line/);
   });
 
@@ -96,14 +96,14 @@ describe('ensureSkipLabel', () => {
 
 describe('unapprove', () => {
   it('takes the pass label back off the issue and says why', async () => {
-    await unapprove(42, 'the head that earned it is gone');
+    await unapprove(ref(42), 'the head that earned it is gone');
     expect(called(new RegExp(`^gh issue edit 42 --repo acme/widgets --remove-label ${APPROVED_LABEL}$`))).toHaveLength(1);
     expect(readLog().join('\n')).toMatch(/#42 lost "Fable: approved": the head that earned it is gone/);
   });
 
   it('reports a refusal instead of claiming the label is gone', async () => {
     onGh(/issue edit/, fail('HTTP 404: label not found\ndetail'));
-    await unapprove(42, 'its checks turned red');
+    await unapprove(ref(42), 'its checks turned red');
     const logged = readLog().join('\n');
     expect(logged).toMatch(/#42 label removal failed: HTTP 404: label not found/);
     expect(logged).not.toMatch(/#42 lost/);
@@ -111,7 +111,7 @@ describe('unapprove', () => {
 
   it('only logs in a dry run', async () => {
     setDry(true);
-    await unapprove(42, 'why');
+    await unapprove(ref(42), 'why');
     expect(called(/issue edit/)).toHaveLength(0);
     expect(readLog().join('\n')).toMatch(/dry-run: would remove "Fable: approved" from #42 — why/);
     setDry(false);

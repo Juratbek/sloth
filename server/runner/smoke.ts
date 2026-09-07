@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
+import { primaryRepo } from '../repos';
 import { isDry, log, nowSec, readFile, readNumber, remove, write } from './log';
 import { statePath } from './markers';
 import { notify } from './notify';
@@ -79,10 +80,11 @@ export async function smokeTick(): Promise<void> {
     }
     return;
   }
-  const head = await headOf(cfg().smoke.branch, 'smoke test');
+  const repo = cfg().smoke.repo || primaryRepo();
+  const head = await headOf(cfg().smoke.branch, 'smoke test', repo);
   if (!head) return;
   const n = readNumber(seqFile()) + 1;
-  if (!(await launchSmoke(n, head.sha, head.branch))) return;
+  if (!(await launchSmoke(n, head.sha, head.branch, repo))) return;
   if (isDry()) return;
   write(seqFile(), String(n));
   if (forced) remove(dueFile());
@@ -96,16 +98,17 @@ export async function smokeTick(): Promise<void> {
  * `reap` has said so.
  */
 export async function smokeVerdicts(): Promise<void> {
-  for (const { kind, target: n, dir } of runDirs()) {
+  for (const { kind, target: n, repo, dir } of runDirs()) {
     if (kind !== 'smoke' || dirAlive(dir) || fs.existsSync(path.join(dir, 'handled'))) continue;
     const verdict = readFile(path.join(dir, 'verdict'))?.trim();
     if (!verdict) continue;
     const branch = readFile(path.join(dir, 'branch'))?.trim() || 'the default branch';
     const sha = (readFile(path.join(dir, 'sha')) ?? '').trim().slice(0, 7);
     const where = `${branch}${sha ? ` @ ${sha}` : ''}`;
-    const issue = readNumber(path.join(dir, 'report_issue')) || undefined;
+    const report = readNumber(path.join(dir, 'report_issue')) || undefined;
+    const issue = report ? { repo, number: report } : undefined;
     const said = VERDICTS[verdict] ?? verdict;
-    log(`smoke test ${n}: ${said} on ${where}${issue ? ` — the report is on #${issue}` : ''}`);
+    log(`smoke test ${n}: ${said} on ${where}${report ? ` — the report is on #${report}` : ''}`);
     await notify(PASSING.includes(verdict) ? 'smokePassed' : 'smokeFailed', { issue, text: `Smoke test ${n} on ${where}: ${said}` });
     if (!isDry()) write(path.join(dir, 'handled'), '');
   }

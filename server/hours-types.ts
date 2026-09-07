@@ -27,8 +27,12 @@ export interface HoursEntry {
   n: number;
   kind: HoursKind;
   target: number;
+  /** The repository `target` is in. A line from before Sloth watched several carries none: it is the legacy repository's. */
+  repo?: string;
   /** The issue the run worked for; a review names its PR in `target`, and the issue beside it here. */
   issue?: number;
+  /** The issue's repository when it is not `repo` — a review of a PR that closes an issue in another of Sloth's repositories. */
+  issueRepo?: string;
   sessionId?: string;
   /**
    * Epoch seconds: launched, ended, and how long in between it stood paused for the machine, or parked
@@ -54,6 +58,7 @@ export interface HoursEntry {
  * failed runs a later run took up (half rate); `excludedSeconds` its failed runs nobody took up (not billed).
  */
 export interface HoursIssue {
+  repo: string;
   issue: number;
   title?: string;
   seconds: number;
@@ -71,7 +76,9 @@ export interface HoursExcluded {
   n: number;
   kind: HoursKind;
   target: number;
+  repo: string;
   issue?: number;
+  issueRepo?: string;
   seconds: number;
   ending: HoursEnding;
   endedAt: number;
@@ -90,7 +97,9 @@ export interface HoursMonth {
 export interface HoursLive {
   kind: HoursKind;
   target: number;
+  repo: string;
   issue?: number;
+  issueRepo?: string;
   seconds: number;
 }
 

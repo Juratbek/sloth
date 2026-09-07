@@ -1,8 +1,10 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { CONFIG_PATH, reloadConfig } from './config';
 import { SLOTH_HOME_LABEL } from './env';
 import { run } from './exec';
+import { cancelGhLogin, ghLoginStatus, startGhLogin } from './gh-login';
+import { checkoutInBackground, cloneRepo } from './checkout';
+import type { CloneResult } from './checkout';
 import { expandPath, normalizeConfig, readConfigFile, writeConfigFile } from './config-file';
 import { watchAll } from './events';
 import { ensureTrelloLists } from './runner/board-trello';
@@ -11,23 +13,35 @@ import * as trello from './trello';
 import { trelloReady } from './trello';
 import { credentialsFile, forgetTrelloCredentials, saveTrelloCredentials, trelloInfo } from './trello-credentials';
 import type { TrelloCredentials, TrelloInfo } from './trello-credentials';
-import { graphql as ghGraphql } from './runner/gh';
+import { accessibleRepos, graphql, notFound } from './setup-repos';
 import { startTunnel } from './remote';
 import { betweenTicks, startLoop } from './runner/loop';
 import { applyAutostart } from './service';
+import { ensureStack } from './stack';
+import { log } from './runner/log';
 import type { ColumnRef, ColumnRole, FieldOption, SetupCheck, SetupEnv, SetupFields, SetupProject } from './config-types';
 
 const firstLine = (s: string) => s.split('\n')[0].trim();
-const notFound = (err: string, cmd: string) => (/ENOENT/.test(err) ? `\`${cmd}\` was not found on PATH` : err);
 
 async function version(cmd: string): Promise<SetupCheck> {
   const r = await run(cmd, ['--version'], { timeout: 20_000 });
   return r.ok ? { ok: true, version: firstLine(r.out) } : { ok: false, error: notFound(r.err, cmd) };
 }
 
+/**
+ * The account `gh auth status` names — "Logged in to github.com account alice (keyring)" — read off the
+ * machine's own gh config, so it is there even while the token check behind the line fails. Older gh
+ * versions print the status to stderr, so both streams are read; the active account comes first.
+ */
+export function accountFrom(text: string): string | undefined {
+  return /github\.com account (\S+)/.exec(text)?.[1];
+}
+
 async function ghAuth(): Promise<SetupCheck> {
   const status = await run('gh', ['auth', 'status'], { timeout: 20_000 });
-  if (!status.ok) return { ok: false, error: notFound(status.err, 'gh') || 'not logged in' };
+  const login = accountFrom(`${status.out}\n${status.err}`);
+  if (!status.ok) return { ok: false, error: notFound(status.err, 'gh') || 'not logged in', ...(login ? { login } : {}) };
+  if (login) return { ok: true, login };
   const who = await run('gh', ['api', 'user', '--jq', '.login'], { timeout: 20_000 });
   return who.ok ? { ok: true, login: who.out } : { ok: false, error: who.err };
 }
@@ -44,19 +58,6 @@ async function trelloAuth(): Promise<SetupCheck> {
 async function environment(): Promise<SetupEnv> {
   const [claude, gh, auth, trelloCheck] = await Promise.all([version('claude'), version('gh'), ghAuth(), trelloReady() ? trelloAuth() : undefined]);
   return { home: SLOTH_HOME_LABEL, claude, gh, ghAuth: auth, ...(trelloCheck ? { trello: trelloCheck } : {}) };
-}
-
-/**
- * The runner's `graphql` — the same single retry every other GitHub call gets, because the wizard reads
- * the same flaky API. Only the wording is the wizard's: a `gh` that is not on PATH is a thing the user
- * can fix, and "ENOENT" does not say so.
- */
-async function graphql(query: string, variables: string[] = []): Promise<any> {
-  try {
-    return await ghGraphql(query, variables);
-  } catch (e) {
-    throw new Error(notFound(e instanceof Error ? e.message : String(e), 'gh'));
-  }
 }
 
 const PROJECT_FIELDS = `id number title closed url owner { ... on User { login } ... on Organization { login } } items { totalCount }`;
@@ -142,14 +143,22 @@ async function projectFields(id: string): Promise<SetupFields> {
   };
 }
 
-async function clone(body: any): Promise<{ ok: boolean; path?: string; error?: string }> {
-  const repo = String(body?.repo ?? '');
-  const target = expandPath(String(body?.path ?? ''));
-  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return { ok: false, error: 'repo must be owner/repo' };
-  if (fs.existsSync(target)) return { ok: true, path: target };
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  const r = await run('gh', ['repo', 'clone', repo, target], { timeout: 300_000 });
-  return r.ok ? { ok: true, path: target } : { ok: false, error: notFound(r.err, 'gh') };
+/** The Settings button: the same clone the boot and the tick make on their own, shared with one in flight. */
+function clone(body: any): Promise<CloneResult> {
+  const target = String(body?.path ?? '').trim();
+  if (!target) return Promise.resolve({ ok: false, error: 'a path to clone into is needed' });
+  return cloneRepo(String(body?.repo ?? ''), expandPath(target));
+}
+
+/**
+ * The checkout, then the stack: a stack set to `auto` is read off the checkout's files, so it is judged
+ * only once they are there. Neither the boot nor a config save waits on either; the health chip says
+ * "cloning" meanwhile.
+ */
+export function checkoutThenStack(): void {
+  void checkoutInBackground()
+    .then(() => ensureStack())
+    .catch((e) => log(`stack: ${(e instanceof Error ? e.message : String(e)).split('\n')[0]}`));
 }
 
 const ROLES: ColumnRole[] = ['pickup', 'inProgress', 'needsHelp', 'codeReview', 'approved', 'qa', 'done'];
@@ -196,8 +205,11 @@ async function connectTrello(body: unknown): Promise<TrelloInfo & { username?: s
 export async function handleSetup(pathname: string, method: string, body: unknown): Promise<unknown> {
   const fields = /^\/api\/setup\/projects\/([\w-]+)\/fields$/.exec(pathname);
   if (pathname === '/api/setup/env') return environment();
+  if (pathname === '/api/setup/gh-login') return method === 'POST' ? startGhLogin() : ghLoginStatus();
+  if (pathname === '/api/setup/gh-login/cancel' && method === 'POST') return cancelGhLogin();
   if (pathname === '/api/setup/trello') return method === 'POST' ? connectTrello(body) : trelloInfo();
   if (pathname === '/api/setup/projects') return projects();
+  if (pathname === '/api/setup/repos') return accessibleRepos();
   if (fields) return TRELLO_ID.test(fields[1]) ? trelloFields(fields[1]) : projectFields(fields[1]);
   if (pathname === '/api/setup/clone' && method === 'POST') return clone(body);
   if (pathname === '/api/setup/config' && method === 'POST') {
@@ -212,7 +224,9 @@ export async function handleSetup(pathname: string, method: string, body: unknow
       startLoop();
       startTunnel();
     });
-    // The launch agent is named after the repo and points at this checkout, so it is written from here.
+    // The checkout the sessions need is Sloth's to make: cloned now if the saved root is not one yet.
+    checkoutThenStack();
+    // The launch agent is named after the first repository and points at this checkout, so it is written from here.
     const serviceError = config.autostart === was ? undefined : await applyAutostart(config.autostart);
     return { ok: true, path: CONFIG_PATH, config, serviceError };
   }

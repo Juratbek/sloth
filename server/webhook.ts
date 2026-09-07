@@ -4,13 +4,15 @@ import path from 'node:path';
 import { writeAtomic } from './atomic';
 import { cfg } from './config';
 import { onRemoteChange, remoteStatus } from './remote';
+import { repoSlugs } from './repos';
 import { isDry, log } from './runner/log';
 import { HOOK_PATH, createHook, firstLine, listHooks, updateHook } from './webhook-gh';
 import { TRELLO_HOOK_PATH, ensureTrelloHook } from './webhook-trello';
 import type { WebhookInfo, WebhookStatus } from './machine-types';
 
 /**
- * The repository webhook — trigger 3 heard the moment it happens rather than at the next poll.
+ * The repository webhook — trigger 3 heard the moment it happens rather than at the next poll. One hook
+ * per repository Sloth works in, all pointed at the same address and signed with the same secret.
  *
  * Nobody is asked to set this up. Sloth already runs a tunnel so a phone can reach it, and the `gh`
  * token it works the board with may write the repository's hooks, so it points the hook at its own
@@ -77,7 +79,7 @@ export const deliveryUrl = (): string => {
  */
 function settle(next: Pick<WebhookStatus, 'state'> & Partial<WebhookStatus>): WebhookStatus {
   const was = isWebhookLive();
-  status = { ...load(), url: undefined, hookId: undefined, reason: undefined, ...next, at: Date.now() };
+  status = { ...load(), url: undefined, hookId: undefined, hookIds: undefined, reason: undefined, ...next, at: Date.now() };
   persist();
   if (isWebhookLive() !== was) for (const fn of listeners) fn();
   return status;
@@ -158,7 +160,7 @@ export async function ensureWebhook(): Promise<WebhookStatus> {
   const url = deliveryUrl();
   if (!url) return settle({ state: 'off', reason: 'no public URL (remote access is off or the tunnel is down)' });
   if (isDry()) {
-    log(`dry-run: would point the ${onTrello() ? 'Trello board' : cfg().repo} webhook at ${url}`);
+    log(`dry-run: would point the ${onTrello() ? 'Trello board' : repoSlugs().join(', ')} webhook at ${url}`);
     return settle({ state: 'off', reason: 'dry run — the webhook is left alone' });
   }
   if (onTrello()) {
@@ -172,20 +174,26 @@ export async function ensureWebhook(): Promise<WebhookStatus> {
       return settle({ state: 'failed', reason });
     }
   }
-  try {
-    const repo = cfg().repo;
-    const secret = webhookSecret();
-    const mine = (await listHooks(repo)).find((h) => (h.config?.url ?? '').endsWith(HOOK_PATH));
-    let hookId = mine?.id ?? 0;
-    if (mine) await updateHook(repo, mine.id, url, secret);
-    else hookId = await createHook(repo, url, secret);
-    log(`webhook: ${repo} ${mine ? 'repointed' : 'created'} — @sloth comments are delivered to ${url}`);
-    return settle({ state: 'active', url, hookId });
-  } catch (e) {
-    const reason = explain(firstLine(e instanceof Error ? e.message : String(e)));
-    log(`webhook: not configured — ${reason}`);
-    return settle({ state: 'failed', reason });
+  // Every repository is tried: one that refuses does not keep the next from its hook. The hook is up only when all of
+  // them took it — until then comments are polled, and the repositories that did take it stay pointed for the retry.
+  const secret = webhookSecret();
+  const hookIds: Record<string, number> = {};
+  const refused: string[] = [];
+  for (const repo of repoSlugs()) {
+    try {
+      const mine = (await listHooks(repo)).find((h) => (h.config?.url ?? '').endsWith(HOOK_PATH));
+      hookIds[repo] = mine ? mine.id : await createHook(repo, url, secret);
+      if (mine) await updateHook(repo, mine.id, url, secret);
+      log(`webhook: ${repo} ${mine ? 'repointed' : 'created'} — @sloth comments are delivered to ${url}`);
+    } catch (e) {
+      const reason = explain(firstLine(e instanceof Error ? e.message : String(e)));
+      log(`webhook: ${repo} not configured — ${reason}`);
+      refused.push(repoSlugs().length > 1 ? `${repo}: ${reason}` : reason);
+    }
   }
+  if (refused.length) return settle({ state: 'failed', reason: refused.join('; '), hookIds });
+  const first = Object.values(hookIds)[0];
+  return settle({ state: 'active', url, hookId: first, hookIds });
 }
 
 /** Marks the hook down without touching GitHub: the hook stays there, it just cannot reach us. */

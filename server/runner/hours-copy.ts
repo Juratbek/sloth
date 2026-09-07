@@ -7,6 +7,7 @@ import { ledgerFile, readLedger, unpublishedFile } from './hours';
 import { isDry, log, nowSec, readFile, remove, write } from './log';
 import { statePath } from './markers';
 import { notify } from './notify';
+import { primaryRepo, repoRoot } from '../repos';
 
 /**
  * The ledger's second witness: a copy of `hours.jsonl` on the watched repository's `sloth-assets` branch,
@@ -43,7 +44,8 @@ export function copyStatus(): CopyStatus {
   }
 }
 
-const git = (args: string[], env?: NodeJS.ProcessEnv): Promise<Ran> => run('git', ['-C', cfg().runnerRoot, ...args], { timeout: 120_000, ...(env ? { env } : {}) });
+/** The ledger's witness is the first repository's `sloth-assets` branch: one project, one record, whatever else Sloth watches for it. */
+const git = (args: string[], env?: NodeJS.ProcessEnv): Promise<Ran> => run('git', ['-C', repoRoot(primaryRepo()), ...args], { timeout: 120_000, ...(env ? { env } : {}) });
 
 /** The branch's head: a sha, `undefined` when the branch does not exist yet, `null` when origin cannot be asked. */
 async function remoteHead(): Promise<string | undefined | null> {

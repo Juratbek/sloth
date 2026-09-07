@@ -1,8 +1,7 @@
 import { cfg } from '../config';
 import { broadcast } from '../events';
 import { pruneBlocked } from './blocked';
-import { fetchBoard } from './board';
-import type { BoardItem } from './board';
+import { fetchBoard, type BoardItem } from './board';
 import { setSnapshot } from './board-snapshot';
 import { refreshColumns } from './columns';
 import { comments } from './comments';
@@ -23,9 +22,11 @@ import { pausedUntil, reap } from './run-control';
 import { checkCopy } from './hours-copy';
 import { handover, pickup, retryStranded, reviews } from './triggers';
 import { healthTick } from '../health';
+import { checkoutInBackground, checkoutReady } from '../checkout';
 import { isWebhookLive, onWebhookChange } from '../webhook';
 import { autoUpdate } from '../update';
 import type { LoopStatus } from '../types';
+import { repoSlugs } from '../repos';
 
 export interface TickOptions {
   board?: boolean;
@@ -144,6 +145,9 @@ async function tickSteps({ board = false, comments: wantComments = false }: Tick
     state.lastBoard = Date.now();
     // Housekeeping on work that is long over — it costs nothing and skips itself for an hour.
     await step('prune', prune);
+    // The checkout, cloned if missing — beside the tick, not in it: a clone is minutes long and the tick holds the chain.
+    const checkout = checkoutReady();
+    if (!checkout) void checkoutInBackground();
     // Whether gh, git, the browser and sudo are still in order. Gated to ten minutes inside the step:
     // the board is read far more often than that, and "Tick now" more often again.
     await step('health', healthTick);
@@ -162,6 +166,8 @@ async function tickSteps({ board = false, comments: wantComments = false }: Tick
     // The webhook hears about all of it even while paused: sessions keep running, so they keep parking.
     await step('board events', () => boardEvents(items!));
     if (userPaused) return;
+    // No launch without the checkout it fetches in (the launchers refuse too); the bookkeeping above ran.
+    if (!checkout) return;
     // The review first: a card in Code Review is finished work waiting on a short look, so it goes ahead
     // of everything that starts a build — a red check, a stranded card, an order, the pickup column.
     await step('reviews', () => reviews(items!));
@@ -266,7 +272,7 @@ export function startLoop(): void {
   if (!claimState()) return;
   state.running = true;
   log(
-    `watching ${c.repo} · ${c.project.provider === 'trello' ? `Trello board ${c.project.title}` : `board #${c.project.number}`} · pickup "${c.statusField.columns.pickup.name}" · board ${c.boardSeconds}s / comments ${c.commentSeconds}s (${c.fallbackCommentSeconds}s without the webhook) / machine ${c.machineSeconds}s${c.autoUpdate ? ` / auto-update ${c.updateSeconds}s` : ''}`,
+    `watching ${repoSlugs().join(', ')} · ${c.project.provider === 'trello' ? `Trello board ${c.project.title}` : `board #${c.project.number}`} · pickup "${c.statusField.columns.pickup.name}" · board ${c.boardSeconds}s / comments ${c.commentSeconds}s (${c.fallbackCommentSeconds}s without the webhook) / machine ${c.machineSeconds}s${c.autoUpdate ? ` / auto-update ${c.updateSeconds}s` : ''}`,
   );
   schedule('board', 5);
   schedule('comments', 20);

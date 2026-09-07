@@ -3,10 +3,20 @@ import type { SlothConfig } from '../../server/config-types';
 import { useModels } from '../hooks/use-models';
 import { TextInput, inputStyle } from '../setup/ui';
 
-/** What every settings section gets: the config being edited and a way to change part of it. */
+/**
+ * What every settings section gets: the config being edited, a way to change part of it, and the saving
+ * itself — the shell keeps the one Save for the whole draft, and a section that would rather show its own
+ * button (`ownSave`) presses the same one rather than writing a second way to save.
+ */
 export interface SectionProps {
   draft: SlothConfig;
   patch: (p: Partial<SlothConfig>) => void;
+  /** The config as it is saved: what a section compares the draft against to know it is dirty. */
+  baseline: SlothConfig;
+  save: () => void;
+  discard: () => void;
+  saving: boolean;
+  saveError?: string;
 }
 
 /** One setting: its name and what it does on the left, the control on the right. */
@@ -22,15 +32,16 @@ export function Row({ label, hint, children, wide }: { label: string; hint?: Rea
   );
 }
 
-export function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+export function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`relative mt-0.5 inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${checked ? 'bg-accent' : 'bg-edge-strong'}`}
+      className={`relative mt-0.5 inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-40 ${checked ? 'bg-accent' : 'bg-edge-strong'}`}
     >
       <span className={`h-4 w-4 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-[18px]' : 'translate-x-[2px]'}`} />
     </button>

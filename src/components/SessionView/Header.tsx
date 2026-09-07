@@ -7,6 +7,7 @@ import Button from '../ui/Button';
 import Chip from '../ui/Chip';
 import ErrorNote from '../ui/ErrorNote';
 import { ToolChips } from './Usage';
+import type { IssueRef } from '../../../server/repo-types';
 
 function Stats({ s }: { s: SessionDetail }) {
   const a = s.agentsUsage;
@@ -29,7 +30,7 @@ function Stats({ s }: { s: SessionDetail }) {
 }
 
 /** The finished run's app, live behind a tunnel: the link, when it goes, and a way to take it down now. */
-function PreviewLine({ issue, preview }: { issue: number; preview: NonNullable<SessionDetail['watcher']>['preview'] }) {
+function PreviewLine({ issue, preview }: { issue: IssueRef; preview: NonNullable<SessionDetail['watcher']>['preview'] }) {
   const stop = useStopPreview();
   if (!preview) return null;
   // The guard in front of the app wants the key, exactly as the link posted on the PR carries it.
@@ -105,7 +106,7 @@ function WatcherLine({ s }: { s: SessionDetail }) {
           </a>
         )}
         {st?.servers && <span className="text-[11px] text-zinc-400">servers: {st.servers}</span>}
-        <PreviewLine issue={w.target} preview={w.preview} />
+        <PreviewLine issue={{ repo: w.repo, number: w.target }} preview={w.preview} />
         {w.retries > 0 && <span className="text-amber-400">retries {w.retries}</span>}
         {w.blocked && <span className="text-red-400">blocked</span>}
         {w.paused && <span className="text-amber-400" title={w.paused.reason}>paused · {w.paused.reason.replace(/^machine busy: /, '')}</span>}
@@ -119,15 +120,16 @@ function WatcherLine({ s }: { s: SessionDetail }) {
 }
 
 export default function Header({ s, config }: { s: SessionDetail; config: MonitorConfig }) {
-  const url = githubUrl(s.kind, s.target, config);
+  const url = githubUrl(s.kind, s.target, config, s.repo);
+  const several = (config.repos?.length ?? 1) > 1;
   return (
     <header className="space-y-2 border-b border-zinc-800 px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className={`h-2 w-2 rounded-full ${STATUS_COLOR[s.status]} ${s.live ? 'animate-pulse' : ''}`} />
-        <h1 className="text-sm font-semibold text-zinc-100">{label(s)}</h1>
+        <h1 className="text-sm font-semibold text-zinc-100">{label(s, several)}</h1>
         {url && (
           <a href={url} target="_blank" rel="noreferrer" className="text-sm text-sky-400 hover:underline">
-            {s.title ?? url.replace(`https://github.com/${config.repo}/`, '')}
+            {s.title ?? url.replace(`https://github.com/${several ? '' : `${s.repo}/`}`, '')}
           </a>
         )}
         <Chip tone="outline" size="sm">

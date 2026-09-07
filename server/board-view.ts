@@ -6,6 +6,7 @@ import type { BlockedCard, BoardCard, BoardColumn, BoardView } from './board-typ
 import { blockedCards } from './runner/blocked';
 import type { BoardItem } from './runner/board';
 import type { ColumnRole, ConfigColumns } from './config-types';
+import { refKey } from './repo-types';
 import type { IssueCost, SessionSummary } from './types';
 
 /**
@@ -75,13 +76,14 @@ function holdOf(role: ColumnRole, item: BoardItem, s: SessionSummary | undefined
  * named after the PR and carries the issue beside it (`issueOf`), so a review that started after the
  * implement run is the one the card shows.
  */
-function newestByIssue(sessions: SessionSummary[]): Map<number, SessionSummary> {
-  const out = new Map<number, SessionSummary>();
+function newestByIssue(sessions: SessionSummary[]): Map<string, SessionSummary> {
+  const out = new Map<string, SessionSummary>();
   for (const s of sessions) {
     const issue = issueOf(s);
     if (!issue) continue;
-    const seen = out.get(issue);
-    if (!seen || (s.startedAt ?? '') > (seen.startedAt ?? '')) out.set(issue, s);
+    const key = refKey(issue);
+    const seen = out.get(key);
+    if (!seen || (s.startedAt ?? '') > (seen.startedAt ?? '')) out.set(key, s);
   }
   return out;
 }
@@ -102,6 +104,7 @@ function cardOf(item: BoardItem, s: SessionSummary | undefined, cost: number | n
   // "Waiting since" only means something while the run is actually waiting for an answer.
   const held = s?.status === 'parked' || s?.status === 'waiting';
   return {
+    repo: item.repo,
     issue: item.number,
     title: item.title,
     assignees: item.assignees,
@@ -138,8 +141,8 @@ export function buildBoardView(
   hold: HoldState = {},
 ): BoardView {
   const newest = newestByIssue(sessions);
-  const costs = new Map(issues.map((i) => [i.issue, i.cost]));
-  const blocks = new Map(blocked.map((b) => [b.issue, b.reason]));
+  const costs = new Map(issues.map((i) => [refKey({ repo: i.repo, number: i.issue }), i.cost]));
+  const blocks = new Map(blocked.map((b) => [refKey({ repo: b.repo, number: b.issue }), b.reason]));
   const out: BoardColumn[] = PIPELINE.filter((role) => columns[role]?.name).map((role) => ({
     role,
     id: columns[role].id,
@@ -155,14 +158,15 @@ export function buildBoardView(
       elsewhere++;
       continue;
     }
-    const s = newest.get(item.number);
+    const key = refKey(item);
+    const s = newest.get(key);
     if (!sloths(column.role, item, s)) {
       others++;
       continue;
     }
     if (column.role === 'done' && s && !recent(s, now)) continue;
-    const reason = blocks.get(item.number);
-    column.cards.push(cardOf(item, s, costs.get(item.number) ?? null, reason, holdOf(column.role, item, s, reason, hold, now)));
+    const reason = blocks.get(key);
+    column.cards.push(cardOf(item, s, costs.get(key) ?? null, reason, holdOf(column.role, item, s, reason, hold, now)));
   }
   return { asOf: new Date(board.at).toISOString(), columns: out, elsewhere, others };
 }

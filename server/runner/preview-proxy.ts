@@ -4,6 +4,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import net from 'node:net';
 import type { Duplex } from 'node:stream';
 import { log } from './log';
+import { label } from '../repos';
+import type { IssueRef } from '../repo-types';
 
 /**
  * The guard in front of a preview. The tunnel gives the app a public address, and an address is all a
@@ -124,7 +126,7 @@ function upgrade(req: IncomingMessage, socket: Duplex, head: Buffer, upstream: U
  * Starts the guard on a loopback port of its own and resolves with it. The tunnel is pointed at this
  * port; `upstream` is the address the session's app answers on. Undefined when the port cannot be had.
  */
-export function startProxy(issue: number, upstream: string, key: string): Promise<Proxy | undefined> {
+export function startProxy(issue: IssueRef, upstream: string, key: string): Promise<Proxy | undefined> {
   const target = new URL(upstream);
   const server = http.createServer((req, res) => {
     if (admit(req, res, key)) forward(req, res, target);
@@ -132,7 +134,7 @@ export function startProxy(issue: number, upstream: string, key: string): Promis
   server.on('upgrade', (req, socket, head) => upgrade(req, socket, head, target, key));
   return new Promise((resolve) => {
     server.on('error', (e) => {
-      log(`preview #${issue}: guard failed: ${e.message}`);
+      log(`preview ${label(issue)}: guard failed: ${e.message}`);
       resolve(undefined);
     });
     server.listen(0, '127.0.0.1', () => {

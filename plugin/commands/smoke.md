@@ -135,7 +135,7 @@ the two leaves the number where the cleanup can still find it:
 ```bash
 SESSION_DIR=${SLOTH_SESSION_DIR:?}
 rm -f playwright.sloth.config.ts
-kill -0 "$(cat "$SESSION_DIR/e2e.pid")" 2>/dev/null || rm -f "$SESSION_DIR/e2e.pid"
+{ kill -0 "$(cat "$SESSION_DIR/e2e.pid")"; } 2>/dev/null || rm -f "$SESSION_DIR/e2e.pid"
 ```
 
 `git status` in the worktree then shows nothing, this being the one file the read-only checkout ever

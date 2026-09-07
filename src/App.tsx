@@ -68,7 +68,7 @@ export default function App() {
 
   if (error) return <div className="p-6 text-danger">Monitor API unreachable: {String(error)}</div>;
   if (!data) return <div className="p-6 text-fg-muted">Loading…</div>;
-  if (page === 'board') return <BoardPage board={data.board} onSelect={show} onClose={() => go('monitor')} />;
+  if (page === 'board') return <BoardPage board={data.board} several={(data.config.repos?.length ?? 1) > 1} onSelect={show} onClose={() => go('monitor')} />;
 
   return (
     <div className="flex h-full flex-col">

@@ -8,8 +8,9 @@ import { isPaused } from './runner/pause';
 import { previewState } from './runner/preview';
 import { pausedRun } from './runner/pressure';
 import { sampleSessions } from './runner/session-load';
-import { counter, isBlocked, pidAlive, pidOf, readState, runDirs } from './runner/session-dirs';
+import { counter, isBlocked, issueOfRun, pidAlive, pidOf, readState, runDirs } from './runner/session-dirs';
 import type { Overview, RateBucket, WatcherSession } from './types';
+import { refKey, type IssueRef } from './repo-types';
 
 /** The last `bytes` of a file, read from the end — a run log is megabytes, and the UI shows its tail. */
 export function tailOf(f: string, bytes: number): string {
@@ -46,8 +47,11 @@ const mtime = (f: string) => {
  * predates the boot as it finds it, and it is the runner that decides such a run is somebody else's.
  */
 export function listSessionDirs(): WatcherSession[] {
-  const sessions = runDirs().map(({ name, kind, target, dir }): WatcherSession => {
+  const sessions = runDirs().map((r): WatcherSession => {
+    const { name, kind, target, repo, dir } = r;
     const pid = pidOf(dir);
+    // The issue a review works for is written beside it (`launchApproved`); an implement or QA run is named after its own.
+    const wired = kind === 'issue' || kind === 'qa' ? undefined : issueOfRun(r, dir);
     let inbox: string[] = [];
     try {
       inbox = fs.readdirSync(path.join(dir, 'inbox')).filter((f) => f.endsWith('.md'));
@@ -61,15 +65,17 @@ export function listSessionDirs(): WatcherSession[] {
       name,
       kind,
       target,
+      repo,
       pid,
       alive: pidAlive(pid),
       sessionId: readFile(path.join(dir, 'session_id'))?.trim() || undefined,
       state: readState(dir),
-      preview: kind === 'issue' ? previewState(target) : undefined,
+      preview: kind === 'issue' ? previewState({ repo, number: target }) : undefined,
       retries: counter(dir, 'retries'),
       blocked: isBlocked(dir),
       paused: pausedRun(dir),
-      issue: readNumber(path.join(dir, 'issue')) || undefined,
+      issue: wired?.number,
+      ...(wired && wired.repo !== repo ? { issueRepo: wired.repo } : {}),
       runLogTail: tailOf(path.join(dir, 'run.log'), 4000),
       inbox,
       updatedAt: updated?.toISOString(),
@@ -123,32 +129,32 @@ export async function rateLimit() {
 }
 
 /**
- * The titles already fetched. Bounded, because Sloth is one process that runs for weeks: the map used to
- * keep every number it was ever asked about — every card of every board poll, every PR — and nothing ever
- * left it. The board shows a screenful, so a few hundred is far more than the UI can ask for at once, and
- * a number evicted here costs one `gh` call the next time it is shown.
+ * The titles already fetched, by `owner/name#12`. Bounded, because Sloth is one process that runs for
+ * weeks: the map used to keep every number it was ever asked about — every card of every board poll, every
+ * PR — and nothing ever left it. The board shows a screenful, so a few hundred is far more than the UI can
+ * ask for at once, and a number evicted here costs one `gh` call the next time it is shown.
  */
 const MAX_TITLES = 500;
-const titles = new Map<number, string>();
-const pending = new Set<number>();
-/** The numbers whose titles are held right now — for tests. */
+const titles = new Map<string, string>();
+const pending = new Set<string>();
+/** The keys whose titles are held right now — for tests. */
 export const cachedTitles = () => [...titles.keys()];
 
 /** Issue / PR title, filled in asynchronously (REST, one call per number, ever). */
-export function titleFor(n: number, coreRemaining: number | undefined): string | undefined {
-  const t = titles.get(n);
+export function titleFor(ref: IssueRef, coreRemaining: number | undefined): string | undefined {
+  const key = refKey(ref);
+  const t = titles.get(key);
   // Asked-for last, evicted last: a number the UI keeps showing stays, a one-off scrolls out.
   if (t !== undefined) {
-    titles.delete(n);
-    titles.set(n, t);
+    titles.delete(key);
+    titles.set(key, t);
   }
-  const repo = cfg().repo;
-  if (!repo || t !== undefined || pending.has(n) || (coreRemaining ?? 0) < 200) return t;
-  pending.add(n);
-  void gh(['api', `repos/${repo}/issues/${n}`, '--jq', '.title'])
+  if (!ref.repo || !ref.number || t !== undefined || pending.has(key) || (coreRemaining ?? 0) < 200) return t;
+  pending.add(key);
+  void gh(['api', `repos/${ref.repo}/issues/${ref.number}`, '--jq', '.title'])
     .then((out) => {
       if (!out) return;
-      titles.set(n, out.trim());
+      titles.set(key, out.trim());
       // Oldest first out, by the Map's own insertion order.
       for (const key of titles.keys()) {
         if (titles.size <= MAX_TITLES) break;
@@ -158,6 +164,6 @@ export function titleFor(n: number, coreRemaining: number | undefined): string |
     // Fire and forget, but never unhandled: a rejection nobody catches ends the process, and with it the
     // watcher. The number simply stays untitled and the next poll asks again.
     .catch(() => undefined)
-    .finally(() => pending.delete(n));
+    .finally(() => pending.delete(key));
   return undefined;
 }

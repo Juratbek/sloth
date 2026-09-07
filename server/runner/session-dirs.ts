@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { cfg } from '../config';
+import { tag, untagName } from '../repos';
+import type { IssueRef, PrRef } from '../repo-types';
 import type { WatcherState } from '../types';
 import { readFile, readNumber } from './log';
 import { statePath } from './markers';
@@ -17,21 +19,48 @@ import { statePath } from './markers';
 export type Kind = 'issue' | 'review' | 'approved' | 'qa' | 'smoke';
 export const KINDS: Kind[] = ['issue', 'review', 'approved', 'qa', 'smoke'];
 
-export interface RunDir {
-  name: string;
+/**
+ * One run's identity: its kind, the number it was started for and the repository that number is in — a PR's
+ * own repository for a review, the issue's for the rest, the primary one for a smoke test. Two repositories
+ * both have an issue 12; the repository is what keeps their runs apart on disk (`runName`).
+ */
+export interface RunRef {
   kind: Kind;
   target: number;
+  repo: string;
+}
+export interface RunDir extends RunRef {
+  name: string;
   dir: string;
 }
 
+export const issueRef = (i: IssueRef): RunRef => ({ kind: 'issue', target: i.number, repo: i.repo });
+export const approvedRef = (pr: PrRef): RunRef => ({ kind: 'approved', target: pr.number, repo: pr.repo });
+export const qaRef = (i: IssueRef): RunRef => ({ kind: 'qa', target: i.number, repo: i.repo });
+export const smokeRef = (n: number, repo: string): RunRef => ({ kind: 'smoke', target: n, repo });
+
+/** `issue-12` for the implement session of issue 12 — `issue-12@acme~widgets` in any repository but the legacy one. */
+export const runName = (r: RunRef): string => tag(`${r.kind}-${r.target}`, r.repo);
 /** `<sessionsDir>/issue-12` for the implement session of issue 12, `approved-34` for the review of PR 34. */
-export const dirOf = (kind: Kind, target: number) => path.join(cfg().sessionsDir, `${kind}-${target}`);
-export const issueDir = (issue: number) => dirOf('issue', issue);
-export const approvedDir = (pr: number) => dirOf('approved', pr);
-export const qaDir = (issue: number) => dirOf('qa', issue);
-export const smokeDir = (n: number) => dirOf('smoke', n);
+export const dirOf = (r: RunRef): string => path.join(cfg().sessionsDir, runName(r));
+export const issueDir = (i: IssueRef) => dirOf(issueRef(i));
+export const approvedDir = (pr: PrRef) => dirOf(approvedRef(pr));
+export const qaDir = (i: IssueRef) => dirOf(qaRef(i));
+export const smokeDir = (n: number, repo: string) => dirOf(smokeRef(n, repo));
 /** The per-run worktree of the old scheme — `issue-12`, `qa-12` — still removed when found; runs now lease a slot (`slots.ts`). */
-export const worktreeName = (kind: Kind, target: number) => (kind === 'qa' || kind === 'smoke' ? `${kind}-${target}` : `issue-${target}`);
+export const worktreeName = (r: RunRef) => tag(r.kind === 'qa' || r.kind === 'smoke' ? `${r.kind}-${r.target}` : `issue-${r.target}`, r.repo);
+
+/**
+ * The issue a run works for: an implement or QA run is named after it; a review is named after its PR and
+ * has the issue written beside it by `launchApproved` (`issue`, and `issue_repo` when the PR is in another
+ * repository than the issue); a smoke test has none.
+ */
+export function issueOfRun(r: RunRef, dir = dirOf(r)): IssueRef | undefined {
+  if (r.kind === 'issue' || r.kind === 'qa') return { repo: r.repo, number: r.target };
+  if (r.kind === 'smoke') return undefined;
+  const number = readNumber(path.join(dir, 'issue'));
+  return number ? { repo: readFile(path.join(dir, 'issue_repo'))?.trim() || r.repo, number } : undefined;
+}
 
 export function pidAlive(pid: number | undefined): boolean {
   if (!pid) return false;
@@ -64,16 +93,17 @@ export function predatesBoot(file: string): boolean {
 
 export const pidOf = (dir: string) => readNumber(path.join(dir, 'pid')) || undefined;
 export const dirAlive = (dir: string) => pidAlive(pidOf(dir)) && !predatesBoot(path.join(dir, 'pid'));
-export const issueAlive = (issue: number) => dirAlive(issueDir(issue));
+export const issueAlive = (i: IssueRef) => dirAlive(issueDir(i));
 
 /**
- * A run's name back into the kind and target it was made from — `dirOf` read backwards. One reader, so a
- * kind added to `KINDS` is a kind every caller sees: a directory listing, a worktree lease, the monitor.
- * Anything else (a stray file, a directory a human made) is not a run.
+ * A run's name back into the kind, target and repository it was made from — `runName` read backwards. One
+ * reader, so a kind added to `KINDS` is a kind every caller sees: a directory listing, a worktree lease, the
+ * monitor. Anything else (a stray file, a directory a human made) is not a run.
  */
-export function parseRunName(name: string): { kind: Kind; target: number } | undefined {
-  const m = /^(issue|review|approved|qa|smoke)-(\d+)$/.exec(name);
-  return m ? { kind: m[1] as Kind, target: Number(m[2]) } : undefined;
+export function parseRunName(name: string): RunRef | undefined {
+  const { base, repo } = untagName(name);
+  const m = /^(issue|review|approved|qa|smoke)-(\d+)$/.exec(base);
+  return m ? { kind: m[1] as Kind, target: Number(m[2]), repo } : undefined;
 }
 
 /** Every session directory Sloth has ever created, live or not. */
@@ -147,7 +177,7 @@ export const isBlocked = (dir: string) => fs.existsSync(path.join(dir, 'blocked'
  * wrote it, so it keeps its books under `state/status/` instead — which is why it used to be invisible
  * to everything below. It still starts a `claude` process, so it still takes a slot.
  */
-export const statusDir = (issue: number, commentId: string) => path.join(cfg().stateDir, 'status', `${issue}-${commentId}`);
+export const statusDir = (i: IssueRef, commentId: string) => path.join(cfg().stateDir, 'status', tag(`${i.number}-${commentId}`, i.repo));
 
 /** The book directories of every status reply, live or not. */
 export function statusDirs(): string[] {

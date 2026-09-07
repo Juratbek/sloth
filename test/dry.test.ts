@@ -4,7 +4,7 @@ import { tick } from '../server/runner/loop';
 import { stop } from '../server/runner/run-control';
 import { onGh, resetGh } from './gh-mock';
 import { resetSpawn } from './child-process-mock';
-import { alivePid, configure, exists, makeSession, readLog, sessionDir, wipe } from './harness';
+import { alivePid, configure, exists, makeSession, readLog, runRef, sessionDir, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
@@ -77,7 +77,7 @@ describe('a dry tick', () => {
       const ticking = tick({ board: true, dryRun: true });
       await new Promise((r) => setImmediate(r));
       // The human's stop, in the window the dry tick used to own: it kills, it forgets the pid, it parks.
-      expect(await stop('issue', 7, 'stopped from the monitor', 'a human stopped this run.')).toBe(true);
+      expect(await stop(runRef('issue', 7), 'stopped from the monitor', 'a human stopped this run.')).toBe(true);
       release();
       await ticking;
       expect(exists(sessionDir('issue', 7), 'pid')).toBe(false);

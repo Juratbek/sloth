@@ -33,7 +33,7 @@ function Integrity({ report }: { report: HoursReport }) {
   return <Chip tone="emerald" size="xs" title={`the ledger checks out and matches its copy on the assets branch · ${at}`}>ledger intact</Chip>;
 }
 
-export default function HoursPanel({ repo }: { repo: string }) {
+export default function HoursPanel({ repo, several = false }: { repo: string; several?: boolean }) {
   // Empty asks the server for this month; the arrows move from whatever month it answered with.
   const [month, setMonth] = useState('');
   const { data: report, error } = useHours(month);
@@ -81,7 +81,7 @@ export default function HoursPanel({ repo }: { repo: string }) {
           <span className="tabular-nums">{hrs(report.totalSeconds)}</span>
           {report.totalContinuedSeconds > 0 ? ` + ${hrs(report.totalContinuedSeconds)} continued` : ''} all time
           {report.since ? ` since ${dayLabel(new Date(report.since * 1000).toISOString())}` : ''}
-          {report.live.length > 0 && <LiveRuns runs={report.live} repo={repo} />}
+          {report.live.length > 0 && <LiveRuns runs={report.live} repo={repo} several={several} />}
         </span>
         <span className="ml-auto">
           <Integrity report={report} />
@@ -93,13 +93,13 @@ export default function HoursPanel({ repo }: { repo: string }) {
         </p>
       ) : (
         <div className="min-h-0 overflow-auto rounded-md border border-zinc-800">
-          {report.issues.length > 0 && <IssuesHours issues={report.issues} repo={repo} />}
+          {report.issues.length > 0 && <IssuesHours issues={report.issues} repo={repo} several={several} />}
           {report.excluded.length > 0 && (
             <details className="border-t border-zinc-800/70">
               <summary className="cursor-pointer px-2 py-1 text-[11px] text-zinc-500">
                 {report.excluded.length} failed run{report.excluded.length === 1 ? '' : 's'}
               </summary>
-              <ExcludedRuns runs={report.excluded} repo={repo} />
+              <ExcludedRuns runs={report.excluded} repo={repo} several={several} />
             </details>
           )}
         </div>

@@ -20,7 +20,9 @@ const MOUNTED = {
   service: queryKeys.service,
   config: queryKeys.setupConfig,
   env: queryKeys.setupEnv,
+  ghLogin: queryKeys.setupGhLogin,
   projects: queryKeys.setupProjects,
+  repos: queryKeys.setupRepos,
   fields: queryKeys.setupFields('PVT_1'),
 };
 
@@ -64,7 +66,7 @@ describe('queryKeys', () => {
   });
 
   it('nests everything the wizard asks the server under the setup prefix', () => {
-    expect(reachedBy(queryKeys.setup)).toEqual(['config', 'env', 'fields', 'projects']);
+    expect(reachedBy(queryKeys.setup)).toEqual(['config', 'env', 'fields', 'ghLogin', 'projects', 'repos']);
   });
 
   it('keeps the standalone keys standalone — one invalidation, one query', () => {
@@ -82,7 +84,7 @@ describe('queryKeys', () => {
   });
 
   it('never lets a live key reach one that shells out to gh or claude', () => {
-    const expensive = ['config', 'env', 'projects', 'fields', 'service', 'remote', 'stack', 'stackAt', 'models', 'update', 'health'];
+    const expensive = ['config', 'env', 'projects', 'repos', 'fields', 'service', 'remote', 'stack', 'stackAt', 'models', 'update', 'health'];
     for (const key of [queryKeys.overview, queryKeys.sessions, queryKeys.allUsage]) {
       expect(reachedBy(key).filter((name) => expensive.includes(name))).toEqual([]);
     }

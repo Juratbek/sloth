@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { APPROVED_LABEL, SKIP_LABEL, skipped } from '../../../server/board-types';
 import type { ColumnRole } from '../../../server/config-types';
 import type { BoardCard } from '../../../server/types';
-import { STATUS_COLOR, duration, safeUrl, stepLabel, usd } from '../../lib/format';
+import { STATUS_COLOR, duration, issueLabel, safeUrl, stepLabel, usd } from '../../lib/format';
 
 /** A link out of a card: the card itself is the click target, so the link keeps its click to itself. */
 function Out({ href, className, children }: { href: string; className: string; children: ReactNode }) {
@@ -25,7 +25,7 @@ function Out({ href, className, children }: { href: string; className: string; c
  * whole sentence in the `title` — the answer to "why is nothing happening?" is worth a hover, not a
  * card that grows to three times the height of its neighbours.
  */
-export default function Card({ card, role, onSelect }: { card: BoardCard; role: ColumnRole; onSelect: (id: string) => void }) {
+export default function Card({ card, role, several = false, onSelect }: { card: BoardCard; role: ColumnRole; several?: boolean; onSelect: (id: string) => void }) {
   const step = card.kind && stepLabel(card.kind, card.step);
   const pr = safeUrl(card.pr);
   const preview = safeUrl(card.preview?.url);
@@ -52,7 +52,7 @@ export default function Card({ card, role, onSelect }: { card: BoardCard; role: 
       className={`rounded-md border border-zinc-800 bg-zinc-900/40 px-2 py-1.5 ${pick ? 'cursor-pointer hover:bg-zinc-900' : ''}`}
     >
       <div className="flex items-center gap-1.5">
-        <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">#{card.issue}</span>
+        <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">{issueLabel(card.repo, card.issue, several)}</span>
         <span className="truncate text-xs text-zinc-200">{card.title}</span>
         {card.status && (
           <span className="ml-auto flex shrink-0 items-center gap-1">

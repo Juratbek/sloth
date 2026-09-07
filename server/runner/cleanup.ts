@@ -1,10 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from '../config';
+import { repoRoot } from '../repos';
+import type { IssueRef } from '../repo-types';
 import { run } from './gh';
 import { killTree } from './kill';
 import { log, readFile, remove } from './log';
-import { dirOf, pidAlive, predatesBoot, worktreeName, type Kind } from './session-dirs';
+import { dirOf, issueRef, pidAlive, predatesBoot, runName, worktreeName, type RunRef } from './session-dirs';
 import { releaseSlot, slotOf } from './slots';
 import { handOver } from './warm';
 
@@ -19,7 +21,7 @@ import { handOver } from './warm';
  * it. Only a run whose app was kept up for a preview — that stack is the preview's until `preview.ts`
  * takes it down — or one with nothing left alive is cleaned up the old way.
  */
-export const cleanup = (issue: number, tainted = false): Promise<void> => cleanupRun('issue', issue, tainted);
+export const cleanup = (issue: IssueRef, tainted = false): Promise<void> => cleanupRun(issueRef(issue), tainted);
 
 /** Whether the run handed its app over to a preview — written at teardown, or once the tunnel is up. */
 const previewed = (dir: string) => fs.existsSync(path.join(dir, 'preview.json')) || fs.existsSync(path.join(dir, 'preview-state.json'));
@@ -56,14 +58,14 @@ async function killRecorded(file: string, who: string): Promise<void> {
  * `tainted` marks a run that was killed rather than ended (`warm.ts`): its stack still warms the slot,
  * but without its head, so a retry reseeds the database instead of trusting what the kill interrupted.
  */
-export async function cleanupRun(kind: Kind, target: number, tainted = false): Promise<void> {
-  const dir = dirOf(kind, target);
+export async function cleanupRun(r: RunRef, tainted = false): Promise<void> {
+  const dir = dirOf(r);
   // A test run is never warm: the smoke test's e2e suite (`smoke.md` Step 2.5) drives the app rather
   // than serving it, so its group goes down whether the stack is handed over or torn down.
-  await killRecorded(path.join(dir, 'e2e.pid'), `${kind}-${target}`);
-  const slot = cfg().warmSlots && !previewed(dir) ? slotOf(kind, target) : undefined;
-  if (!(slot && (await handOver(kind, target, slot, tainted)))) {
-    for (const name of ['dev.pid', 'redis.pid']) await killRecorded(path.join(dir, name), `${kind}-${target}`);
+  await killRecorded(path.join(dir, 'e2e.pid'), runName(r));
+  const slot = cfg().warmSlots && !previewed(dir) ? slotOf(r) : undefined;
+  if (!(slot && (await handOver(r, slot, tainted)))) {
+    for (const name of ['dev.pid', 'redis.pid']) await killRecorded(path.join(dir, name), runName(r));
     // One name per line, like the pid files beside it: a project skill that seeds two databases writes
     // two. The whole file used to be handed to `dropdb` as a single name, so a run with two dropped
     // neither and leaked both.
@@ -73,11 +75,12 @@ export async function cleanupRun(kind: Kind, target: number, tainted = false): P
   }
   // A cleaned-up run has nothing left to show.
   remove(path.join(dir, 'preview.json'));
-  await releaseSlot(kind, target);
-  const worktree = path.join(cfg().worktreesDir, worktreeName(kind, target));
+  await releaseSlot(r);
+  const worktree = path.join(cfg().worktreesDir, worktreeName(r));
   if (fs.existsSync(worktree)) {
-    await run('git', ['-C', cfg().runnerRoot, 'worktree', 'remove', worktree, '--force'], { timeout: 120_000 });
-    await run('git', ['-C', cfg().runnerRoot, 'worktree', 'prune'], { timeout: 60_000 });
+    const root = repoRoot(r.repo);
+    await run('git', ['-C', root, 'worktree', 'remove', worktree, '--force'], { timeout: 120_000 });
+    await run('git', ['-C', root, 'worktree', 'prune'], { timeout: 60_000 });
   }
 }
 
@@ -88,12 +91,12 @@ export async function cleanupRun(kind: Kind, target: number, tainted = false): P
  * slot goes back to the pool. A previewing run keeps today's hand-off, and with `warmSlots` off the
  * session tore everything down itself, so in both cases there is nothing here to keep.
  */
-export async function keepWarm(kind: Kind, target: number): Promise<void> {
+export async function keepWarm(r: RunRef): Promise<void> {
   if (!cfg().warmSlots) return;
-  const dir = dirOf(kind, target);
+  const dir = dirOf(r);
   if (previewed(dir)) return;
-  const slot = slotOf(kind, target);
-  if (slot && (await handOver(kind, target, slot))) await releaseSlot(kind, target);
+  const slot = slotOf(r);
+  if (slot && (await handOver(r, slot))) await releaseSlot(r);
 }
 
 /**
@@ -101,8 +104,8 @@ export async function keepWarm(kind: Kind, target: number): Promise<void> {
  * up. A file that predates the boot counts as down however alive its numbers look — the preview behind
  * it did not survive the restart, and the recycled pids answering `kill(pid, 0)` are not its servers.
  */
-export function serversUp(issue: number): boolean {
-  const { pids, stale } = pidsOf(path.join(dirOf('issue', issue), 'dev.pid'));
+export function serversUp(issue: IssueRef): boolean {
+  const { pids, stale } = pidsOf(path.join(dirOf(issueRef(issue)), 'dev.pid'));
   if (stale) return false;
   if (!pids.length) return true;
   return pids.some(pidAlive);

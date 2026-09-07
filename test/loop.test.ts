@@ -53,7 +53,7 @@ describe('a board tick', () => {
     release();
     await Promise.all([ticking, saving]);
     try {
-      expect(cfg().repo).toBe('acme/other');
+      expect(cfg().repos[0].slug).toBe('acme/other');
       expect(snapshot()).toBeUndefined();
     } finally {
       stopLoop();

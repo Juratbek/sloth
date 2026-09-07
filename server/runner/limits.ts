@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { cfg } from '../config';
 import { lastRun } from './exits';
 import { readFile } from './log';
 import type { Rec } from '../jsonl';
+import { transcriptFile } from '../repos';
+import { parseRunName } from './session-dirs';
 
 /**
  * Whether a run ended because Claude ran out of allowance — the one ending that pauses the whole watcher
@@ -111,7 +112,7 @@ function tailRecords(file: string): Rec[] {
 function limitInTranscript(dir: string): boolean {
   const id = readFile(path.join(dir, 'session_id'))?.trim();
   if (!id || !/^[\w-]+$/.test(id)) return false;
-  return tailRecords(path.join(cfg().transcriptsDir, `${id}.jsonl`)).some((r) => errorRecord(r) && rateLimited(r));
+  return tailRecords(transcriptFile(id, parseRunName(path.basename(dir))?.repo)).some((r) => errorRecord(r) && rateLimited(r));
 }
 
 /** Which signal said so, for the log — `undefined` when this run did not end on a usage limit. */

@@ -68,7 +68,7 @@ describe('ensureWebhook', () => {
     expect(status.state).toBe('failed');
     expect(status.reason).toMatch(/HTTP 404/);
     expect(status.reason).toMatch(/Webhooks: write/);
-    expect(readLog().join('\n')).toMatch(/webhook: not configured/);
+    expect(readLog().join('\n')).toMatch(/webhook: acme\/widgets not configured/);
     expect(isWebhookLive()).toBe(false);
   });
 

@@ -7,7 +7,7 @@ import { exitsOf } from '../server/runner/exits';
 import { nowSec, setDry } from '../server/runner/log';
 import { called, onGh, resetGh } from './gh-mock';
 import { resetSpawn } from './child-process-mock';
-import { configure, exists, makeSession, read, readLog, sessionDir, statePath, wipe } from './harness';
+import { configure, exists, makeSession, read, readLog, ref, runRef, sessionDir, statePath, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
@@ -43,7 +43,7 @@ describe('stop, on a live issue run', () => {
       });
       onGh(/project item-add/, 'ITEM');
 
-      expect(await stop('issue', 7, 'stopped from the monitor', 'a human stopped this run.')).toBe(true);
+      expect(await stop(runRef('issue', 7), 'stopped from the monitor', 'a human stopped this run.')).toBe(true);
 
       expect(exists(sessionDir('issue', 7), 'pid')).toBe(false);
       // The run never prints a final report when it is killed, so what it was doing is all there is —
@@ -68,7 +68,7 @@ describe('stop, on a live issue run', () => {
     try {
       setDry(true);
       makeSession('issue', 7, { pid: '12345', 'state.json': { state: 'working' } });
-      expect(await stop('issue', 7, 'stopped from the monitor', 'why')).toBe(true);
+      expect(await stop(runRef('issue', 7), 'stopped from the monitor', 'why')).toBe(true);
       expect(kill.mock.calls.filter(([, sig]) => sig !== 0)).toHaveLength(0);
       expect(exists(sessionDir('issue', 7), 'pid')).toBe(true);
       expect(called(/issue comment/)).toHaveLength(0);
@@ -80,7 +80,7 @@ describe('stop, on a live issue run', () => {
   });
 
   it('has nothing to end for a session that was never started', async () => {
-    expect(await stop('issue', 404, 'x', 'y')).toBe(false);
+    expect(await stop(runRef('issue', 404), 'x', 'y')).toBe(false);
     expect(called(/issue comment/)).toHaveLength(0);
   });
 });
@@ -159,7 +159,7 @@ describe('park', () => {
   it('forgets the record of the runs once it has been posted, so the next park starts clean', async () => {
     makeSession('issue', 9, { 'exits.json': JSON.stringify([{ at: nowSec(), how: 'the session ended on its own', tail: 'out of time' }]), retries: '2' });
     onGh(/project item-add/, 'ITEM');
-    await park(9, 'it broke.', 'the details');
+    await park(ref(9), 'it broke.', 'the details');
     expect(exists(sessionDir('issue', 9), 'exits.json')).toBe(false);
     expect(exists(sessionDir('issue', 9), 'retries')).toBe(false);
     expect(called(/issue comment 9 [\s\S]*it broke\.[\s\S]*the details/)).toHaveLength(1);

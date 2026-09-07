@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cachedTitles, titleFor } from '../server/watcher';
 import { onExecFile, resetSpawn } from './child-process-mock';
-import { configure, wipe } from './harness';
+import { configure, ref, wipe } from './harness';
 
 vi.mock('node:child_process', () => import('./child-process-mock'));
 
@@ -18,9 +18,9 @@ const settle = () => new Promise((r) => setImmediate(r));
 
 /** Asks for `n` and waits for the answer — the first call always returns undefined. */
 async function ask(n: number): Promise<string | undefined> {
-  titleFor(n, 5000);
+  titleFor(ref(n), 5000);
   await settle();
-  return titleFor(n, 5000);
+  return titleFor(ref(n), 5000);
 }
 
 beforeEach(() => {
@@ -37,23 +37,23 @@ describe('titleFor', () => {
     const held = cachedTitles();
     expect(held.length).toBeLessThanOrEqual(500);
     // The newest are still there; the oldest were let go, and cost one `gh` call if they come back.
-    expect(held).toContain(620);
-    expect(held).not.toContain(1);
-    expect(titleFor(620, 5000)).toBe('Issue 620');
-    expect(titleFor(1, 5000)).toBeUndefined();
+    expect(held).toContain('acme/widgets#620');
+    expect(held).not.toContain('acme/widgets#1');
+    expect(titleFor(ref(620), 5000)).toBe('Issue 620');
+    expect(titleFor(ref(1), 5000)).toBeUndefined();
   });
 
   it('keeps the number the UI keeps asking about, and lets the one-offs go', async () => {
     expect(await ask(7)).toBe('Issue 7');
     for (let n = 100; n < 700; n++) {
       await ask(n);
-      titleFor(7, 5000); // #7 is on screen the whole time
+      titleFor(ref(7), 5000); // #7 is on screen the whole time
     }
-    expect(cachedTitles()).toContain(7);
+    expect(cachedTitles()).toContain('acme/widgets#7');
   });
 
   it('asks for nothing when the GitHub rate limit is nearly spent', async () => {
-    expect(titleFor(9001, 10)).toBeUndefined();
+    expect(titleFor(ref(9001), 10)).toBeUndefined();
     await settle();
     expect(cachedTitles()).not.toContain(9001);
   });

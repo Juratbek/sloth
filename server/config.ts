@@ -3,6 +3,7 @@ import path from 'node:path';
 import { expandPath, readConfigFile } from './config-file';
 import { CONFIG_PATH, envValue } from './env';
 import { CONFIG_DEFAULTS, type SlothConfig } from './config-types';
+import { repoName, type RepoConfig } from './repo-types';
 import { clearSnapshot } from './runner/board-snapshot';
 
 export { CONFIG_PATH, PLUGIN_DIR, SLOTH_ROOT, envValue } from './env';
@@ -11,22 +12,34 @@ export { CONFIG_PATH, PLUGIN_DIR, SLOTH_ROOT, envValue } from './env';
 export interface ResolvedConfig extends SlothConfig {
   configured: boolean;
   title: string;
+  /** The first repository's transcripts — every repository has a directory of its own (`transcriptsDirOf`). */
   transcriptsDir: string;
   commands: Record<string, string>;
   port: number;
   pickupColumn: string;
 }
 
+/** Claude Code stores transcripts under ~/.claude/projects/<cwd with every non-alphanumeric char replaced by '-'>. */
+export const transcriptsDirOf = (root: string): string => path.join(os.homedir(), '.claude/projects', root.replace(/[^a-zA-Z0-9]/g, '-'));
+
+/** The page title: the repositories by name, three at most, then a count. */
+export function titleOf(repos: RepoConfig[]): string {
+  const names = repos.map((r) => repoName(r.slug));
+  if (!names.length) return 'Sloth';
+  const shown = names.slice(0, 3).join(' · ');
+  return `Sloth · ${shown}${names.length > 3 ? ` +${names.length - 3}` : ''}`;
+}
+
 const BLANK_COLUMN = { id: '', name: '' };
 const BLANK: SlothConfig = {
   version: 1,
-  repo: '',
+  repos: [],
+  legacyRepo: '',
   project: { provider: 'github', id: '', number: 0, owner: '', title: '' },
   statusField: {
     id: '',
     columns: { pickup: BLANK_COLUMN, inProgress: BLANK_COLUMN, needsHelp: BLANK_COLUMN, codeReview: BLANK_COLUMN, approved: BLANK_COLUMN, qa: BLANK_COLUMN, done: BLANK_COLUMN },
   },
-  runnerRoot: process.cwd(),
   worktreesDir: '~/.sloth/worktrees',
   sessionsDir: '~/.sloth/sessions',
   roles: { admin: '', developers: [], testers: [] },
@@ -46,19 +59,18 @@ export const COMMANDS: Record<string, string> = {
 function resolve(): ResolvedConfig {
   const saved = readConfigFile(CONFIG_PATH);
   const c = saved ?? BLANK;
-  const runnerRoot = expandPath(c.runnerRoot);
+  const repos = c.repos.map((r) => ({ ...r, root: expandPath(r.root) }));
   return {
     ...c,
+    repos,
     configured: !!saved,
-    runnerRoot,
     runnersDir: expandPath(c.runnersDir),
     worktreesDir: expandPath(c.worktreesDir),
     sessionsDir: expandPath(c.sessionsDir),
     stateDir: expandPath(c.stateDir),
     watcherLog: expandPath(c.watcherLog),
-    title: c.repo ? `Sloth · ${c.repo.split('/').pop()}` : 'Sloth',
-    // Claude Code stores transcripts under ~/.claude/projects/<cwd with every non-alphanumeric char replaced by '-'>
-    transcriptsDir: path.join(os.homedir(), '.claude/projects', runnerRoot.replace(/[^a-zA-Z0-9]/g, '-')),
+    title: titleOf(repos),
+    transcriptsDir: transcriptsDirOf(repos[0]?.root ?? process.cwd()),
     commands: COMMANDS,
     // `??` lets `SLOTH_PORT=` through as an empty string, which `Number` reads as 0 and Vite binds a
     // random port for — the QR code, the launch agent and the docs then all name a port nobody is on.

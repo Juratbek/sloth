@@ -20,7 +20,7 @@ calls below do not apply there, and `SLOTH_BOARD_API` replaces them).
 |---|---|
 | `SLOTH_BOARD` | `github` or `trello` |
 | `SLOTH_BOARD_API` | Sloth's own board API on this machine, `http://127.0.0.1:<port>/api/board` — the reads and moves on a Trello board |
-| `SLOTH_REPO` | `owner/repo` |
+| `SLOTH_REPO` | `owner/repo` — the repository this run works in (the `session` skill's table says how several are told apart) |
 | `SLOTH_PROJECT_ID` | Project node id (`PVT_…`) |
 | `SLOTH_PROJECT_NUMBER` / `SLOTH_PROJECT_OWNER` | Project number and its owner login |
 | `SLOTH_STATUS_FIELD_ID` | Single-select field id (`PVTSSF_…`) |
@@ -173,8 +173,9 @@ Trello key — the calls go to Sloth, on this machine.
 put it on none. Use these instead, wherever a step above says `item-edit` or reads a column:
 
 ```bash
-# the column the card is in (as of the last board read; empty = no card linked to this issue)
-COLUMN=$(curl -s "$SLOTH_BOARD_API/card/$SLOTH_ISSUE" | jq -r '.column // empty')
+# the column the card is in (as of the last board read; empty = no card linked to this issue).
+# The issue's repository goes with its number: Sloth may watch several, and two of them both have an issue 12.
+COLUMN=$(curl -s "$SLOTH_BOARD_API/card/$SLOTH_ISSUE?repo=${SLOTH_ISSUE_REPO:-$SLOTH_REPO}" | jq -r '.column // empty')
 
 # move the card — by column name (case-insensitive) or list id; the server moves it on Trello.
 # Retries a connection failure or a 5xx on its own; a 400 is permanent (its `error` says why) and is printed, not retried.
@@ -182,7 +183,7 @@ board_move() {
   local out code n
   for n in 1 2 3 4; do
     out=$(curl -s -w '\n%{http_code}' -X POST "$SLOTH_BOARD_API/move" -H 'content-type: application/json' \
-      -d "$(jq -n --argjson issue "$1" --arg column "$2" '{issue: $issue, column: $column}')")
+      -d "$(jq -n --argjson issue "$1" --arg column "$2" --arg repo "${SLOTH_ISSUE_REPO:-$SLOTH_REPO}" '{issue: $issue, column: $column, repo: $repo}')")
     code=${out##*$'\n'}
     case "$code" in
       200) return 0 ;;

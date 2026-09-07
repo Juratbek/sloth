@@ -5,7 +5,7 @@ import type { SessionSummary, WatcherSession } from '../server/types';
 const usage = (input: number, output = 0, cacheRead = 0) => ({ input, output, cacheRead, cacheWrite: 0, thinking: 0 });
 
 const dir = (kind: WatcherSession['kind'], target: number, issue?: number) =>
-  ({ name: `${kind}-${target}`, kind, target, issue, alive: false, retries: 0, blocked: false, runLogTail: '', inbox: [] }) as WatcherSession;
+  ({ name: `${kind}-${target}`, kind, target, repo: 'acme/widgets', issue, alive: false, retries: 0, blocked: false, runLogTail: '', inbox: [] }) as WatcherSession;
 
 /** A finished run as `listSessions` hands it over — only what the rollup reads is filled in. */
 const session = (over: Partial<SessionSummary>): SessionSummary =>
@@ -13,6 +13,7 @@ const session = (over: Partial<SessionSummary>): SessionSummary =>
     id: 'x',
     prompt: '',
     kind: 'other',
+    repo: 'acme/widgets',
     status: 'done',
     live: false,
     agents: [],
@@ -27,7 +28,7 @@ const session = (over: Partial<SessionSummary>): SessionSummary =>
     ...over,
   }) as SessionSummary;
 
-const titleOf = (n: number) => `Issue ${n}`;
+const titleOf = (i: { number: number }) => `Issue ${i.number}`;
 
 describe('rollup', () => {
   it('groups implement runs by their issue and reviews by the issue in their directory', () => {

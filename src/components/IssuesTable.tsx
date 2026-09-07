@@ -1,5 +1,5 @@
 import type { IssueCost, MonitorConfig } from '../../server/types';
-import { STATUS_COLOR, ago, k, usd } from '../lib/format';
+import { STATUS_COLOR, ago, issueLabel, k, usd } from '../lib/format';
 
 /**
  * What every issue Sloth touched has cost. The sessions list is per run — an issue that took four
@@ -7,6 +7,7 @@ import { STATUS_COLOR, ago, k, usd } from '../lib/format';
  * "what did #42 cost me" is one line. Dearest first, as the server rolled it up.
  */
 export default function IssuesTable({ issues, config }: { issues: IssueCost[]; config: MonitorConfig }) {
+  const several = (config.repos?.length ?? 1) > 1;
   // Returning null pulled the whole column out of the panel's flex row, so the watcher log jumped from
   // half the width to all of it and back the moment the first issue was costed. The heading stays.
   if (!issues.length)
@@ -35,18 +36,18 @@ export default function IssuesTable({ issues, config }: { issues: IssueCost[]; c
           </thead>
           <tbody className="text-zinc-400">
             {issues.map((i) => (
-              <tr key={i.issue} className="border-t border-zinc-800/70">
+              <tr key={`${i.repo}#${i.issue}`} className="border-t border-zinc-800/70">
                 <td className="px-2 py-1 whitespace-nowrap">
                   <span className="flex items-center gap-1.5">
                     {i.status && <span className={`h-1.5 w-1.5 rounded-full ${STATUS_COLOR[i.status]}`} />}
-                    {config.repo ? (
+                    {i.repo || config.repo ? (
                       <a
-                        href={`https://github.com/${config.repo}/issues/${i.issue}`}
+                        href={`https://github.com/${i.repo || config.repo}/issues/${i.issue}`}
                         target="_blank"
                         rel="noreferrer"
                         className="text-zinc-300 hover:underline"
                       >
-                        #{i.issue}
+                        {issueLabel(i.repo, i.issue, several)}
                       </a>
                     ) : (
                       <span>#{i.issue}</span>

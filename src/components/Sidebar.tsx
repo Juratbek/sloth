@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { SessionStatus, SessionSummary } from '../../server/types';
-import { STATUS_COLOR, dayLabel, elapsed, k, label, modelName, stepLabel, usd } from '../lib/format';
+import { STATUS_COLOR, dayLabel, elapsed, k, label, modelName, severalRepos, stepLabel, usd } from '../lib/format';
 import { inputStyle } from '../setup/ui';
 import { LoadBrief } from './SessionLoad';
 import Chip from './ui/Chip';
@@ -13,11 +13,11 @@ const GROUPS: { title: string; statuses: SessionStatus[]; byDay?: boolean }[] = 
 
 const endedAt = (s: SessionSummary) => s.lastAt ?? s.startedAt ?? '';
 
-/** Case-insensitive match on what the row shows: its label ("issue #42"), title and issue number. */
+/** Case-insensitive match on what the row shows: its label ("issue #42", "fix widgets#42"), title, issue number and repository. */
 export function matches(s: SessionSummary, query: string) {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return [label(s), s.title ?? '', s.target ? `#${s.target}` : ''].some((t) => t.toLowerCase().includes(q));
+  return [label(s, true), s.title ?? '', s.target ? `#${s.target}` : '', s.repo ?? ''].some((t) => t.toLowerCase().includes(q));
 }
 
 /** Sessions bucketed by the local day they ended, newest day first — the server orders by start, which can differ. */
@@ -33,7 +33,7 @@ function groupByDay(rows: SessionSummary[]) {
   return out;
 }
 
-function Row({ s, active, onSelect }: { s: SessionSummary; active: boolean; onSelect: () => void }) {
+function Row({ s, active, several, onSelect }: { s: SessionSummary; active: boolean; several: boolean; onSelect: () => void }) {
   const step = s.watcher && stepLabel(s.watcher.kind, s.watcher.state?.step);
   const model = modelName(s.model);
   return (
@@ -43,7 +43,7 @@ function Row({ s, active, onSelect }: { s: SessionSummary; active: boolean; onSe
     >
       <div className="flex items-center gap-2">
         <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_COLOR[s.status]} ${s.status === 'running' ? 'animate-pulse' : ''}`} />
-        <span className="text-sm font-medium text-fg-strong">{label(s)}</span>
+        <span className="text-sm font-medium text-fg-strong">{label(s, several)}</span>
         {step && (
           <Chip tone="solidDim" size="2xs">
             {step}
@@ -89,6 +89,8 @@ export default function Sidebar({
 }) {
   const [query, setQuery] = useState('');
   const shown = sessions.filter((s) => matches(s, query));
+  // Once the runs span two repositories every number says which; with one, `#12` is enough.
+  const several = severalRepos(sessions);
   return (
     <aside className={`${open ? 'flex' : 'hidden'} w-full shrink-0 flex-col border-r border-edge md:flex md:w-80`}>
       <div className="border-b border-surface-raised p-2">
@@ -118,11 +120,11 @@ export default function Sidebar({
                         {d.day} · {d.rows.length}
                       </h3>
                       {d.rows.map((s) => (
-                        <Row key={s.id} s={s} active={s.id === selected} onSelect={() => onSelect(s.id)} />
+                        <Row key={s.id} s={s} several={several} active={s.id === selected} onSelect={() => onSelect(s.id)} />
                       ))}
                     </div>
                   ))
-                : rows.map((s) => <Row key={s.id} s={s} active={s.id === selected} onSelect={() => onSelect(s.id)} />)}
+                : rows.map((s) => <Row key={s.id} s={s} several={several} active={s.id === selected} onSelect={() => onSelect(s.id)} />)}
             </section>
           );
         })}

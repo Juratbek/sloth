@@ -6,6 +6,7 @@ import { agentsDirOf, applyLinks, linkAgents, listAgents } from './agents';
 import { costOfUsage } from './pricing';
 import { rollup } from './issue-costs';
 import { boardFromSnapshot, type HoldState } from './board-view';
+import { primaryRepo, repoOfTranscriptsDir, repos, transcriptFile, transcriptsDirs } from './repos';
 import { blockedCards } from './runner/blocked';
 import { machineHold } from './runner/machine';
 import { isPaused } from './runner/pause';
@@ -16,7 +17,8 @@ import { listSessionDirs, rateLimit, titleFor, watcherInfo } from './watcher';
 import type { AgentDetail, AgentSummary, ModelUsage, Overview, SessionDetail, SessionKind, SessionSummary, WatcherSession } from './types';
 
 const ID = /^[\w-]+$/;
-const sessionFile = (id: string) => path.join(cfg().transcriptsDir, `${id}.jsonl`);
+/** The transcript of a session, in whichever repository's directory it landed. */
+const sessionFile = (id: string) => transcriptFile(id);
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -44,8 +46,8 @@ function costOfRun(byModel: ModelUsage[], agents: AgentSummary[]): number | null
   return total;
 }
 
-/** One transcript's row in the list, out of its digest — the records themselves are never held for this. */
-function summary(file: string): SessionSummary {
+/** One transcript's row in the list, out of its digest — the records themselves are never held for this. `repo` is the one whose checkout it ran in. */
+function summary(file: string, repo = repoOfTranscriptsDir(path.dirname(file)) ?? primaryRepo()): SessionSummary {
   const d = digestFile(file);
   const prompt = promptFrom(d);
   const agents = listAgents(file);
@@ -57,6 +59,7 @@ function summary(file: string): SessionSummary {
     id: path.basename(file, '.jsonl'),
     prompt,
     ...classify(prompt),
+    repo,
     ...stats,
     status: 'done',
     live: false,
@@ -68,26 +71,34 @@ function summary(file: string): SessionSummary {
 
 const newestFirst = (a: SessionSummary, b: SessionSummary) => (b.startedAt ?? '').localeCompare(a.startedAt ?? '');
 
-/** Every transcript, with the watcher's session dir attached (by session_id, else newest transcript for that target). */
+/**
+ * Every transcript of every repository — each one's sessions land under its own checkout — with the
+ * watcher's session dir attached (by session_id, else the newest transcript for that target in that repository).
+ */
 function listSessions(): { sessions: SessionSummary[]; orphans: WatcherSession[] } {
-  let files: string[] = [];
-  try {
-    files = fs.readdirSync(cfg().transcriptsDir).filter((f) => f.endsWith('.jsonl'));
-  } catch {
-    return { sessions: [], orphans: listSessionDirs() };
+  const sessions: SessionSummary[] = [];
+  for (const dir of transcriptsDirs()) {
+    let files: string[] = [];
+    try {
+      files = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl'));
+    } catch {
+      continue;
+    }
+    for (const f of files) sessions.push(summary(path.join(dir, f)));
   }
-  const sessions = files.map((f) => summary(path.join(cfg().transcriptsDir, f))).sort(newestFirst);
+  sessions.sort(newestFirst);
   const orphans: WatcherSession[] = [];
   for (const dir of listSessionDirs()) {
     const wanted: SessionKind = dir.kind === 'issue' ? 'sloth:implement' : dir.kind === 'qa' ? 'sloth:qa' : dir.kind === 'smoke' ? 'sloth:smoke' : 'sloth:review';
     const s =
       sessions.find((x) => x.id === dir.sessionId) ??
-      sessions.find((x) => !x.watcher && x.kind === wanted && x.target === dir.target);
+      sessions.find((x) => !x.watcher && x.kind === wanted && x.target === dir.target && x.repo === dir.repo);
     if (!s) {
       orphans.push(dir);
       continue;
     }
     s.watcher = dir;
+    s.repo = dir.repo;
     s.live = dir.alive;
     const waiting = dir.state?.state === 'waiting';
     s.status = dir.alive ? (waiting ? 'waiting' : 'running') : waiting ? 'parked' : 'done';
@@ -111,8 +122,8 @@ const holdState = (): HoldState => ({
 export async function overview(): Promise<Overview> {
   const [rate, { sessions, orphans }] = [await rateLimit(), listSessions()];
   // A smoke test's number is its own, not an issue's: no title to look up, and none to mistake.
-  for (const s of sessions) if (s.target && s.kind !== 'sloth:smoke') s.title = titleFor(s.target, rate?.core?.remaining);
-  const issues = rollup(sessions, (n) => titleFor(n, rate?.core?.remaining));
+  for (const s of sessions) if (s.target && s.kind !== 'sloth:smoke') s.title = titleFor({ repo: s.repo, number: s.target }, rate?.core?.remaining);
+  const issues = rollup(sessions, (ref) => titleFor(ref, rate?.core?.remaining));
   return {
     generatedAt: new Date().toISOString(),
     config: monitorConfig(),
@@ -130,9 +141,10 @@ export async function overview(): Promise<Overview> {
 function monitorConfig(): Overview['config'] {
   const c = cfg();
   return {
-    repo: c.repo,
+    repo: primaryRepo(),
+    repos: repos(),
     title: c.title,
-    runnerRoot: c.runnerRoot,
+    runnerRoot: c.repos[0]?.root ?? '',
     transcriptsDir: c.transcriptsDir,
     commands: c.commands,
     boardSeconds: c.boardSeconds,

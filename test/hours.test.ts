@@ -11,7 +11,7 @@ import { BUDGET_REASON, reap, stop } from '../server/runner/run-control';
 import { trackWaiting } from '../server/runner/waiting';
 import { resetSpawn } from './child-process-mock';
 import { called, onCommand, onGh, resetGh } from './gh-mock';
-import { alivePid, configure, exists, makeSession, read, readLog, sessionDir, statePath, wipe } from './harness';
+import { REPO, alivePid, configure, exists, makeSession, read, readLog, ref, runRef, sessionDir, statePath, wipe } from './harness';
 
 vi.mock('../server/runner/gh', () => import('./gh-mock'));
 vi.mock('node:child_process', () => import('./child-process-mock'));
@@ -45,14 +45,14 @@ const lines = () => read(ledgerFile()).trimEnd().split('\n');
 describe('bookRun', () => {
   it('books the run’s own seconds — launched to now, less the time it stood paused — and chains onto the line before', () => {
     const dir = makeSession('issue', 7, { started: String(nowSec() - 2 * HOUR), paused_total: '600', session_id: 'sid-7', 'state.json': { state: 'done', since: nowSec() } });
-    const first = bookRun('issue', 7, dir, 'done')!;
+    const first = bookRun(runRef('issue', 7), dir, 'done')!;
     expect(first).toMatchObject({ n: 1, kind: 'issue', target: 7, issue: 7, sessionId: 'sid-7', pausedSeconds: 600, waitedSeconds: 0, ending: 'done', billable: true, prev: '' });
     expect(first.seconds).toBeGreaterThanOrEqual(2 * HOUR - 600 - 2);
     expect(first.seconds).toBeLessThanOrEqual(2 * HOUR - 600);
     expect(first.hash).toMatch(/^[0-9a-f]{64}$/);
     // A review's issue is the one written beside it; a failed ending is booked, and not billed.
     const review = makeSession('approved', 30, { started: String(nowSec() - HOUR), issue: '7' });
-    const second = bookRun('approved', 30, review, 'died')!;
+    const second = bookRun(runRef('approved', 30), review, 'died')!;
     expect(second).toMatchObject({ n: 2, issue: 7, billable: false, prev: first.hash });
     expect(readLedger()).toEqual({ entries: [first, second] });
     expect(read(unpublishedFile())).toBe('2');
@@ -63,7 +63,7 @@ describe('bookRun', () => {
   it('credits back the time a run sat in needs-help waiting for an answer — booked and still open', () => {
     // Answered once (40 min credited), asked again 10 minutes ago and still waiting: neither is worked time.
     const dir = makeSession('issue', 8, { started: String(nowSec() - 2 * HOUR), paused_total: '60', waiting_total: String(40 * 60), waiting: String(nowSec() - 600), 'state.json': { state: 'waiting', since: nowSec() } });
-    const e = bookRun('issue', 8, dir, 'waiting')!;
+    const e = bookRun(runRef('issue', 8), dir, 'waiting')!;
     expect(e).toMatchObject({ pausedSeconds: 60, ending: 'waiting', billable: true });
     expect(e.waitedSeconds).toBeGreaterThanOrEqual(50 * 60);
     expect(e.waitedSeconds).toBeLessThanOrEqual(50 * 60 + 2);
@@ -76,22 +76,22 @@ describe('bookRun', () => {
     const now = nowSec();
     // Done half an hour ago; the tick only now noticing adds nothing.
     const done = makeSession('issue', 11, { started: String(now - 2 * HOUR), 'state.json': { state: 'done', step: '9', since: now - 1800 } });
-    expect(bookRun('issue', 11, done, 'done')).toMatchObject({ endedAt: now - 1800, seconds: 2 * HOUR - 1800 });
+    expect(bookRun(runRef('issue', 11), done, 'done')).toMatchObject({ endedAt: now - 1800, seconds: 2 * HOUR - 1800 });
     // Asked ten minutes ago and the process died waiting: the run ended at the question, and the wait the
     // server opened after it is not subtracted twice.
     const asked = makeSession('issue', 12, { started: String(now - 2 * HOUR), waiting: String(now - 500), 'state.json': { state: 'waiting', step: 'Q', since: now - 600 } });
-    expect(bookRun('issue', 12, asked, 'waiting')).toMatchObject({ endedAt: now - 600, waitedSeconds: 0, seconds: 2 * HOUR - 600 });
+    expect(bookRun(runRef('issue', 12), asked, 'waiting')).toMatchObject({ endedAt: now - 600, waitedSeconds: 0, seconds: 2 * HOUR - 600 });
     // A since outside the run's life is not trusted; a run killed working has no mark of its own.
     const odd = makeSession('issue', 13, { started: String(now - HOUR), 'state.json': { state: 'done', since: now - 2 * HOUR } });
-    expect(bookRun('issue', 13, odd, 'done')!.endedAt).toBeGreaterThanOrEqual(now);
+    expect(bookRun(runRef('issue', 13), odd, 'done')!.endedAt).toBeGreaterThanOrEqual(now);
     const killed = makeSession('issue', 14, { started: String(now - HOUR), 'state.json': { state: 'working', since: now - 1800 } });
-    expect(bookRun('issue', 14, killed, 'budget')!.endedAt).toBeGreaterThanOrEqual(now);
+    expect(bookRun(runRef('issue', 14), killed, 'budget')!.endedAt).toBeGreaterThanOrEqual(now);
   });
 
   it('books nothing on a dry tick', () => {
     setDry(true);
     const dir = makeSession('issue', 7, { started: String(nowSec() - HOUR) });
-    expect(bookRun('issue', 7, dir, 'done')).toBeUndefined();
+    expect(bookRun(runRef('issue', 7), dir, 'done')).toBeUndefined();
     expect(exists(ledgerFile())).toBe(false);
     expect(readLog().join('\n')).toMatch(/dry-run: would book issue-7/);
   });
@@ -99,7 +99,7 @@ describe('bookRun', () => {
 
 describe('readLedger', () => {
   const three = () => {
-    for (const n of [1, 2, 3]) bookRun('issue', n, makeSession('issue', n, { started: String(nowSec() - HOUR) }), 'done');
+    for (const n of [1, 2, 3]) bookRun(runRef('issue', n), makeSession('issue', n, { started: String(nowSec() - HOUR) }), 'done');
   };
   it('reads a whole ledger back', () => {
     three();
@@ -131,7 +131,7 @@ describe('readLedger', () => {
     three();
     const [a, , c] = lines();
     fs.writeFileSync(ledgerFile(), `${a}\n${c}\n`);
-    bookRun('issue', 4, makeSession('issue', 4, { started: String(nowSec() - HOUR) }), 'done');
+    bookRun(runRef('issue', 4), makeSession('issue', 4, { started: String(nowSec() - HOUR) }), 'done');
     const { entries, problem } = readLedger();
     expect(entries).toHaveLength(1);
     expect(problem).toMatch(/^line 2 is numbered 3/);
@@ -195,8 +195,8 @@ describe('stop books the kill', () => {
       makeSession('issue', 7, { pid: '12345', started: String(nowSec() - HOUR), 'state.json': { state: 'working' } });
       makeSession('qa', 9, { pid: '12346', started: String(nowSec() - 2 * HOUR), 'state.json': { state: 'working' } });
       onGh(/project item-add/, 'ITEM');
-      expect(await stop('issue', 7, 'stopped from the monitor', 'a human stopped this run.')).toBe(true);
-      expect(await stop('qa', 9, BUDGET_REASON, 'hung.')).toBe(true);
+      expect(await stop(runRef('issue', 7), 'stopped from the monitor', 'a human stopped this run.')).toBe(true);
+      expect(await stop(runRef('qa', 9), BUDGET_REASON, 'hung.')).toBe(true);
       expect(readLedger().entries.map((e) => [e.kind, e.target, e.ending, e.billable])).toEqual([
         ['issue', 7, 'stopped', false],
         ['qa', 9, 'budget', false],
@@ -212,7 +212,7 @@ describe('hoursReport', () => {
   const at = (iso: string) => vi.setSystemTime(new Date(iso));
   const book = (kind: 'issue' | 'approved' | 'qa', n: number, hours: number, ending: 'done' | 'died' | 'verdict', files: Record<string, string> = {}) =>
     // A finished run says when it finished, as a real one does; a run without a mark is capped at its budget.
-    bookRun(kind, n, makeSession(kind, n, { started: String(nowSec() - hours * HOUR), ...(ending === 'done' ? { 'state.json': { state: 'done', since: nowSec() } } : {}), ...files }), ending);
+    bookRun(runRef(kind, n), makeSession(kind, n, { started: String(nowSec() - hours * HOUR), ...(ending === 'done' ? { 'state.json': { state: 'done', since: nowSec() } } : {}), ...files }), ending);
 
   it('sums one month by issue, lists the failed runs with their reasons, and keeps the other months for the picker', async () => {
     vi.useFakeTimers();
@@ -245,8 +245,8 @@ describe('hoursReport', () => {
     const at10 = Date.parse('2026-09-02T10:00:00Z') / 1000;
     const at14 = Date.parse('2026-09-02T14:00:00Z') / 1000;
     expect(r.excluded).toEqual([
-      { n: 6, kind: 'qa', target: 3, issue: 3, seconds: HOUR, ending: 'died', endedAt: at14, continued: false },
-      { n: 2, kind: 'issue', target: 1, issue: 1, seconds: HOUR, ending: 'died', endedAt: at10, continued: true },
+      { n: 6, kind: 'qa', target: 3, repo: REPO, issue: 3, seconds: HOUR, ending: 'died', endedAt: at14, continued: false },
+      { n: 2, kind: 'issue', target: 1, repo: REPO, issue: 1, seconds: HOUR, ending: 'died', endedAt: at10, continued: true },
     ]);
     expect(r.months).toEqual([
       { month: '2026-09', billableSeconds: 4.5 * HOUR, continuedSeconds: HOUR, excludedSeconds: HOUR, runs: 5 },
@@ -265,7 +265,7 @@ describe('hoursReport', () => {
     makeSession('approved', 51, { pid: alivePid(), started: String(nowSec() - 300), issue: '9' });
     makeSession('issue', 10, { pid: DEAD, started: String(nowSec() - 600) });
     // A failed run on #9 counts as taken up only once the run alive on it now is booked billable — not yet.
-    bookRun('issue', 9, makeSession('approved', 52, { started: String(nowSec() - HOUR), issue: '9' }), 'died');
+    bookRun(runRef('issue', 9), makeSession('approved', 52, { started: String(nowSec() - HOUR), issue: '9' }), 'died');
     const r = await hoursReport();
     expect(r.excluded[0]).toMatchObject({ target: 9, continued: false });
     expect(r.excludedSeconds).toBeGreaterThanOrEqual(HOUR - 2);
@@ -291,7 +291,7 @@ describe('the copy on the assets branch', () => {
     onCommand(/^git .* commit-tree /, 'commit1');
     onCommand(/^git .* show /, remote);
   };
-  const booked = () => bookRun('issue', 1, makeSession('issue', 1, { started: String(nowSec() - HOUR) }), 'done')!;
+  const booked = () => bookRun(runRef('issue', 1), makeSession('issue', 1, { started: String(nowSec() - HOUR) }), 'done')!;
 
   it('commits the ledger on top of the branch out of its own index, and pushes it', async () => {
     booked();
@@ -412,28 +412,28 @@ describe('never rounded in Sloth’s favour', () => {
   it('a run that ended without a word ended when its process exited, else at its last line of output', () => {
     const now = nowSec();
     const exited = makeSession('issue', 21, { started: String(now - HOUR), exited: String(now - 900), 'state.json': { state: 'working' } });
-    expect(bookRun('issue', 21, exited, 'died')).toMatchObject({ endedAt: now - 900, seconds: HOUR - 900 });
+    expect(bookRun(runRef('issue', 21), exited, 'died')).toMatchObject({ endedAt: now - 900, seconds: HOUR - 900 });
     const logged = makeSession('issue', 22, { started: String(now - HOUR), 'run.log': 'x\n', 'state.json': { state: 'working' } });
     fs.utimesSync(path.join(logged, 'run.log'), new Date((now - 600) * 1000), new Date((now - 600) * 1000));
-    expect(bookRun('issue', 22, logged, 'died')).toMatchObject({ endedAt: now - 600, seconds: HOUR - 600 });
+    expect(bookRun(runRef('issue', 22), logged, 'died')).toMatchObject({ endedAt: now - 600, seconds: HOUR - 600 });
     // An exit older than the launch belongs to an earlier run; a kill ended now, whatever the log says.
     const stale = makeSession('issue', 23, { started: String(now - HOUR), exited: String(now - 2 * HOUR), 'run.log': 'x\n' });
     fs.utimesSync(path.join(stale, 'run.log'), new Date((now - 600) * 1000), new Date((now - 600) * 1000));
-    expect(bookRun('issue', 23, stale, 'died')!.endedAt).toBe(now - 600);
-    expect(bookRun('issue', 23, stale, 'budget')!.endedAt).toBeGreaterThanOrEqual(now);
+    expect(bookRun(runRef('issue', 23), stale, 'died')!.endedAt).toBe(now - 600);
+    expect(bookRun(runRef('issue', 23), stale, 'budget')!.endedAt).toBeGreaterThanOrEqual(now);
   });
 
   it('a wait begins when the session said it asked — after the launch and its last answer, never in the future', () => {
     const now = nowSec();
     const dir = makeSession('issue', 24, { started: String(now - HOUR), 'state.json': { state: 'waiting', step: 'Q', since: now - 1200 } });
-    trackWaiting(dir, 24);
+    trackWaiting(dir, ref(24));
     expect(read(path.join(dir, 'waiting'))).toBe(String(now - 1200));
     // Before the launch, or before the answer it already got: the tick's own time.
     const early = makeSession('issue', 25, { started: String(now - HOUR), 'state.json': { state: 'waiting', since: now - 2 * HOUR } });
-    trackWaiting(early, 25);
+    trackWaiting(early, ref(25));
     expect(Number(read(path.join(early, 'waiting')))).toBeGreaterThanOrEqual(now);
     const answered = makeSession('issue', 26, { started: String(now - HOUR), answered: String(now - 300), 'state.json': { state: 'waiting', since: now - 600 } });
-    trackWaiting(answered, 26);
+    trackWaiting(answered, ref(26));
     expect(Number(read(path.join(answered, 'waiting')))).toBeGreaterThanOrEqual(now);
   });
 
@@ -443,18 +443,18 @@ describe('never rounded in Sloth’s favour', () => {
     expect(column).toBeTruthy();
     const dir = makeSession('issue', 27, { started: String(now - HOUR), 'state.json': { state: 'working', step: '3', since: now - 1800 } });
     // After makeSession: the harness reloads the config, and a reload drops the board.
-    setSnapshot([{ number: 27, title: 't', status: column, labels: [], assignees: [], closed: false }]);
-    trackWaiting(dir, 27);
+    setSnapshot([{ repo: REPO, number: 27, title: 't', status: column, labels: [], assignees: [], closed: false }]);
+    trackWaiting(dir, ref(27));
     // The session did not say it was asking, so its `since` is not the wait's start: the tick is.
     expect(Number(read(path.join(dir, 'waiting')))).toBeGreaterThanOrEqual(now);
     // A review on the same issue never parks.
     const review = makeSession('approved', 60, { started: String(now - HOUR), issue: '27', 'state.json': { state: 'working' } });
-    setSnapshot([{ number: 27, title: 't', status: column, labels: [], assignees: [], closed: false }]);
+    setSnapshot([{ repo: REPO, number: 27, title: 't', status: column, labels: [], assignees: [], closed: false }]);
     trackWaiting(review);
     expect(exists(review, 'waiting')).toBe(false);
     // Moved out of the column: the wait closes.
     setSnapshot([]);
-    trackWaiting(dir, 27);
+    trackWaiting(dir, ref(27));
     expect(exists(dir, 'waiting')).toBe(false);
     expect(exists(dir, 'answered')).toBe(true);
   });
@@ -462,7 +462,7 @@ describe('never rounded in Sloth’s favour', () => {
   it('ending a parked run whose process is gone books it as waiting', async () => {
     const now = nowSec();
     makeSession('issue', 28, { pid: DEAD, started: String(now - HOUR), 'state.json': { state: 'waiting', step: 'Q', since: now - 1800 } });
-    expect(await stop('issue', 28, 'from the monitor', 'x')).toBe(true);
+    expect(await stop(runRef('issue', 28), 'from the monitor', 'x')).toBe(true);
     expect(readLedger().entries.map((e) => [e.target, e.ending, e.billable, e.seconds])).toEqual([[28, 'waiting', true, 1800]]);
     expect(exists(sessionDir('issue', 28), 'pid')).toBe(false);
   });
@@ -472,7 +472,7 @@ describe('what takes a failed run up', () => {
   const at = (iso: string) => vi.setSystemTime(new Date(iso));
   const book = (kind: 'issue' | 'approved' | 'qa', n: number, hours: number, ending: 'done' | 'died' | 'verdict', files: Record<string, string> = {}) =>
     // A finished run says when it finished, as a real one does; a run without a mark is capped at its budget.
-    bookRun(kind, n, makeSession(kind, n, { started: String(nowSec() - hours * HOUR), ...(ending === 'done' ? { 'state.json': { state: 'done', since: nowSec() } } : {}), ...files }), ending);
+    bookRun(runRef(kind, n), makeSession(kind, n, { started: String(nowSec() - hours * HOUR), ...(ending === 'done' ? { 'state.json': { state: 'done', since: nowSec() } } : {}), ...files }), ending);
   const continuedOf = async (month: string) => (await hoursReport(month)).excluded.map((e) => [e.n, e.continued]);
 
   it('only a billable run that started after the failure, within the window, and did not start over', async () => {
@@ -513,7 +513,7 @@ describe('booked once, and never more than it could have lived', () => {
     makeSession('issue', 31, { pid: DEAD, started: String(now - HOUR), 'state.json': { state: 'waiting', step: 'Q', since: now - 1800 } });
     await reap();
     expect(readLedger().entries).toHaveLength(1);
-    expect(await stop('issue', 31, 'from the monitor', 'x')).toBe(true);
+    expect(await stop(runRef('issue', 31), 'from the monitor', 'x')).toBe(true);
     expect(readLedger().entries).toHaveLength(1);
   });
 
@@ -538,17 +538,17 @@ describe('booked once, and never more than it could have lived', () => {
   it('with no mark at all, a run ended no later than its budget and the kill grace allow', () => {
     const now = nowSec();
     const dir = makeSession('issue', 34, { started: String(now - 3 * HOUR) });
-    expect(bookRun('issue', 34, dir, 'died')!.endedAt).toBe(now - 3 * HOUR + cfg().budgetMinutes * 60 + 5 * 60);
+    expect(bookRun(runRef('issue', 34), dir, 'died')!.endedAt).toBe(now - 3 * HOUR + cfg().budgetMinutes * 60 + 5 * 60);
     // The earliest honest mark wins over a later one.
     const marked = makeSession('issue', 35, { started: String(now - HOUR), exited: String(now - 300), 'state.json': { state: 'done', since: now - 900 } });
-    expect(bookRun('issue', 35, marked, 'done')!.endedAt).toBe(now - 900);
+    expect(bookRun(runRef('issue', 35), marked, 'done')!.endedAt).toBe(now - 900);
   });
 });
 
 describe('the second review’s holes', () => {
   const at = (iso: string) => vi.setSystemTime(new Date(iso));
   const book = (kind: 'issue' | 'approved' | 'qa', n: number, hours: number, ending: 'done' | 'died' | 'verdict', files: Record<string, string> = {}) =>
-    bookRun(kind, n, makeSession(kind, n, { started: String(nowSec() - hours * HOUR), ...(ending === 'done' ? { 'state.json': { state: 'done', since: nowSec() } } : {}), ...files }), ending);
+    bookRun(runRef(kind, n), makeSession(kind, n, { started: String(nowSec() - hours * HOUR), ...(ending === 'done' ? { 'state.json': { state: 'done', since: nowSec() } } : {}), ...files }), ending);
 
   it('a start-over is a wall: nothing after it takes up what came before', async () => {
     vi.useFakeTimers();
@@ -564,15 +564,15 @@ describe('the second review’s holes', () => {
   it('a wait the ticks never saw is credited from the session’s own marks, once', () => {
     const now = nowSec();
     const dir = makeSession('issue', 42, { started: String(now - HOUR), asked_at: String(now - 900), 'state.json': { state: 'working', step: '4', since: now - 300 } });
-    trackWaiting(dir, 42);
+    trackWaiting(dir, ref(42));
     expect(read(path.join(dir, 'waiting_total'))).toBe('600');
     expect(read(path.join(dir, 'answered'))).toBe(String(now - 300));
-    trackWaiting(dir, 42);
+    trackWaiting(dir, ref(42));
     expect(read(path.join(dir, 'waiting_total'))).toBe('600');
     // A card the board says is parked, by a session that said nothing: the wait began when it posted the question.
     const quiet = makeSession('issue', 43, { started: String(now - HOUR), asked_at: String(now - 400), 'state.json': { state: 'working', step: '3', since: now - 1800 } });
-    setSnapshot([{ number: 43, title: 't', status: cfg().statusField.columns.needsHelp.name, labels: [], assignees: [], closed: false }]);
-    trackWaiting(quiet, 43);
+    setSnapshot([{ repo: REPO, number: 43, title: 't', status: cfg().statusField.columns.needsHelp.name, labels: [], assignees: [], closed: false }]);
+    trackWaiting(quiet, ref(43));
     expect(read(path.join(quiet, 'waiting'))).toBe(String(now - 400));
   });
 
@@ -581,15 +581,15 @@ describe('the second review’s holes', () => {
     const dir = makeSession('issue', 44, { pid: '777', started: String(now - 10 * HOUR), exited: String(now - 60) });
     fs.mkdirSync(statePath('started'), { recursive: true });
     fs.writeFileSync(statePath('started', 'issue-44'), `777 ${now - HOUR}`);
-    expect(bookRun('issue', 44, dir, 'died')).toMatchObject({ startedAt: now - HOUR, seconds: HOUR - 60 });
+    expect(bookRun(runRef('issue', 44), dir, 'died')).toMatchObject({ startedAt: now - HOUR, seconds: HOUR - 60 });
     // A mark left by another run of the directory — another pid — says nothing about this one.
     const other = makeSession('issue', 45, { pid: '778', started: String(now - 2 * HOUR), exited: String(now - 60) });
     fs.writeFileSync(statePath('started', 'issue-45'), `999 ${now - HOUR}`);
-    expect(bookRun('issue', 45, other, 'died')).toMatchObject({ startedAt: now - 2 * HOUR });
+    expect(bookRun(runRef('issue', 45), other, 'died')).toMatchObject({ startedAt: now - 2 * HOUR });
   });
 
   it('a branch that held the copy and is gone, or shrank, is a rewritten witness — raised, never recreated', async () => {
-    const booked = () => bookRun('issue', 1, makeSession('issue', 1, { started: String(nowSec() - HOUR) }), 'died')!;
+    const booked = () => bookRun(runRef('issue', 1), makeSession('issue', 1, { started: String(nowSec() - HOUR) }), 'died')!;
     const e = booked();
     fs.writeFileSync(statePath('hours_copy.json'), JSON.stringify({ copy: 'ok', checkedAt: nowSec() - 2 * HOUR, lines: 3 }));
     onCommand(/^git .* ls-remote /, '');

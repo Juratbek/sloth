@@ -1,11 +1,13 @@
 import fs from 'node:fs';
 import { cfg } from '../config';
+import { label } from '../repos';
+import { refKey, type IssueRef, type PrRef } from '../repo-types';
 import { moveCard, wiredPrs } from './board';
-import type { BoardItem } from './board';
+import type { BoardItem, WiredPr } from './board';
 import { cleanup } from './cleanup';
 import { gh } from './gh';
 import { isDry, log, remove, write } from './log';
-import { APPROVED_LABEL, MARKERS, OWN_BRANCH, skipped, statePath, unapprove } from './markers';
+import { APPROVED_LABEL, OWN_BRANCH, headMarker, marker, skipped, statePath, unapprove } from './markers';
 import { stopPreview } from './preview';
 import { approvedDir, dirAlive, issueAlive } from './session-dirs';
 import { launch } from './spawn';
@@ -39,35 +41,34 @@ const listMarkers = (dir: string): string[] => {
 };
 
 /** Drops the remote branch of a PR Sloth wrote; a 422 means someone (GitHub's own auto-delete) got there first. */
-async function deleteBranch(issue: number, branch: string): Promise<void> {
+async function deleteBranch(issue: IssueRef, pr: PrRef, branch: string): Promise<void> {
   if (isDry()) {
     log(`dry-run: would delete branch ${branch}`);
     return;
   }
-  const r = await gh(['api', '-X', 'DELETE', `repos/${cfg().repo}/git/refs/heads/${branch}`]);
+  const r = await gh(['api', '-X', 'DELETE', `repos/${pr.repo}/git/refs/heads/${branch}`]);
   const first = r.err.split('\n')[0];
-  if (r.ok) log(`#${issue} branch ${branch} deleted`);
-  else if (/\b(404|422)\b|Reference does not exist|Not Found/i.test(first)) log(`#${issue} branch ${branch} was already gone`);
-  else log(`#${issue} branch ${branch} delete failed: ${first}`);
+  if (r.ok) log(`${label(issue)} branch ${branch} deleted`);
+  else if (/\b(404|422)\b|Reference does not exist|Not Found/i.test(first)) log(`${label(issue)} branch ${branch} was already gone`);
+  else log(`${label(issue)} branch ${branch} delete failed: ${first}`);
 }
 
-/** One closed issue: its card to Done, its run swept up, the branch it was written on dropped. */
-async function file(item: BoardItem, prs: { pr: number; head: string }[]): Promise<void> {
-  const issue = item.number;
+/** One closed issue: its card to Done, its run swept up, the branches it was written on dropped. */
+async function file(item: BoardItem, prs: WiredPr[]): Promise<void> {
   const done = cfg().statusField.columns.done;
-  log(`#${issue} is closed — filing it away from ${item.status}`);
+  log(`${label(item)} is closed — filing it away from ${item.status}`);
   // A failed move is retried next tick rather than remembered: the card would sit in the wrong column forever.
-  const moved = done.id ? await moveCard(issue, done.id) : true;
+  const moved = done.id ? await moveCard(item, done.id) : true;
   // A live session is still writing; it tears its own environment down, and the next tick sees the card again.
-  if (!issueAlive(issue)) {
-    if (isDry()) log(`dry-run: would take #${issue}'s preview, servers and worktree down`);
+  if (!issueAlive(item)) {
+    if (isDry()) log(`dry-run: would take ${label(item)}'s preview, servers and worktree down`);
     else {
-      await stopPreview(issue, 'the issue is closed');
-      await cleanup(issue);
+      await stopPreview(item, 'the issue is closed');
+      await cleanup(item);
     }
   }
-  for (const { head } of prs) if (OWN_BRANCH.test(head)) await deleteBranch(issue, head);
-  if (moved && !isDry()) write(statePath('finished', String(issue)), '');
+  for (const { pr, head } of prs) if (OWN_BRANCH.test(head)) await deleteBranch(item, pr, head);
+  if (moved && !isDry()) write(marker('finished', String(item.number), item), '');
 }
 
 /**
@@ -75,17 +76,17 @@ async function file(item: BoardItem, prs: { pr: number; head: string }[]): Promi
  * issue goes back to a human with one comment, once per PR.
  */
 async function abandoned(cards: BoardItem[]): Promise<void> {
-  const open = new Set<number>();
-  const closed = new Map<number, number>();
-  for (const p of await wiredPrs(cards.map((i) => i.number), { states: ['OPEN', 'CLOSED'] })) {
-    if (p.state === 'OPEN') open.add(p.issue);
-    else if (!closed.has(p.issue)) closed.set(p.issue, p.pr);
+  const open = new Set<string>();
+  const closed = new Map<string, { issue: IssueRef; pr: PrRef }>();
+  for (const p of await wiredPrs(cards, { states: ['OPEN', 'CLOSED'] })) {
+    if (p.state === 'OPEN') open.add(refKey(p.issue));
+    else if (!closed.has(refKey(p.issue))) closed.set(refKey(p.issue), { issue: p.issue, pr: p.pr });
   }
-  for (const [issue, pr] of closed) {
-    const marker = statePath('closed', String(pr));
-    if (open.has(issue) || issueAlive(issue) || fs.existsSync(marker)) continue;
-    await park(issue, `its PR #${pr} was closed without being merged.`);
-    if (!isDry()) write(marker, '');
+  for (const { issue, pr } of closed.values()) {
+    const closedMarker = marker('closed', String(pr.number), pr);
+    if (open.has(refKey(issue)) || issueAlive(issue) || fs.existsSync(closedMarker)) continue;
+    await park(issue, `its PR #${pr.number} was closed without being merged.`);
+    if (!isDry()) write(closedMarker, '');
   }
 }
 
@@ -100,15 +101,15 @@ async function abandoned(cards: BoardItem[]): Promise<void> {
  */
 export async function finished(board: BoardItem[]): Promise<void> {
   const worked = workedColumns();
-  const open = new Set(board.filter((i) => !i.closed).map((i) => String(i.number)));
-  for (const f of listMarkers('finished')) if (open.has(f)) remove(statePath('finished', f));
+  const open = new Set(board.filter((i) => !i.closed).map((i) => marker('finished', String(i.number), i)));
+  for (const f of listMarkers('finished')) if (open.has(statePath('finished', f))) remove(statePath('finished', f));
 
   const cards = board.filter((i) => worked.includes(i.status));
-  const closed = cards.filter((i) => i.closed && !fs.existsSync(statePath('finished', String(i.number))));
+  const closed = cards.filter((i) => i.closed && !fs.existsSync(marker('finished', String(i.number), i)));
   if (closed.length) {
     // Merged only: the branch of a PR that was closed unmerged may still be someone's work in progress.
-    const merged = await wiredPrs(closed.map((i) => i.number), { states: ['MERGED'] });
-    for (const item of closed) await file(item, merged.filter((p) => p.issue === item.number));
+    const merged = await wiredPrs(closed, { states: ['MERGED'] });
+    for (const item of closed) await file(item, merged.filter((p) => refKey(p.issue) === refKey(item)));
   }
 
   const handed = handedOverColumns();
@@ -128,18 +129,18 @@ export async function failedChecks(board: BoardItem[]): Promise<void> {
   const columns = handedOverColumns();
   const cards = board.filter((i) => columns.includes(i.status) && !skipped(i));
   if (!cards.length) return;
-  for (const { issue, pr, sha, head, checks } of await wiredPrs(cards.map((i) => i.number))) {
+  for (const { issue, pr, sha, head, checks } of await wiredPrs(cards)) {
     if (!OWN_BRANCH.test(head) || checks !== 'FAILURE') continue;
-    const marker = statePath('checks', `${pr}-${sha}`);
-    if (fs.existsSync(marker) || issueAlive(issue)) continue;
-    if (cards.find((i) => i.number === issue)?.labels.includes(APPROVED_LABEL)) {
-      await unapprove(issue, `the checks on PR #${pr} fail`);
+    const checked = marker('checks', `${pr.number}-${sha}`, pr);
+    if (fs.existsSync(checked) || issueAlive(issue)) continue;
+    if (cards.find((i) => refKey(i) === refKey(issue))?.labels.includes(APPROVED_LABEL)) {
+      await unapprove(issue, `the checks on PR #${pr.number} fail`);
     }
     const order =
-      `The checks on PR #${pr} fail on commit ${sha.slice(0, 7)}: this is a review round-trip — ` +
+      `The checks on PR #${pr.number}${pr.repo !== issue.repo ? ` in ${pr.repo}` : ''} fail on commit ${sha.slice(0, 7)}: this is a review round-trip — ` +
       'check the branch out, make the checks pass, push, keep the PR.';
     if (!(await launch(issue, order))) break;
-    if (!isDry()) write(marker, '');
+    if (!isDry()) write(checked, '');
   }
 }
 
@@ -163,17 +164,17 @@ export async function conflicts(board: BoardItem[]): Promise<void> {
   const column = c.statusField.columns.codeReview.name;
   const cards = board.filter((i) => i.status === column && !skipped(i));
   if (!cards.length) return;
-  for (const { issue, pr, sha, head, base, mergeable } of await wiredPrs(cards.map((i) => i.number))) {
+  for (const { issue, pr, sha, head, base, mergeable } of await wiredPrs(cards)) {
     if (!OWN_BRANCH.test(head) || mergeable !== 'CONFLICTING') continue;
-    const marker = statePath('conflicts', `${pr}-${sha}`);
-    if (fs.existsSync(marker) || issueAlive(issue) || dirAlive(approvedDir(pr))) continue;
+    const conflicted = marker('conflicts', `${pr.number}-${sha}`, pr);
+    if (fs.existsSync(conflicted) || issueAlive(issue) || dirAlive(approvedDir(pr))) continue;
     const into = base ? `\`origin/${base}\`` : 'its base branch';
     const order =
-      `PR #${pr} conflicts with its base on commit ${sha.slice(0, 7)}: this is a review round-trip — ` +
+      `PR #${pr.number}${pr.repo !== issue.repo ? ` in ${pr.repo}` : ''} conflicts with its base on commit ${sha.slice(0, 7)}: this is a review round-trip — ` +
       `check the branch out, merge ${into} into it, resolve every conflict keeping what both sides meant, ` +
       'make the checks pass, push, keep the PR. Merge only: never rebase, never force-push.';
     if (!(await launch(issue, order))) break;
-    if (!isDry()) write(marker, '');
+    if (!isDry()) write(conflicted, '');
   }
 }
 
@@ -185,21 +186,21 @@ function say(key: string, message: string): void {
   log(message);
 }
 
-async function merge(pr: number, sha: string): Promise<void> {
+async function merge(pr: PrRef, sha: string): Promise<void> {
   const c = cfg();
   if (isDry()) {
-    log(`dry-run: would merge PR #${pr} (--${c.autoMerge})`);
+    log(`dry-run: would merge PR #${pr.number} (--${c.autoMerge})`);
     return;
   }
-  const r = await gh(['pr', 'merge', String(pr), '--repo', c.repo, `--${c.autoMerge}`]);
+  const r = await gh(['pr', 'merge', String(pr.number), '--repo', pr.repo, `--${c.autoMerge}`]);
   if (r.ok) {
-    write(statePath('merged', `${pr}-${sha}`), '');
-    log(`PR #${pr} merged (${c.autoMerge})`);
+    write(marker('merged', `${pr.number}-${sha}`, pr), '');
+    log(`PR #${pr.number} merged (${c.autoMerge})`);
     return;
   }
   // Not retried on this head: a merge that GitHub refused once refuses again until something changes.
-  write(statePath('merge-failed', `${pr}-${sha}`), '');
-  log(`PR #${pr} merge failed: ${r.err.split('\n')[0]}`);
+  write(marker('merge-failed', `${pr.number}-${sha}`, pr), '');
+  log(`PR #${pr.number} merge failed: ${r.err.split('\n')[0]}`);
 }
 
 /**
@@ -209,8 +210,9 @@ async function merge(pr: number, sha: string): Promise<void> {
  * pass (`state/approved/<pr>-<sha>` plus the label), no review still running, green or absent checks, a
  * clean merge and a PR that is no draft — so a push after the pass, a red check or a conflict all hold the
  * merge until the card has been through trigger 4 (or 7) again, and a draft holds it until someone marks
- * it ready. A `Sloth: skip` card is left alone like everywhere but trigger 4: its review still runs, but
- * merging the PR of a card a human has taken over is not Sloth's to do.
+ * it ready. A card whose work spans two repositories merges both PRs or neither: one held holds the other.
+ * A `Sloth: skip` card is left alone like everywhere but trigger 4: its review still runs, but merging the
+ * PR of a card a human has taken over is not Sloth's to do.
  */
 export async function autoMerge(board: BoardItem[]): Promise<void> {
   const c = cfg();
@@ -218,14 +220,26 @@ export async function autoMerge(board: BoardItem[]): Promise<void> {
   if (!c.autoMerge || !column.id) return;
   // Skipped cards included would be the one place Sloth acts on a card a human took over: trigger 4
   // reviews them on purpose — the column is the signal there — and a pass labels and moves them here.
-  const issues = board.filter((i) => i.status === column.name && i.labels.includes(APPROVED_LABEL) && !skipped(i)).map((i) => i.number);
-  for (const { pr, sha, checks, mergeable, draft } of await wiredPrs(issues)) {
-    const head = `${pr}-${sha}`;
-    if (!fs.existsSync(statePath(MARKERS.approved, head)) || dirAlive(approvedDir(pr))) continue;
-    if (fs.existsSync(statePath('merged', head)) || fs.existsSync(statePath('merge-failed', head))) continue;
-    if (draft) say(head, `PR #${pr} is not merged: it is still a draft`);
-    else if (checks === 'FAILURE') say(head, `PR #${pr} is not merged: its checks fail`);
-    else if (mergeable === 'CONFLICTING') say(head, `PR #${pr} is not merged: it conflicts with its base`);
-    else if (checks !== 'PENDING' && mergeable === 'MERGEABLE') await merge(pr, sha);
+  const issues = board.filter((i) => i.status === column.name && i.labels.includes(APPROVED_LABEL) && !skipped(i));
+  const prs = await wiredPrs(issues);
+  const ready = (p: WiredPr) => {
+    const head = `${p.pr.number}-${p.sha}`;
+    if (!fs.existsSync(headMarker('approved', p.pr, p.sha)) || dirAlive(approvedDir(p.pr))) return false;
+    if (fs.existsSync(marker('merged', head, p.pr)) || fs.existsSync(marker('merge-failed', head, p.pr))) return false;
+    if (p.draft) say(head, `PR #${p.pr.number} is not merged: it is still a draft`);
+    else if (p.checks === 'FAILURE') say(head, `PR #${p.pr.number} is not merged: its checks fail`);
+    else if (p.mergeable === 'CONFLICTING') say(head, `PR #${p.pr.number} is not merged: it conflicts with its base`);
+    else return p.checks !== 'PENDING' && p.mergeable === 'MERGEABLE';
+    return false;
+  };
+  const okay = new Set(prs.filter(ready).map((p) => refKey(p.pr)));
+  for (const p of prs) {
+    if (!okay.has(refKey(p.pr))) continue;
+    const siblings = prs.filter((s) => refKey(s.issue) === refKey(p.issue) && s.state === 'OPEN');
+    if (siblings.some((s) => !okay.has(refKey(s.pr)) && !fs.existsSync(marker('merged', `${s.pr.number}-${s.sha}`, s.pr)))) {
+      say(`${p.pr.number}-${p.sha}-wait`, `PR #${p.pr.number} is not merged yet: the card's other PR is not ready`);
+      continue;
+    }
+    await merge(p.pr, p.sha);
   }
 }

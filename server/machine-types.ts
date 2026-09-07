@@ -39,6 +39,8 @@ export interface StackStatus {
   installerError?: string;
   /** apt is here, Sloth is not root and `sudo -n` is refused: the user's password would unlock installing (`POST /api/stack/unlock`). */
   sudoPassword?: boolean;
+  /** sudo lets this user run apt-get with any arguments — wider than Sloth's rule; the password replaces Sloth's file with the narrow one. */
+  sudoWide?: boolean;
   install: InstallStatus;
   /** Why the install just asked for did not start. */
   installError?: string;
@@ -52,8 +54,10 @@ export interface WebhookStatus {
   state: 'off' | 'active' | 'failed';
   /** The address the provider was given — `<public URL>/api/hooks/github`, or `/api/hooks/trello` on a Trello board. */
   url?: string;
-  /** GitHub numbers its hooks; Trello names them. */
+  /** GitHub numbers its hooks; Trello names them. The first repository's, when there are several. */
   hookId?: number | string;
+  /** Every repository's hook, by repository — the ones that were pointed before a failure stopped the rest. */
+  hookIds?: Record<string, number>;
   /** Why it is not delivering; absent while it is. */
   reason?: string;
   /** When the state above was last decided. */

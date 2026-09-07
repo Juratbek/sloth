@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { cfg } from '../config';
+import { refKey, type IssueRef } from '../repo-types';
 import { snapshot } from './board-snapshot';
 import { nowSec, readNumber, remove, write } from './log';
 import { launchedAt, stateOf } from './session-dirs';
@@ -34,11 +35,11 @@ const totalFile = (dir: string) => path.join(dir, 'waiting_total');
 const answeredFile = (dir: string) => path.join(dir, 'answered');
 
 /** Whether the card for `issue` stood in the needs-help column when the loop last read the board. */
-function parkedOnBoard(issue: number | undefined): boolean {
+function parkedOnBoard(issue: IssueRef | undefined): boolean {
   if (!issue) return false;
   const column = cfg().statusField.columns.needsHelp.name;
   if (!column) return false;
-  return snapshot()?.items.some((i) => i.number === issue && i.status === column) ?? false;
+  return snapshot()?.items.some((i) => refKey(i) === refKey(issue) && i.status === column) ?? false;
 }
 
 /** A mark of the session's, if it lies in the run's own life: after the launch and its last answer, not in the future. */
@@ -57,7 +58,7 @@ function credit(dir: string, from: number, to: number): void {
  * Notices a live run entering or leaving `waiting`; called on every tick for every run still alive.
  * `issue` is the card the run works for, for the board's word on whether it is parked.
  */
-export function trackWaiting(dir: string, issue?: number): void {
+export function trackWaiting(dir: string, issue?: IssueRef): void {
   const since = readNumber(file(dir));
   const now = nowSec();
   const state = stateOf(dir);

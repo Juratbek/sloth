@@ -20,9 +20,10 @@ Comment conventions come from the **`session`** skill; the board queries from th
 
 ```bash
 ISSUE=${SLOTH_ISSUE:-<from $ARGUMENTS>}; OWNER=${SLOTH_REPO%%/*}; NAME=${SLOTH_REPO##*/}
+IREPO=${SLOTH_ISSUE_REPO:-$SLOTH_REPO}   # the issue's repository — $SLOTH_REPO is the PR's when the question was asked on a PR elsewhere
 THREAD=${SLOTH_PR:-$ISSUE}     # where the question was asked and where the answer goes
 
-gh issue view "$ISSUE" --repo "$SLOTH_REPO" --json title,state,labels,assignees,url
+gh issue view "$ISSUE" --repo "$IREPO" --json title,state,labels,assignees,url
 if [ -n "$SLOTH_REVIEW_COMMENT" ]; then
   # the question, the line it sits on, and the rest of its thread
   gh api "repos/$SLOTH_REPO/pulls/comments/$SLOTH_REVIEW_COMMENT" --jq '{author: .user.login, body: .body, path: .path, line: (.line // .original_line), diff_hunk: .diff_hunk}'
@@ -31,7 +32,7 @@ if [ -n "$SLOTH_REVIEW_COMMENT" ]; then
 else
   gh api "repos/$SLOTH_REPO/issues/comments/<COMMENT_ID>" --jq '{author: .user.login, body: .body}'
 fi
-gh issue view "$ISSUE" --repo "$SLOTH_REPO" --json comments \
+gh issue view "$ISSUE" --repo "$IREPO" --json comments \
   --jq '.comments[-8:][] | "\(.author.login) (\(.createdAt)):\n\(.body)\n---"'
 # asked on the PR: its own conversation too
 [ -n "$SLOTH_PR" ] && gh api "repos/$SLOTH_REPO/issues/$SLOTH_PR/comments" --paginate \
@@ -46,7 +47,7 @@ gh api graphql -f query="{ repository(owner: \"$OWNER\", name: \"$NAME\") { issu
   projectItems(first: 10) { nodes { project { number }
     fieldValueByName(name: \"Status\") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }" \
   --jq ".data.repository.issue.projectItems.nodes[] | select(.project.number == $SLOTH_PROJECT_NUMBER) | .fieldValueByName.name"
-# Trello (SLOTH_BOARD=trello): curl -s "$SLOTH_BOARD_API/card/$ISSUE" | jq -r '.column // empty'
+# Trello (SLOTH_BOARD=trello): curl -s "$SLOTH_BOARD_API/card/$ISSUE?repo=$IREPO" | jq -r '.column // empty'
 
 # the last session for this issue, if any
 cat "$SLOTH_SESSION_DIR/state.json" 2>/dev/null      # state / since / step / note / branch / pr
@@ -59,7 +60,7 @@ guessing what happened.
 
 ## Reply
 
-Post one comment on `$THREAD`: `gh api "repos/$SLOTH_REPO/issues/$THREAD/comments" -F body=@<file>` (the
+Post one comment on `$THREAD`: `gh api "repos/$SLOTH_REPO/issues/$THREAD/comments" -F body=@<file>` (`$IREPO` instead when the thread is the issue; the
 endpoint takes an issue or a PR number alike). A question asked on a line of the diff is answered on
 that line instead: `gh api "repos/$SLOTH_REPO/pulls/$SLOTH_PR/comments/$SLOTH_REVIEW_COMMENT/replies" -F body=@<file>`.
 

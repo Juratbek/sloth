@@ -1,3 +1,4 @@
+import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -52,6 +53,7 @@ describe('installSteps', () => {
     expect(steps[0]).toEqual({ cmd: 'sudo', args: ['-n', 'apt-get', 'update', '-q'] });
     expect(steps[1].args).toEqual(['-n', 'apt-get', 'install', '-y', '-q', 'postgresql']);
     expect(steps.at(-1)?.args.slice(0, 5)).toEqual(['-n', '-u', 'postgres', 'createuser', '-s']);
+    expect(steps.at(-1)?.args.at(-1)).toBe(os.userInfo().username);
     expect(installSteps('redis', { kind: 'apt', sudo: false })[1]).toEqual({ cmd: 'apt-get', args: ['install', '-y', '-q', 'redis-server'] });
   });
   it('has nothing to run without a package manager, and names the command for a human', () => {

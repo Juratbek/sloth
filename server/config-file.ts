@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import { writeAtomic } from './atomic';
 import { SLOTH_HOME_LABEL, expandPath } from './env';
+import { legacyRepoOf, reposOf } from './config-repos';
+import { repoName, type RepoConfig } from './repo-types';
 import { AGENT_ROLES, BOARD_PROVIDERS, CONFIG_DEFAULTS, DEFAULT_MODELS, MERGE_METHODS, STACK, WEBHOOK_EVENTS, defaultDirs, type AgentModels, type AgentRole, type BoardProvider, type ColumnRef, type MergeMethod, type QaConfig, type Roles, type SlothConfig, type SmokeConfig, type StackChoice, type StackId, type WebhookEvent } from './config-types';
 import { sameLogin } from './roles';
 
@@ -49,14 +51,6 @@ function roles(v: unknown, orderLogin: unknown): Roles {
   const developers = logins(r.developers).filter(fresh);
   const testers = logins(r.testers).filter(fresh);
   return { admin, developers, testers };
-}
-
-const REPO_RE = /^[\w.-]+\/[\w.-]+$/;
-/** `owner/repo`, constrained to the characters GitHub allows — it flows into shell argv, URLs and the page title. */
-function repoSlug(v: unknown): string {
-  const r = str(v, 'repo');
-  if (!REPO_RE.test(r)) throw new Error('repo must be owner/repo');
-  return r;
 }
 
 function url(v: unknown, what: string): string {
@@ -122,17 +116,20 @@ function qaOf(v: unknown, d: QaConfig): QaConfig {
   return { branch, at, budgetMinutes: int(q.budgetMinutes, d.budgetMinutes) };
 }
 
-/** The smoke test: how many days apart (0 = off), a `HH:MM` local time, a branch name safe in argv, the budget, and the brief as typed. */
-function smokeOf(v: unknown, d: SmokeConfig): SmokeConfig {
+/** The smoke test: how many days apart (0 = off), a `HH:MM` local time, a branch name safe in argv, the repository under test, the budget, and the brief as typed. */
+function smokeOf(v: unknown, d: SmokeConfig, repos: RepoConfig[]): SmokeConfig {
   const q = (v ?? {}) as Record<string, unknown>;
   const branch = text(q.branch) ?? '';
   if (branch && !BRANCH_RE.test(branch)) throw new Error('smoke.branch must be a branch name');
   const at = text(q.at) ?? d.at;
   if (!TIME_RE.test(at)) throw new Error('smoke.at must be a time of day, HH:MM');
+  // A repository that is no longer configured is not one to smoke-test: the first one is, as with no choice at all.
+  const repo = text(q.repo) ?? '';
   return {
     everyDays: int(q.everyDays, d.everyDays, 0),
     at,
     branch,
+    repo: repos.some((r) => r.slug === repo) ? repo : '',
     budgetMinutes: int(q.budgetMinutes, d.budgetMinutes),
     brief: typeof q.brief === 'string' ? q.brief.trim() : d.brief,
   };
@@ -159,16 +156,19 @@ const optional = (v: unknown, what: string): ColumnRef => ((v as ColumnRef | und
  */
 export function normalizeConfig(input: unknown): SlothConfig {
   const b = (input ?? {}) as Record<string, any>;
-  const repo = repoSlug(b.repo);
-  const name = repo.split('/')[1];
+  const d = CONFIG_DEFAULTS;
+  // The runners directory is this instance's — where a repository with no root of its own is cloned — so it is settled before the repositories are.
+  const runnersDir = text(b.runnersDir) ?? defaultDirs('', SLOTH_HOME_LABEL).runnersDir;
+  const repos = reposOf(b.repos, b.repo, b.runnerRoot, runnersDir);
+  const name = repoName(repos[0].slug);
   const columns = (b.statusField?.columns ?? {}) as Record<string, unknown>;
   const provider = providerOf(b.project?.provider);
-  const d = CONFIG_DEFAULTS;
   // Every directory beside this instance's config file: a second Sloth on the machine gets a home of its own.
   const dirs = defaultDirs(name, SLOTH_HOME_LABEL);
   return {
     version: 1,
-    repo,
+    repos,
+    legacyRepo: legacyRepoOf(b.legacyRepo, repos, b.repo),
     project: {
       provider,
       id: str(b.project?.id, 'project.id'),
@@ -193,8 +193,7 @@ export function normalizeConfig(input: unknown): SlothConfig {
         done: optional(columns.done, 'done'),
       },
     },
-    runnerRoot: expandPath(text(b.runnerRoot) ?? dirs.runnerRoot),
-    runnersDir: text(b.runnersDir) ?? dirs.runnersDir,
+    runnersDir,
     worktreesDir: text(b.worktreesDir) ?? dirs.worktreesDir,
     sessionsDir: text(b.sessionsDir) ?? dirs.sessionsDir,
     stateDir: text(b.stateDir) ?? dirs.stateDir,
@@ -241,7 +240,7 @@ export function normalizeConfig(input: unknown): SlothConfig {
     publicUrl: url(b.publicUrl, 'publicUrl'),
     stack: stackOf(b.stack),
     qa: qaOf(b.qa, d.qa),
-    smoke: smokeOf(b.smoke, d.smoke),
+    smoke: smokeOf(b.smoke, d.smoke, repos),
   };
 }
 
