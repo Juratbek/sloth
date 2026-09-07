@@ -106,6 +106,19 @@ describe('handing a stack over', () => {
     expect(await waitDead(pid)).toBe(true);
   });
 
+  it("the e2e suite goes down with the run even when its stack is handed over — it drives the app, it does not serve it", async () => {
+    const pid = sleeper();
+    makeSession('issue', 7, { 'dev.pid': `${alivePid()}\n`, 'demo.db': 'demo_7\n', 'e2e.pid': `${pid}\n` });
+    await leaseSlot(runRef('issue', 7));
+    fs.mkdirSync(slotDir(1), { recursive: true });
+    onCommand(/rev-parse --abbrev-ref HEAD/, 'sloth/issue-7-fix\n');
+    onCommand(/rev-parse HEAD/, 'abc123\n');
+    await cleanupRun(runRef('issue', 7));
+    expect(warmOf('slot-1')?.run).toBe('issue-7');
+    expect(await waitDead(pid)).toBe(true);
+    expect(exists(sessionDir('issue', 7), 'e2e.pid')).toBe(false);
+  });
+
   it('warmSlots off is exactly today: the stack is killed and the database dropped', async () => {
     configure({ maxActive: 2, warmSlots: false });
     const pid = sleeper();
