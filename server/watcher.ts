@@ -8,7 +8,7 @@ import { isPaused } from './runner/pause';
 import { previewState } from './runner/preview';
 import { pausedRun } from './runner/pressure';
 import { sampleSessions } from './runner/session-load';
-import { counter, isBlocked, issueOfRun, pidAlive, pidOf, readState, runDirs } from './runner/session-dirs';
+import { counter, dirAlive, isBlocked, issueOfRun, pidAlive, pidOf, readState, runDirs } from './runner/session-dirs';
 import type { Overview, RateBucket, WatcherSession } from './types';
 import { refKey, type IssueRef } from './repo-types';
 
@@ -43,8 +43,11 @@ const mtime = (f: string) => {
  * this only adds what the UI needs on top. The two used to parse the same names and the same file
  * separately, and a kind added to one was a kind the other silently dropped.
  *
- * `alive` is the bare pid check on purpose, not `dirAlive`: the monitor shows a run whose pid file
- * predates the boot as it finds it, and it is the runner that decides such a run is somebody else's.
+ * `alive` is `dirAlive`, the same question `stop` and `reap` ask: a pid file written before the machine
+ * last booted names whatever holds that number now. The run is still listed — it is only not called
+ * running. Answering the bare pid instead put a **stop** button on such a row, promising to kill the
+ * session and its servers, over a pid `stop` refuses to touch: it returned `{ ok: true, stopped: false }`
+ * and did nothing, and the row's CPU and memory were a stranger's read as the session's.
  */
 export function listSessionDirs(): WatcherSession[] {
   const sessions = runDirs().map((r): WatcherSession => {
@@ -67,7 +70,7 @@ export function listSessionDirs(): WatcherSession[] {
       target,
       repo,
       pid,
-      alive: pidAlive(pid),
+      alive: dirAlive(dir),
       sessionId: readFile(path.join(dir, 'session_id'))?.trim() || undefined,
       state: readState(dir),
       preview: kind === 'issue' ? previewState({ repo, number: target }) : undefined,

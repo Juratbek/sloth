@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { sampleSessions, setProcessReaders, type Process } from '../server/runner/session-load';
 import { listSessionDirs } from '../server/watcher';
@@ -132,5 +135,22 @@ describe('the load on a session row', () => {
     const dirs = listSessionDirs();
     expect(dirs.find((d) => d.target === 5)!.load).toMatchObject({ cpu: 100, memory: 64 << 20, processes: 1 });
     expect(dirs.find((d) => d.target === 6)!.load).toBeUndefined();
+  });
+
+  it('is not attached to a run whose pid file predates the boot — that number is a stranger now', () => {
+    // The monitor asks what `stop` and `reap` ask. Answering the bare pid instead put a **stop** button on
+    // such a row, promising to kill the session and its servers, over a pid `stop` refuses to touch: it
+    // answered ok and did nothing, and the row's CPU and memory were a stranger's read as the session's.
+    const dir = makeSession('issue', 7, { pid: alivePid() });
+    const before = new Date((Math.floor(Date.now() / 1000) - os.uptime() - 3600) * 1000);
+    fs.utimesSync(path.join(dir, 'pid'), before, before);
+    const pid = process.pid;
+    let at = 0;
+    setProcessReaders({ processes: () => [proc(pid, 1, at / 1000, 64 << 20)], now: () => at });
+    listSessionDirs();
+    at = 2000;
+    const row = listSessionDirs().find((d) => d.target === 7)!;
+    expect(row.alive).toBe(false);
+    expect(row.load).toBeUndefined();
   });
 });

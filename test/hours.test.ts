@@ -576,11 +576,13 @@ describe('the second review’s holes', () => {
     expect(read(path.join(quiet, 'waiting'))).toBe(String(now - 400));
   });
 
-  it('never dates a wait from before the run that is waiting existed', () => {
+  it('opens no wait at all on a board read before the run that would be waiting existed', () => {
     // The snapshot is the *previous* tick's board. A card answered out of needs-help launches a fresh run,
-    // and the next tick's `reap` runs `trackWaiting` before the new read: the fallback dated the wait from
-    // a board read taken minutes before the run started, so every answered card lost about one board
-    // interval from its bill and had its deadline pushed out by the same.
+    // and the next tick's `reap` runs `trackWaiting` before the new read: that board still shows the card
+    // parked, and it is describing the run before the answer. Flooring the date it opened the wait at was
+    // not enough — the wait still opened, and closed a tick later having credited the whole span of a run
+    // that had been working throughout, so every answered card lost about two board intervals from its
+    // bill and had its deadline pushed out by the same. A run that really is waiting says so in its state.
     const now = nowSec();
     const parked = { repo: REPO, number: 44, title: 't', status: cfg().statusField.columns.needsHelp.name, labels: [], assignees: [], closed: false };
     const dir = makeSession('issue', 44, { started: String(now - 60), 'state.json': { state: 'working', step: '3' } });
@@ -590,6 +592,19 @@ describe('the second review’s holes', () => {
     setSnapshot([parked]);
     vi.setSystemTime(new Date(now * 1000));
     trackWaiting(dir, ref(44));
+    expect(exists(dir, 'waiting')).toBe(false);
+  });
+
+  it('opens one from a board read after the run launched — that card is parked on this run', () => {
+    const now = nowSec();
+    const parked = { repo: REPO, number: 45, title: 't', status: cfg().statusField.columns.needsHelp.name, labels: [], assignees: [], closed: false };
+    const dir = makeSession('issue', 45, { started: String(now - 600), 'state.json': { state: 'working', step: '3' } });
+    vi.useFakeTimers();
+    // The run was launched ten minutes ago and the board read one minute ago: this parking is its own.
+    vi.setSystemTime(new Date((now - 60) * 1000));
+    setSnapshot([parked]);
+    vi.setSystemTime(new Date(now * 1000));
+    trackWaiting(dir, ref(45));
     expect(Number(read(path.join(dir, 'waiting')))).toBe(now - 60);
   });
 

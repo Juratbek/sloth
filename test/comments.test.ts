@@ -86,6 +86,37 @@ describe('comments (trigger 3)', () => {
     expect(readLog().join('\n')).toMatch(/comment 104 not acted on — the review of the card is still running/);
   });
 
+  it('asks GitHub for the label when there is no board yet, rather than reading every card as unlabelled', async () => {
+    // `snapshot()` is empty for the seconds after a restart — the comment timer fires at 20s, the board's
+    // at 5s — and a slow or a failed board read leaves it empty for longer. A card missing from an empty
+    // board reads exactly like a card with no label, and unlike `awaitingAnswer` there is no marker on
+    // disk to fall back on: the one card in hand is asked about directly instead.
+    onGh(/issue view 4 --repo acme\/widgets --json labels/, 'Sloth: skip\nbug');
+    thread(4, false, [{ id: 130, login: 'bob', body: '@sloth start over with the other approach' }]);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(called(/issues\/4\/comments -f body=.*Sloth: skip.*a person owns it/)).toHaveLength(1);
+  });
+
+  it('holds an order when the label cannot be read at all — not knowing is not knowing there is none', async () => {
+    onGh(/issue view 4 --repo acme\/widgets --json labels/, fail('HTTP 503'));
+    thread(4, false, [{ id: 131, login: 'bob', body: '@sloth start over with the other approach' }]);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(readLog().join('\n')).toMatch(/the labels could not be read/);
+  });
+
+  it('leaves an unwired PR comment unseen when the reply GitHub refused never landed', async () => {
+    // Marked seen on a refusal, the commenter keeps the 👀 and is never told anything at all — there is
+    // nothing left on a later tick to say it on.
+    onGh(/api graphql .*pullRequest\(number: 9\)/, { data: { repository: { pullRequest: { headRefName: 'topic/x', closingIssuesReferences: { nodes: [] } } } } });
+    onGh(/api -X GET search\/issues/, ({ line }) => (line.includes('"@sloth"') ? '9 true' : undefined));
+    onGh(/api repos\/acme\/widgets\/issues\/9\/comments\?since/, [{ id: 140, login: 'bob', body: '@sloth do it' }].map(b64).join('\n'));
+    onGh(/api repos\/acme\/widgets\/issues\/9\/comments -f body=/, fail('HTTP 502'));
+    await comments();
+    expect(exists(statePath('seen', '140'))).toBe(false);
+  });
+
   it('refuses an order on a card a human has taken over, and says so in the thread', async () => {
     // `launch` has no skip check of its own, and the order path was the only caller that did not filter for
     // the label: a comment could put Sloth back on a card a person was working by hand.
@@ -127,6 +158,21 @@ describe('comments (trigger 3)', () => {
     expect(called(/issues\/4\/comments -f body=/)).toHaveLength(0);
     expect(exists(statePath('seen', '108'))).toBe(true);
     expect(readLog().join('\n')).toMatch(/comment 108 not acted on — the review of the card is still running/);
+  });
+
+  it('still answers in a review thread on such a card — that reply is not in the conversation', async () => {
+    // The swallow is bought by `answerOn` reading Sloth's last *conversation* comment as the question. A
+    // reply on a line of the diff is not in the conversation and cancels nothing, so there is no reason to
+    // pay for it with a silence: the developer is told why nothing started.
+    makeSession('issue', 4, { blocked: '1' });
+    makeSession('approved', 9, { pid: alivePid(), issue: '4' });
+    setSnapshot([card(4, COLUMNS.needsHelp.name)]);
+    reviewThread(7, [{ id: 110, login: 'bob', body: '@sloth start over' }]);
+    wired(7, 4);
+    await comments();
+    expect(spawned).toHaveLength(0);
+    expect(called(/pulls\/7\/comments\/110\/replies -f body=.*review of this card is still running/)).toHaveLength(1);
+    expect(exists(statePath('seen', 'review-110'))).toBe(true);
   });
 
   it('still answers on a parked card a human has taken over, which nothing else will come back to', async () => {

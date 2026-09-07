@@ -228,7 +228,9 @@ export async function comments(): Promise<void> {
       // gets none — Sloth does not talk to strangers, not even with a reaction.
       if (role && !isDry()) await react(t.repo, comment.id, 'eyes', !!comment.review);
       if (!role) log(`${where(t)} ignored ${named} by ${comment.login} (no role)`);
-      else if (unwired) await unwiredReply(t, comment);
+      else if (unwired) {
+        if (!(await unwiredReply(t, comment))) continue;
+      }
       else if (issueAlive(t.issue)) deliver(t, comment, role);
       else if (isOrder(comment, role)) {
         // Left unseen on purpose: an order held back by the pause is picked up when Sloth resumes.
@@ -236,7 +238,7 @@ export async function comments(): Promise<void> {
           log(`paused: skipped order on ${where(t)}`);
           continue;
         }
-        const hold = orderHold(t.issue);
+        const hold = await orderHold(t.issue);
         if (hold) {
           await holdBack(t, comment, hold, seen);
           continue;
@@ -258,7 +260,7 @@ export async function comments(): Promise<void> {
           // The same holds as an order: this is the other caller of `launch` here, and `launch` has no
           // check of its own. The conversation half needs none because it launches nothing — trigger 6
           // does, and `answered` asks the same question there.
-          const held = orderHold(t.issue);
+          const held = await orderHold(t.issue);
           if (held) {
             await holdBack(t, comment, held, seen);
             continue;

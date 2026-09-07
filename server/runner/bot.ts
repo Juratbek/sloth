@@ -26,14 +26,19 @@ let said = false;
 export const botLogin = (): string | undefined => login;
 
 /**
- * Reads the login `gh` acts as. Called when the server mounts and again on every tick until it answers:
- * a Sloth that mounts before anybody has logged `gh` in — a fresh install, where the wizard's *Log in*
- * button comes minutes later — would otherwise spend the rest of the process on the prefix alone, with
- * every reader below still open to a comment somebody else wrote. Once read it is never read again, and
- * the failure is logged once so a tick every few minutes does not fill `watcher.log`.
+ * Reads the login `gh` acts as, on every health reading. A Sloth that mounts before anybody has logged
+ * `gh` in — a fresh install, where the wizard's *Log in* button comes minutes later — would otherwise
+ * spend the rest of the process on the prefix alone, with every reader below still open to a comment
+ * somebody else wrote; and a login that was read once and then kept can only ever be filled in, never
+ * corrected. Pressing *Log in* twice, the second time with the right account, `gh auth switch`, or a
+ * rotated token pointing somewhere else all leave a cached login that answers for nobody: `wroteIt` is
+ * then false for Sloth's own words, `answerOn` never finds the question, and trigger 6 quietly stops
+ * relaunching every parked card there is.
+ *
+ * A reading that fails keeps the login it had — a blip is not an account change — and is logged once,
+ * so a tick every few minutes does not fill `watcher.log`.
  */
 export async function refreshBotLogin(): Promise<void> {
-  if (login) return;
   // `run`, not `gh`: the health reading this rides on is awaited inside the board tick, and `gh` waits a
   // minute and then retries — two minutes of a dead network would hold the whole tick before the board is
   // even read. The next reading asks again, which is a better retry than one nothing can interrupt.
@@ -43,8 +48,11 @@ export async function refreshBotLogin(): Promise<void> {
     said = true;
     return;
   }
-  login = r.out.trim() || undefined;
-  if (login) log(`Sloth comments on GitHub as ${login}`);
+  said = false;
+  const next = r.out.trim() || undefined;
+  if (next === login) return;
+  if (next) log(login ? `Sloth comments on GitHub as ${next} now, not ${login}` : `Sloth comments on GitHub as ${next}`);
+  login = next;
 }
 
 /** Tests start each case from a known login, or from none. */

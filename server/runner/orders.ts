@@ -33,14 +33,19 @@ export async function replyTo(t: Thread, c: Comment, body: string): Promise<bool
   return r.ok;
 }
 
-/** A PR that closes no issue has no Sloth work behind it: say so where the comment was written. */
-export async function unwiredReply(t: Thread, c: Comment): Promise<void> {
+/**
+ * A PR that closes no issue has no Sloth work behind it: say so where the comment was written. False when
+ * GitHub refused the reply, so the caller leaves the comment unseen and says it again next tick — marked
+ * seen on a refusal, the commenter keeps the 👀 and is never told anything at all.
+ */
+export async function unwiredReply(t: Thread, c: Comment): Promise<boolean> {
   if (isDry()) {
     log(`dry-run: would tell ${c.login} on PR #${t.number} that it is wired to no issue (${kindOf(c)} ${c.id})`);
-    return;
+    return true;
   }
   const said = await replyTo(t, c, 'This PR is not linked to an issue (no `Closes #n`), so there is no Sloth session behind it. Mention me on the issue, or link one to the PR.');
   if (said) log(`PR #${t.number}: told ${c.login} the PR is wired to no issue (${kindOf(c)} ${c.id})`);
+  return said;
 }
 
 /**
@@ -62,8 +67,24 @@ export function awaitingAnswer(issue: IssueRef): boolean {
   return !!column && (snapshot()?.items ?? []).some((i) => refKey(i) === refKey(issue) && i.status === column);
 }
 
-/** Whether a human has taken this card over, on the board the loop last read. */
-const heldByHuman = (issue: IssueRef): boolean => (snapshot()?.items ?? []).some((i) => refKey(i) === refKey(issue) && skipped(i));
+/**
+ * Whether a human has taken this card over. The board the loop last read answers it without a call, but
+ * only once there is one: `snapshot()` is empty for the seconds after a restart — the comment timer fires
+ * at 20s, the board's at 5s, and a slow or failed board read leaves it empty for longer — and a card that
+ * is missing from an empty board reads exactly like a card with no label. Unlike `awaitingAnswer` there is
+ * no marker on disk to fall back on, so the one card in hand is asked about directly. A refusal there
+ * holds the order too: not knowing is not the same as knowing there is no label.
+ */
+async function heldByHuman(issue: IssueRef): Promise<boolean> {
+  const board = snapshot();
+  if (board) return board.items.some((i) => refKey(i) === refKey(issue) && skipped(i));
+  const r = await gh(['issue', 'view', String(issue.number), '--repo', issue.repo, '--json', 'labels', '--jq', '.labels[].name']);
+  if (!r.ok) {
+    log(`${refKey(issue)}: the labels could not be read (${r.err.split('\n')[0]}) — an order waits for a tick that can read them`);
+    return true;
+  }
+  return skipped({ labels: r.out.split('\n').map((l) => l.trim()).filter(Boolean) });
+}
 
 /**
  * Why an order may not start a session on this card now — one actor owns a card at a time, and a card a
@@ -98,7 +119,7 @@ export interface OrderHold {
  * (`LOOKBACK`) and a review may run to its whole budget, so an order held that way could fall out of the
  * window and never be acted on at all, after Sloth had already put 👀 on it.
  */
-export function orderHold(issue: IssueRef): OrderHold | undefined {
+export async function orderHold(issue: IssueRef): Promise<OrderHold | undefined> {
   const other = otherRunOn(issue);
   if (other) {
     const what = other === 'qa' ? 'QA test' : 'review';
@@ -108,7 +129,7 @@ export function orderHold(issue: IssueRef): OrderHold | undefined {
       quiet: true,
     };
   }
-  if (heldByHuman(issue)) {
+  if (await heldByHuman(issue)) {
     return {
       why: `the card is labelled ${SKIP_LABEL}, so a human owns it`,
       reply: `This card is labelled **${SKIP_LABEL}**, so a person owns it and Sloth leaves it alone. Take the label off and say the word again for Sloth to pick it up.`,

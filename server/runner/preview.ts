@@ -116,6 +116,10 @@ async function openTunnel(issue: IssueRef, upstream: string, key: string): Promi
 async function begin(issue: IssueRef): Promise<void> {
   const p = readPreviewFile(issue);
   if (!p) {
+    if (isDry()) {
+      log(`dry-run: would drop the unreadable preview.json of ${label(issue)}`);
+      return;
+    }
     remove(fileOf(issue));
     log(`preview ${label(issue)}: preview.json needs {"url": "http://localhost:<port>"} — ignored`);
     return;
@@ -173,6 +177,14 @@ export async function previews(): Promise<void> {
 
 /** Takes one preview down: tunnel, comment, then the run's processes, database and worktree. */
 export async function stopPreview(issue: IssueRef, reason: string): Promise<void> {
+  // A dry tick retires nothing. The comment saying the preview is gone is a real comment, the tunnel it
+  // names is a live child, and `cleanup` behind them drops a database — and a preview half taken down
+  // is a state no real tick produces: the next one would find `preview.json` with no state beside it,
+  // open a second tunnel under a new key, and leave the link a person already has pointing at nothing.
+  if (isDry()) {
+    log(`dry-run: would take the preview of ${label(issue)} down (${reason})`);
+    return;
+  }
   const entry = live.get(refKey(issue));
   live.delete(refKey(issue));
   prChecked.delete(refKey(issue));

@@ -69,12 +69,15 @@ export function trackWaiting(dir: string, issue?: IssueRef): void {
   const said = state.state === 'waiting';
   const waiting = said || parkedOnBoard(issue);
   if (waiting && !since) {
+    // A board read before this run launched, or before the answer it was relaunched on, is about the run
+    // before it: it opens no wait of its own. Flooring `began` was not enough on the trigger-6 path,
+    // where the snapshot the relaunch was decided from is a moment older than the launch itself — the
+    // wait still opened, and closed a tick later having credited the whole span of a run that had been
+    // working throughout. A run that really is waiting says so in its own state, and that is `said`.
+    if (!said && Math.floor((snapshot()?.at ?? 0) / 1000) < floorOf(dir)) return;
     // The session's `since` counts only when it said it was asking; `asked_at` it wrote when it posted the
-    // question, whatever it said afterwards. Neither, and the wait began when the board was last read.
-    // …and the tick's own reading is floored the same way the session's marks are. The snapshot is the
-    // *previous* tick's board, which for a card just relaunched out of needs-help still shows it parked:
-    // an unfloored fallback credited the run a board interval it did not exist for, and pushed its
-    // deadline out by the same, on every card that ever got an answer.
+    // question, whatever it said afterwards. Neither, and the wait began when the board was last read —
+    // floored the same way the session's own marks are.
     const asked = honest(dir, readNumber(path.join(dir, 'asked_at')), now);
     const seen = Math.max(floorOf(dir), Math.min(now, Math.floor((snapshot()?.at ?? Infinity) / 1000)));
     const began = (said ? honest(dir, Number(state.since) || 0, now) : undefined) ?? asked ?? seen;

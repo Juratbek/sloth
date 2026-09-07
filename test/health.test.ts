@@ -202,7 +202,7 @@ describe('the cache and the ten-minute gate', () => {
     expect(asks()).toBe(2);
   });
 
-  it('reads the login Sloth comments as until gh answers, then stops asking', async () => {
+  it('reads the login Sloth comments as on every reading, and follows it when the account changes', async () => {
     // Read only when the server mounts, a Sloth that started before anybody logged `gh` in — a fresh
     // install, where the wizard's Log in button comes minutes later — spent the rest of the process
     // telling its own comments apart by their prefix alone, which anybody can type.
@@ -220,10 +220,18 @@ describe('the cache and the ten-minute gate', () => {
     onExecFile(/api user/, { stdout: 'sloth-bot\n' });
     await refreshHealth();
     expect(botLogin()).toBe('sloth-bot');
-    // Once it has an answer it is never asked again.
-    const asked = whoami();
+    // A login read once and then kept could only ever be filled in, never corrected: pressing the wizard's
+    // Log in a second time with the right account, `gh auth switch`, or a rotated token left every reader
+    // asking after somebody who no longer writes Sloth's comments — `wroteIt` false for Sloth's own words,
+    // `answerOn` never finding the question, and trigger 6 silently done relaunching parked cards.
+    onExecFile(/api user/, { stdout: 'other-bot\n' });
     await refreshHealth();
-    expect(whoami()).toBe(asked);
+    expect(botLogin()).toBe('other-bot');
+    expect(readLog().filter((l) => l.includes('as other-bot now, not sloth-bot'))).toHaveLength(1);
+    // A reading that fails is a blip, not an account change: the login it had stands.
+    onExecFile(/api user/, { code: 1, stderr: 'network is down' });
+    await refreshHealth();
+    expect(botLogin()).toBe('other-bot');
     setBotLogin(undefined);
   });
 
