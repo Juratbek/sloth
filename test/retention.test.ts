@@ -55,6 +55,8 @@ describe('prune', () => {
     fs.mkdirSync(statePath('started'), { recursive: true });
     fs.writeFileSync(statePath('started', 'issue-1'), '4242 1700000000');
     fs.writeFileSync(statePath('started', 'issue-3'), '4243 1700000000');
+    // A status reply is a run of its own and `start` writes it one of these too, under its marker's name.
+    fs.writeFileSync(statePath('started', '1-99'), '4244 1700000000');
 
     await prune();
 
@@ -69,6 +71,7 @@ describe('prune', () => {
     expect(exists(statePath('seen', '222'))).toBe(true);
     expect(exists(statePath('started', 'issue-1'))).toBe(false);
     expect(exists(statePath('started', 'issue-3'))).toBe(true);
+    expect(exists(statePath('started', '1-99'))).toBe(false);
     expect(readLog().join('\n')).toMatch(/pruned session issue-1/);
   });
 

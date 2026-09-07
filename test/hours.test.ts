@@ -595,6 +595,20 @@ describe('the second review’s holes', () => {
     expect(exists(dir, 'waiting')).toBe(false);
   });
 
+  it('opens none from a board read in the very second the run launched — that read is still the one before', () => {
+    // The boundary of the guard above. A board read cannot describe a run that started in the same second
+    // it was taken, so this is the stale case too, and `<` would let the whole of it back through.
+    const now = nowSec();
+    const parked = { repo: REPO, number: 46, title: 't', status: cfg().statusField.columns.needsHelp.name, labels: [], assignees: [], closed: false };
+    const dir = makeSession('issue', 46, { started: String(now - 300), 'state.json': { state: 'working', step: '3' } });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date((now - 300) * 1000));
+    setSnapshot([parked]);
+    vi.setSystemTime(new Date(now * 1000));
+    trackWaiting(dir, ref(46));
+    expect(exists(dir, 'waiting')).toBe(false);
+  });
+
   it('opens one from a board read after the run launched — that card is parked on this run', () => {
     const now = nowSec();
     const parked = { repo: REPO, number: 45, title: 't', status: cfg().statusField.columns.needsHelp.name, labels: [], assignees: [], closed: false };
